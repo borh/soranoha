@@ -7,14 +7,15 @@ its conversion mappings and policy documents under
 and every release manifest and TEI file names the rights statement as
 `https://w3id.org/soranoha/rights`. Those IRIs are in signed,
 content-addressed bytes, so they must stay stable independently of where the
-project is served. This directory holds the files
-submitted to [perma-id/w3id.org](https://github.com/perma-id/w3id.org) to make
-them resolve, kept here because the redirect map is a permanent commitment of
-the project rather than a one-time chore.
+project is served. This directory holds the files registered in
+[perma-id/w3id.org](https://github.com/perma-id/w3id.org), merged there on
+2026-09-11, kept here because the redirect map is a permanent commitment of
+the project rather than a one-time chore. A change to the map is a further
+pull request against that repository, made from these files.
 
-Submission adds `ids/soranoha/.htaccess` and `ids/soranoha/README.md` to that
-repository. `htaccess` and `w3id-README.md` here are those two files; the local
-names avoid a dotfile and a second README in this tree.
+The registration is `ids/soranoha/.htaccess` and `ids/soranoha/README.md` in
+that repository. `htaccess` and `w3id-README.md` here are those two files; the
+local names avoid a dotfile and a second README in this tree.
 
 Six prefixes are claimed, each redirecting to the corresponding `soranoha.org`
 path, plus a bare `/soranoha/`:
