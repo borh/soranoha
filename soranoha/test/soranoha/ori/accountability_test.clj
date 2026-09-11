@@ -1,0 +1,406 @@
+(ns soranoha.ori.accountability-test
+  (:require [babashka.fs :as fs]
+            [charred.api :as json]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
+            [soranoha.core.hash :as hash]
+            [soranoha.kura.cas :as cas]
+            [soranoha.kura.engine :as engine]
+            [soranoha.ori.stages :as stages]
+            [soranoha.ori.accountability :as accountability]))
+
+(deftest native-source-stage-keeps-lexical-evidence-independent
+  (let [tool (accountability/resolve-tool)
+        stage (accountability/source-stage tool)
+        source (.getBytes "漢字《かんじ》［＃］" "UTF-8")
+        result ((:f stage) {:blob {"source-id" source}} {"source" "source-id"})
+        report (json/read-json (String. ^bytes (get result "source-accountability") "UTF-8"))]
+    (is (= "source-accountability" (:stage-id stage)))
+    (is (= (hash/sha256-canonical-json
+            {"binary" (hash/sha256-file (:bin tool))
+             "matrix" (hash/sha256-file (:matrix tool))})
+           (:toolchain-id stage)))
+    (is (= "aozora-source-accountability/2" (get report "schema")))
+    (is (= (str "sha256:" (hash/sha256-bytes source)) (get report "source_sha256")))
+    (is (= "not-assessed" (get report "semantic_coverage")))
+    (is (= [["ruby.basic"] []] (mapv #(get % "families") (get report "occurrences"))))
+    (is (= ["《かんじ》" "［＃］"] (mapv #(get % "raw") (get report "occurrences"))))))
+
+(defn- span [start end]
+  {"start" start "end" end "coordinate_system" "decoded_utf8"})
+
+(defn- oracle [occurrences]
+  {"schema" "aozora-source-accountability/2" "source_sha256" "sha256:source"
+   "encoding" "utf-8" "decode_outcome" "lossless" "occurrences" occurrences})
+
+(defn- interpretation [facts]
+  {"source" {"primary_text_hash" "sha256:source" "decode_outcome" "utf-8"}
+   "interpretation_facts" facts "interpretation_problems" []})
+
+(deftest variant-claims-do-not-resolve-embedded-gaiji
+  (doseq [raw ["［＃「κιν※［＃鋭アクセント付きη、U+1F75、171-10］σεω※［＃ギリシア小文字ファイナルSIGMA、1-6-57］」は底本では「κιν※［＃鋭アクセント付きη、U+1F75、171-10］σε※［＃上方に不鮮明な符号が付いているω、171-10］※［＃ギリシア小文字ファイナルSIGMA、1-6-57］」］"
+               "［＃「醇※［＃「广＋龍」、第3水準1-94-86］博朗」は底本では「醇※［＃「厂＋龍」、348-9］博朗」］"]]
+    (let [source (.getBytes (str "題\n作者\n\n" raw "\n\n底本：本\n") "UTF-8")
+          scanned ((:f (accountability/source-stage (accountability/resolve-tool)))
+                   {:blob {"source-id" source}} {"source" "source-id"})
+          evidence (json/read-json (String. ^bytes (get scanned "source-accountability") "UTF-8"))
+          marker (first (filter #(= raw (get % "raw")) (get evidence "occurrences")))
+          fact {"kind" "text-variant" "outcome" "established" "aspects" ["content" "structure"]
+                "source_span" (get marker "source_span")}
+          parsed (assoc-in (interpretation [fact]) ["source" "primary_text_hash"]
+                           (get evidence "source_sha256"))
+          report (accountability/coverage-report evidence parsed)
+          result (first (filter #(= raw (get % "raw")) (get report "occurrences")))]
+      (is (some #{"annotation.chuuki"} (get marker "families")))
+      (is (= [["annotation.chuuki"]] (mapv #(get % "families") (get result "claims"))))
+      (is (every? #(empty? (get % "claims")) (get result "components")))
+      (is (some #{"gaiji.marker"} (get result "unaccounted_families")))
+      (is (= "not-assessed" (get report "semantic_certification"))))))
+
+(deftest enclosing-claims-cannot-establish-another-marker
+  (let [marker (fn [start end] {"source_span" (span start end)
+                                "kind" "CommandFullwidth" "region" "body"
+                                "families" ["emphasis.basic"]})
+        fact (fn [start end] {"source_span" (span start end) "kind" "emphasis"
+                              "outcome" "established" "aspects" ["layout"]})
+        report (accountability/coverage-report
+                (oracle [(marker 15 30) (marker 0 9)])
+                (interpretation [(fact 0 60) (fact 0 9)]))]
+    (is (= {"interpreter_claimed" 1 "unaccounted" 1}
+           (get-in report ["families" "emphasis.basic"])))
+    (is (= [0 15] (mapv #(get-in % ["source_span" "start"]) (get report "occurrences"))))
+    (is (= [(span 0 9)] (mapv #(get % "source_span") (get-in report ["occurrences" 0 "claims"]))))
+    (is (empty? (get-in report ["occurrences" 1 "claims"])))
+    (is (= ["emphasis.basic"] (get-in report ["occurrences" 1 "unaccounted_families"])))))
+
+(deftest reported-coverage-keeps-the-exceptions-and-the-total-they-came-from
+  (let [marker (fn [start end] {"source_span" (span start end)
+                                "kind" "CommandFullwidth" "region" "body"
+                                "families" ["emphasis.basic"]})
+        fact (fn [start end] {"source_span" (span start end) "kind" "emphasis"
+                              "outcome" "established" "aspects" ["layout"]})
+        report (accountability/coverage-report
+                (oracle [(marker 15 30) (marker 0 9)])
+                (interpretation [(fact 0 9)]))
+        reported (accountability/reported-coverage report)]
+    (is (= "soranoha-interpretation-coverage/3" (get reported "schema")))
+    (is (= 2 (get reported "occurrence_count"))
+        "both occurrences are counted, whether or not either is listed")
+    (is (= [15] (mapv #(get-in % ["source_span" "start"])
+                      (get reported "unaccounted_occurrences")))
+        "only the occurrence no claim accounted for is listed")
+    (is (nil? (get reported "occurrences"))
+        "the claimed occurrences are visible as @source on the elements they produced")
+    (is (= {"interpreter_claimed" 1 "unaccounted" 1}
+           (get-in reported ["families" "emphasis.basic"]))
+        "the family counts still cover every occurrence")
+    (is (= 0 (get reported "unclassified_occurrence_count")))))
+
+(deftest reported-coverage-lists-an-unclassified-occurrence
+  (let [unknown {"source_span" (span 0 9) "kind" "CommandFullwidth" "region" "body"
+                 "raw" "［＃］" "families" []}
+        reported (accountability/reported-coverage
+                  (accountability/coverage-report (oracle [unknown])
+                                                  (interpretation [])))]
+    (is (= 1 (get reported "unclassified_occurrence_count")))
+    (is (= ["［＃］"] (mapv #(get % "raw") (get reported "unaccounted_occurrences")))
+        "a marker with no families is an exception even though it has none to be unaccounted")))
+
+(deftest a-family-no-fact-admits-on-this-marker-is-not-a-coverage-gap
+  (testing "the scanner puts 〔…〕 under annotation.chuuki, and no fact kind that
+  claims that family admits the marker, so the occurrence could never be claimed"
+    (let [accent {"source_span" (span 0 13) "kind" "AccentNotation" "region" "body"
+                  "raw" "〔e'tiquette〕" "families" ["annotation.chuuki"]}
+          reported (accountability/reported-coverage
+                    (accountability/coverage-report (oracle [accent]) (interpretation [])))]
+      (is (= {"outside_claim_vocabulary" 1} (get-in reported ["families" "annotation.chuuki"]))
+          "counted under its own name rather than as an unaccounted family")
+      (is (= 1 (get reported "occurrence_count")))
+      (is (= [] (get reported "unaccounted_occurrences"))
+          "not listed as an exception: the marker kind explains it, not the occurrence")
+      (is (= 0 (get reported "unclassified_occurrence_count"))
+          "it has a family, so it is classified; it is only unclaimable")))
+  (testing "the same family on a marker some fact kind does admit stays unaccounted"
+    (let [note {"source_span" (span 0 13) "kind" "CommandFullwidth" "region" "body"
+                "raw" "［＃「あ」はママ］" "families" ["annotation.chuuki"]}
+          reported (accountability/reported-coverage
+                    (accountability/coverage-report (oracle [note]) (interpretation [])))]
+      (is (= {"unaccounted" 1} (get-in reported ["families" "annotation.chuuki"])))
+      (is (= ["［＃「あ」はママ］"] (mapv #(get % "raw") (get reported "unaccounted_occurrences")))))))
+
+(deftest claims-need-compatible-kinds-and-spans-and-do-not-certify-semantics
+  (let [ruby {"source_span" (span 6 21) "kind" "RubyImplicit" "region" "body"
+              "raw" "《かんじ》" "families" ["ruby.basic"]}
+        emphasis {"kind" "emphasis" "outcome" "established" "aspects" ["layout"]
+                  "source_span" (span 0 80)}
+        fact {"kind" "ruby" "outcome" "established" "aspects" ["content" "structure"]
+              "source_span" (span 6 21)}
+        unmatched (accountability/coverage-report (oracle [ruby]) (interpretation [emphasis]))
+        matched (accountability/coverage-report (oracle [ruby]) (interpretation [emphasis fact]))]
+    (is (= 1 (get-in unmatched ["families" "ruby.basic" "unaccounted"])))
+    (is (= 1 (get-in matched ["families" "ruby.basic" "interpreter_claimed"])))
+    (is (= ["ruby"] (mapv #(get % "kind") (get-in matched ["occurrences" 0 "claims"]))))
+    (is (= "not-assessed" (get matched "semantic_certification")))
+    (is (= 1 (get-in (accountability/coverage-report
+                      (oracle [ruby]) (interpretation [(assoc fact "source_span" (span 0 20))]))
+                     ["families" "ruby.basic" "unaccounted"])))
+    (is (= 1 (get-in (accountability/coverage-report
+                      (assoc (oracle [ruby]) "decode_outcome" "lossy") (interpretation [fact]))
+                     ["families" "ruby.basic" "unaccounted"])))))
+
+(deftest absence-of-facts-and-explicit-problems-remain-visible
+  (let [unknown {"source_span" (span 0 9) "kind" "CommandFullwidth" "region" "body"
+                 "raw" "［＃］" "families" []}
+        problem {"kind" "unknown-notation" "aspects" ["content" "structure" "layout"]
+                 "source_span" (span 0 9) "influence" {"kind" "document"}}
+        report (accountability/coverage-report (oracle [unknown])
+                                               (assoc (interpretation []) "interpretation_problems" [problem]))]
+    (is (= 1 (get report "unclassified_occurrences")))
+    (is (= [problem] (get report "interpretation_problems")))
+    (is (empty? (get-in report ["occurrences" 0 "claims"])))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (accountability/coverage-report (oracle [unknown])
+                                                 (dissoc (interpretation []) "interpretation_facts"))))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (accountability/coverage-report (assoc (oracle [unknown]) "source_sha256" "different")
+                                                 (interpretation []))))))
+
+(deftest native-claims-identify-their-own-markers-through-the-independent-oracle
+  (let [dir (fs/create-temp-dir {:prefix "marker-ownership"})
+        store (engine/open-store! {:cas-dir (str (fs/path dir "objects"))
+                                   :db-path (str (fs/path dir "trace.sqlite"))})
+        adapter (stages/resolve-adapter)
+        scanner (accountability/source-stage (accountability/resolve-tool))
+        read-output (fn [result name]
+                      (json/read-json
+                       (String. ^bytes (cas/get-bytes (:cas-dir store) (get-in result [:outputs name])) "UTF-8")))]
+    (try
+      (doseq [[body unknown expected-claimed expected-component-claims unreachable]
+              [["［＃斜体］字［＃「字」に白四角傍点］［＃斜体終わり］" "［＃「字」に白四角傍点］" 2]
+               ["［＃斜体］字［＃「字」の部分はイタリック体］［＃斜体終わり］" "［＃「字」の部分はイタリック体］" 2]
+               ["［＃太字］字［＃「字」は斜体］［＃太字終わり］" nil 3]
+               ["｜漢字《かんじ》、漢字《かんじ》。" nil 2]
+               ["※［＃「需＋頁」、第3水準1-94-6］《じゅ》" nil 2]
+               ["｜前※［＃「需＋頁」、第3水準1-94-6］《ぜんじゅ》" nil 1]
+               ;; the scanner reads a page reference in the gaiji's own body and
+               ;; adds reference.frontref, which only a command fact claims
+               ["※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］"
+                "※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］" 0 nil
+                "※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］"]
+               ["※［＃ローマ数字1、1-13-21］" nil 1]
+               ["※［＃「藹」の「言」に代えて「月」、第3水準1-91-26］" nil 1]
+               ["２）［＃「２）」は縦中横、行右小書き］" nil 1]
+               ["漢［＃レ］字［＃（ノ）］。" nil 2]
+               ["［＃キャプション］字［＃キャプション終わり］" nil 2]
+               ["［＃ここから割り注］字［＃ここで割り注終わり］" nil 2]
+               ["本文［＃「章」は中見出し］" "［＃「章」は中見出し］" 0]
+               ["［＃ここから表］\n甲／乙\n［＃ここで表終わり］" nil 2]
+               ["［＃ここから５字下げ、ここから数式］\nx = 1\n［＃ここで字下げ終わり、ここで数式終わり］" nil 2]
+               ["［＃ここから２段組み］\n甲［＃改段］乙\n［＃ここで段組み終わり］" nil 3]
+               ["甲［＃改丁］乙［＃改ページ］丙" nil 2]
+               ["甲［＃改行］乙\n丙" nil 1]
+               ["甲\n乙" nil 0]
+               ["前［＃挿絵（fig1.png）入る］後" nil 1]
+               ["前［＃「漢字」のキャプション付きの図（fig1.png、横20×縦30）入る］後" nil 1]
+               ["章［＃「章」は中見出し］" nil 1]
+               ["章［＃「章」は同行中見出し］" nil 1]
+               ["章［＃「章」は窓中見出し］" nil 1]
+               ["字［＃「字」はキャプション］" nil 1]
+               ["字［＃「字」は罫囲み］" nil 1]
+               ["字［＃「字」は横組み］" nil 1]
+               ["２［＃「２」は縦中横］" nil 1]
+               ["字［＃「字」は底本では「宇」］" nil 1]
+               ["懲々《こり／″＼》［＃ルビの「／″＼」は底本では「こり／＼」］" nil 2]
+               ["※［＃「口＋愛」、第3水準1-15-23］《おくび》［＃「※［＃「口＋愛」、第3水準1-15-23］《おくび》」は底本では「※［＃「口＋愛」、第3水準1-15-23］《あくび》」］" nil 3]
+               ["｜前※［＃「口＋愛」、第3水準1-15-23］《まえおくび》［＃「｜前※［＃「口＋愛」、第3水準1-15-23］《まえおくび》」は底本では「別」］" nil 2]
+               ["小突《こづか》かれるので［＃「小突《こづか》かれるので」はママ］［＃「小突《こづか》かれるので［＃「小突《こづか》かれるので」はママ］」は底本では「かれるので小突《こづか》［＃「かれるので小突《こづか》」はママ］」］" nil 3]
+               ["甲［＃「甲」はママ］［＃「甲［＃底本のまま］」は底本では「乙」］"
+                "［＃「甲［＃底本のまま］」は底本では「乙」］" 1]
+               ["甲［＃「甲」はママ］別［＃「甲［＃「甲」はママ］」は底本では「乙」］"
+                "［＃「甲［＃「甲」はママ］」は底本では「乙」］" 1]
+               ["〔Hu:lshoff［＃「Hu:lshoff」は底本では「Hu:lshoffs」］〕" nil 1]
+               ["〔schla:gt［＃「〔schla:gt〕」は底本では「〔scha:gt〕」］〕" nil 1]
+               ;; the correction stands outside the accent notation, so the
+               ;; notation has no command component and the family the scanner
+               ;; gives it is one no fact kind can claim on a bracket
+               ["〔Der Mu:s&iggang wird〕［＃「〔Mu:s&iggang〕」は底本では「〔Mu:s&igang〕」］"
+                nil 1 nil "〔Der Mu:s&iggang wird〕"]
+               ["萬一《まんいち》［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］"
+                "［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］" 1 1]
+               ["萬二《まんに》［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］"
+                "［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］" 1 0]
+               ["零《こぼ》す［＃ルビの「こぼ（す）」は底本では「にぼ（す）」］" nil 2]
+               ["「露西亞車」［＃「露西亞車」は底本では「靈西亞車」］" nil 1]
+               ["〔Ha:tte.“〕［＃「Ha:tte.“」は底本では「Ha:tte“.」］" nil 1 nil "〔Ha:tte.“〕"]
+               ["字［＃底本では傍点］" nil 1]
+               ["キタ［＃お手伝いさん］" nil 1]
+               ["ワフタンゴフ［＃劇場名］" nil 1]
+               ;; source.reviewed_residual_command is claimed by no fact kind on
+               ;; any marker, so it is unreachable wherever the scanner puts it
+               ["字［＃海野家のお手伝いさん］" "［＃海野家のお手伝いさん］" 0 nil "［＃海野家のお手伝いさん］"]
+               ["字［＃父、太字］" "［＃父、太字］" 0]
+               ["字［＃「字」に「ママ」注記］" nil 1]
+               ["字［＃「字」に「注」の注記］" nil 1]
+               ["三五頁［＃「三五頁」は「須佐の男の神」の「穀物の種」］" nil 1]
+               ["井伏鱒二［＃「井伏鱒二」はゴチック］" nil 1]
+               ["阿［＃「阿」は一段階小さな文字］" nil 1]
+               ["［＃ここから６字下げ、折り返して７字下げ、２１字詰め］\n字\n［＃ここで字下げ終わり］" nil 2]
+               ["［＃中見出し］章［＃中見出終わり］" nil 2]]]
+        (testing body
+          (let [bytes (.getBytes (str "題\n作者\n\n" body "\n\n底本：本\n") "UTF-8")
+                source-id (cas/put-bytes! (:cas-dir store) bytes)
+                parsed (engine/run-stage! store (stages/parse-stage adapter) {"source" source-id})
+                converted (engine/run-stage! store (stages/convert-stage adapter)
+                                             {"aat" (get-in parsed [:outputs "aat"])
+                                              "work_content_hash" (hash/format-sha256 source-id)})
+                scanned (engine/run-stage! store scanner {"source" source-id})
+                report (accountability/coverage-report (read-output scanned "source-accountability")
+                                                       (read-output converted "parser-ir"))
+                occurrences (filterv #(= "body" (get % "region")) (get report "occurrences"))
+                claimed (filterv #(seq (get % "claims")) occurrences)]
+            (is (= expected-claimed (count claimed)))
+            (when (some? expected-component-claims)
+              (is (= expected-component-claims
+                     (count (mapcat #(get % "claims") (mapcat #(get % "components") occurrences))))))
+            (is (= (if unknown [unknown] [])
+                   (mapv #(get % "raw") (filter #(seq (get % "unaccounted_families")) occurrences))))
+            (is (= (if unreachable [unreachable] [])
+                   (mapv #(get % "raw") (filter #(seq (get % "unreachable_families")) occurrences)))
+                "a family no fact could claim on this marker is not a coverage gap")
+            (doseq [occurrence claimed claim (get occurrence "claims")]
+              (is (contains? (into #{(select-keys (get occurrence "source_span") ["start" "end"])}
+                                   (map #(select-keys (get % "source_span") ["start" "end"]))
+                                   (get occurrence "components"))
+                             (select-keys (get claim "source_span") ["start" "end"])))))))
+      (finally (engine/close-store! store) (fs/delete-tree dir)))))
+
+(deftest native-interpretation-and-oracle-share-the-decoded-coordinate-axis
+  (let [dir (fs/create-temp-dir {:prefix "accountability-conformance"})
+        store (engine/open-store! {:cas-dir (str (fs/path dir "objects"))
+                                   :db-path (str (fs/path dir "trace.sqlite"))})
+        adapter (stages/resolve-adapter)
+        source-stage (accountability/source-stage (accountability/resolve-tool))
+        text "題\n作者\n\n----------\n【テキスト中に現れる記号について】\n----------\n漢字《かんじ》。\n\n底本：本\n"]
+    (try
+      (doseq [[label ^String encoded-text ^String encoding]
+              [["UTF-8" text "UTF-8"]
+               ["BOM" (str "\uFEFF" text) "UTF-8"]
+               ["CRLF" (str/replace text "\n" "\r\n") "UTF-8"]
+               ["ShiftJIS" text "windows-31j"]
+               ["lossy" text "windows-31j"]]]
+        (testing label
+          (let [lossy? (= "lossy" label)
+                bytes (if lossy?
+                        (byte-array (concat (.getBytes encoded-text encoding) [(unchecked-byte 0x81)]))
+                        (.getBytes encoded-text encoding))
+                source-id (cas/put-bytes! (:cas-dir store) bytes)
+                run #(engine/run-stage! store %1 %2)
+                read-output (fn [result name]
+                              (json/read-json
+                               (String. ^bytes (cas/get-bytes (:cas-dir store) (get-in result [:outputs name])) "UTF-8")))
+                parsed (run (stages/parse-stage adapter) {"source" source-id})
+                converted (run (stages/convert-stage adapter)
+                               {"aat" (get-in parsed [:outputs "aat"])
+                                "work_content_hash" (hash/format-sha256 source-id)})
+                oracle-result (run source-stage {"source" source-id})
+                coverage (run (accountability/coverage-stage "test-runtime")
+                              {"source-accountability" (get-in oracle-result [:outputs "source-accountability"])
+                               "parser-ir" (get-in converted [:outputs "parser-ir"])})
+                oracle-value (read-output oracle-result "source-accountability")
+                report (read-output coverage "interpretation-coverage")
+                ^String decoded (str (str/replace encoded-text #"^\uFEFF" "") (when lossy? "�"))
+                expected-start (alength (.getBytes (subs decoded 0 (.indexOf decoded "《")) "UTF-8"))]
+            (is (= (if lossy? "lossy" "lossless") (get oracle-value "decode_outcome")))
+            (is (= (str "sha256:" (hash/sha256-bytes (.getBytes decoded "UTF-8")))
+                   (get oracle-value "decoded_sha256")))
+            (is (= expected-start (get-in oracle-value ["occurrences" 0 "source_span" "start"])))
+            (is (= 1 (get-in report ["families" "ruby.basic"
+                                     (if lossy? "unaccounted" "interpreter_claimed")])))
+            (is (= "not-assessed" (get report "semantic_certification")))
+            (when (= "UTF-8" label)
+              (testing "independent stage identities and content cutoff through the join"
+                (let [parsed-again (run (assoc (stages/parse-stage adapter) :stage-version "cache-probe")
+                                        {"source" source-id})
+                      converted-again (run (assoc (stages/convert-stage adapter) :stage-version "cache-probe")
+                                           {"aat" (get-in parsed-again [:outputs "aat"])
+                                            "work_content_hash" (hash/format-sha256 source-id)})
+                      oracle-cached (run source-stage {"source" source-id})
+                      oracle-again (run (assoc source-stage :stage-version "cache-probe")
+                                        {"source" source-id})
+                      coverage-inputs {"source-accountability" (get-in oracle-again [:outputs "source-accountability"])
+                                       "parser-ir" (get-in converted-again [:outputs "parser-ir"])}
+                      coverage-cached (run (accountability/coverage-stage "test-runtime") coverage-inputs)
+                      coverage-again (run (assoc (accountability/coverage-stage "test-runtime")
+                                                 :stage-version "cache-probe") coverage-inputs)]
+                  (is (false? (:cached? parsed-again)))
+                  (is (false? (:cached? converted-again)))
+                  (is (true? (:cached? oracle-cached)))
+                  (is (false? (:cached? oracle-again)))
+                  (is (= (:outputs oracle-result) (:outputs oracle-again)))
+                  (is (= (:outputs converted) (:outputs converted-again)))
+                  (is (true? (:cached? coverage-cached)))
+                  (is (false? (:cached? coverage-again)))
+                  (is (= (:outputs coverage) (:outputs coverage-again)))
+                  (is (true? (:cached? (run source-stage {"source" source-id}))))
+                  (is (true? (:cached? (run (stages/parse-stage adapter) {"source" source-id}))))
+                  (is (true? (:cached? (run (stages/convert-stage adapter)
+                                            {"aat" (get-in parsed [:outputs "aat"])
+                                             "work_content_hash" (hash/format-sha256 source-id)}))))))))))
+      (finally (engine/close-store! store) (fs/delete-tree dir)))))
+
+(deftest composite-families-require-every-located-component
+  (let [component (fn [start end] {"source_span" (span start end) "kind" "CommandFullwidth"
+                                   "families" ["kunten.kaeriten"]})
+        occurrence {"source_span" (span 0 100) "kind" "RubyExplicit" "region" "body"
+                    "families" ["ruby.basic" "kunten.kaeriten"]
+                    "components" [(component 10 20) (component 30 40)]}
+        ruby {"kind" "ruby" "outcome" "established" "aspects" ["content" "structure"]
+              "source_span" (span 0 100)}
+        kunten (fn [start end] {"kind" "kunten" "outcome" "established" "aspects" ["content" "structure" "layout"]
+                                "source_span" (span start end)})
+        report #(accountability/coverage-report (oracle [occurrence]) (interpretation (into [ruby] %)))
+        partial (report [(kunten 10 20)])
+        complete (report [(kunten 10 20) (kunten 30 40)])]
+    (is (= ["kunten.kaeriten"] (get-in partial ["occurrences" 0 "unaccounted_families"])))
+    (is (= 1 (get-in partial ["families" "kunten.kaeriten" "unaccounted"])))
+    (is (= 1 (count (get-in partial ["occurrences" 0 "components" 0 "claims"]))))
+    (is (empty? (get-in complete ["occurrences" 0 "unaccounted_families"])))
+    (is (= 1 (get-in complete ["families" "kunten.kaeriten" "interpreter_claimed"])))
+    (is (= 1 (count (get complete "occurrences"))))
+    (is (= ["kunten.kaeriten"]
+           (get-in (report [(kunten 0 100) (kunten 10 20)]) ["occurrences" 0 "unaccounted_families"])))))
+
+(defn- matrix-rows
+  "The coverage matrix's `[[syntax]]` rows as {family status}.
+
+  Read with a regex rather than a TOML parser: this test compares two
+  vocabularies and needs one field out of each row, and the file is written
+  against a struct that fixes both spellings at the start of a line."
+  [matrix-path]
+  (into {}
+        (keep (fn [block]
+                (when-let [[_ id] (re-find #"(?m)^id = \"([^\"]+)\"" block)]
+                  [id (second (re-find #"(?m)^status = \"([^\"]+)\"" block))])))
+        (rest (str/split (slurp matrix-path :encoding "UTF-8") #"\[\[syntax\]\]"))))
+
+(deftest the-claim-table-and-the-coverage-matrix-name-the-same-families
+  (let [rows (matrix-rows (:matrix (accountability/resolve-tool)))]
+    (is (< 50 (count rows)) "the matrix parsed")
+    (testing "a claim cannot carry a family the matrix does not declare"
+      ;; The other direction is not an error: the matrix declares families the
+      ;; interpreter does not model yet, and marks them so.
+      (is (= #{} (into (sorted-set)
+                       (remove (set (keys rows)))
+                       accountability/claimable-families))))
+    (testing "a family the matrix calls modelled is a family some claim can reach"
+      ;; This is the drift that made the published coverage number unreadable:
+      ;; the scanner assigned a family, no fact kind could claim it, and every
+      ;; occurrence was reported as a coverage gap it was not. A row saying the
+      ;; feature is covered or partly covered while no claim can reach it says
+      ;; two incompatible things about the same feature.
+      (is (= #{} (into (sorted-set)
+                       (comp (filter (fn [[_ status]]
+                                       (contains? #{"covered" "partial"} status)))
+                             (map key)
+                             (remove accountability/claimable-families))
+                       rows))))))

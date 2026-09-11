@@ -1,0 +1,155 @@
+(ns soranoha.snh.semantic
+  "Single-object semantic rules for the five protocol JSON objects: every
+  rule a lone object must satisfy that the JSON Schemas do not carry
+  (ordering, uniqueness, disjointness, real calendar dates, absolute
+  origins; JSON Schema cannot express ordering and its `format` enforcement
+  is inconsistent across validators). Boundary decode applies the matching
+  check after structural validation, so assembler and verifier inherit every
+  rule from the one shared operation. Cross-object and transition rules stay
+  with the chain verifier."
+  (:import (java.time LocalDate)
+           (java.time.format DateTimeFormatter ResolverStyle)))
+
+(defn- fail! [reason data]
+  (throw (ex-info (str "semantic rule violated: " (name reason))
+                  (assoc data :reason reason))))
+
+(defn- sorted-unique!
+  "Fails unless `xs` is strictly ascending (hence sorted and duplicate-free)."
+  [reason xs data]
+  (when-not (every? neg? (map compare xs (rest xs)))
+    (fail! reason data))
+  xs)
+
+(def ^:private strict-iso-date
+  ;; uuuu (not yyyy) so the strict resolver accepts unambiguous years, and
+  ;; real calendar arithmetic rejects impossible dates like 2026-99-99 or
+  ;; 2027-02-29 that the schema's digit pattern admits.
+  (.withResolverStyle (DateTimeFormatter/ofPattern "uuuu-MM-dd")
+                      ResolverStyle/STRICT))
+
+(defn real-calendar-date?
+  "True iff `s` is a real proleptic-Gregorian calendar date in YYYY-MM-DD."
+  [s]
+  (boolean
+   (and (string? s)
+        (re-matches #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$" s)
+        (try (LocalDate/parse s strict-iso-date)
+             true
+             (catch java.time.format.DateTimeParseException _ false)))))
+
+(defn absolute-origin?
+  "True iff `s` is an absolute URI with a scheme and a non-empty host (the
+  rule for every published URL: `corpus.upstream_origin`,
+  `rights.statement_url`, and each catalog entry's `card_url`)."
+  [s]
+  (boolean
+   (and (string? s)
+        (try (let [uri (java.net.URI. s)]
+               (and (.isAbsolute uri)
+                    (some? (.getHost uri))
+                    (not (.isEmpty (.getHost uri)))))
+             (catch java.net.URISyntaxException _ false)))))
+
+(defn check-manifest!
+  [manifest]
+  (when-not (absolute-origin? (get-in manifest ["corpus" "upstream_origin"]))
+    (fail! :invalid-upstream-origin
+           {:origin (get-in manifest ["corpus" "upstream_origin"])}))
+  ;; The rights grant is only usable if a reader can reach the statement it
+  ;; summarises, so the URL is held to the same absolute-origin rule as the
+  ;; corpus origin rather than being any non-empty string.
+  (when-not (absolute-origin? (get-in manifest ["rights" "statement_url"]))
+    (fail! :invalid-rights-statement-url
+           {:statement_url (get-in manifest ["rights" "statement_url"])}))
+  (let [works (mapv #(get % "slug") (get manifest "works"))
+        withdrawn (mapv #(get % "slug") (get manifest "withdrawn"))
+        {:strs [invalid_count invalid_slugs]} (get manifest "validation_summary")]
+    (sorted-unique! :works-not-sorted-unique works {})
+    (sorted-unique! :withdrawn-not-sorted-unique withdrawn {})
+    (when (seq (filter (set withdrawn) works))
+      (fail! :works-withdrawn-overlap {}))
+    (sorted-unique! :invalid-slugs-not-sorted-unique invalid_slugs {})
+    (when-not (= invalid_count (count invalid_slugs))
+      (fail! :invalid-count-mismatch {:declared invalid_count
+                                      :actual (count invalid_slugs)}))
+    (when-not (every? (set works) invalid_slugs)
+      (fail! :invalid-slugs-outside-works
+             {:strays (vec (remove (set works) invalid_slugs))})))
+  ;; a layer list is ordered and unique for the same reason `works` is: the
+  ;; canonical bytes of a set have to be one thing, and two entries naming
+  ;; the same layer would let a manifest claim a layer twice
+  (doseq [{:strs [slug layers]} (get manifest "works")]
+    (sorted-unique! :layers-not-sorted-unique
+                    (mapv #(get % "id") layers) {:slug slug}))
+  manifest)
+
+(defn check-snapshot!
+  [snapshot]
+  (sorted-unique! :candidates-not-sorted-unique
+                  (mapv #(get % "slug") (get snapshot "candidates")) {})
+  (doseq [{:strs [slug work_assessment contributions reliance]} (get snapshot "candidates")]
+    (when reliance
+      (doseq [field ["observed_at" "decision_date"]]
+        (when-not (real-calendar-date? (get reliance field))
+          (fail! :invalid-reliance-date {:slug slug :field field})))
+      (when (pos? (compare (get reliance "observed_at") (get reliance "decision_date")))
+        (fail! :reliance-observed-after-decision {:slug slug})))
+    (sorted-unique! :contributions-not-sorted-unique
+                    (mapv #(get % "contribution_id") contributions)
+                    {:slug slug})
+    (doseq [fact (cons work_assessment contributions)
+            :let [date (get fact "effective_date")]
+            :when (some? date)]
+      (when-not (real-calendar-date? date)
+        (fail! :invalid-effective-date {:slug slug :effective_date date}))))
+  snapshot)
+
+(defn- check-report!
+  [report]
+  (let [admitted (get report "admitted")
+        excluded (mapv #(get % "slug") (get report "excluded"))
+        quarantined (mapv #(get % "slug") (get report "quarantined"))]
+    (sorted-unique! :admitted-not-sorted-unique admitted {})
+    (sorted-unique! :excluded-not-sorted-unique excluded {})
+    (sorted-unique! :quarantined-not-sorted-unique quarantined {})
+    (let [all (concat admitted excluded quarantined)]
+      (when-not (= (count all) (count (set all)))
+        (fail! :partition-sets-overlap {}))))
+  report)
+
+(defn check-catalog!
+  [catalog]
+  (sorted-unique! :catalog-works-not-sorted-unique
+                  (mapv #(get % "slug") (get catalog "works")) {})
+  (doseq [{:strs [slug card_url contributors]} (get catalog "works")]
+    ;; A relative card URL would not identify the Aozora Bunko card the entry
+    ;; claims to come from, which is the one cross-reference the catalog
+    ;; exists to carry.
+    (when-not (absolute-origin? card_url)
+      (fail! :invalid-card-url {:slug slug :card_url card_url}))
+    ;; A contributor entry is a person in a relation, not a person, so that
+    ;; pair is what has to be unique and what fixes the order. One person can
+    ;; hold two relations to one work: Ueda Bin is both 著者 and 翻訳者 of
+    ;; 海潮音, and fifteen works in the corpus record something of that shape.
+    ;; Keying on the person alone refused all of them, and refused them for
+    ;; being what Aozora Bunko's catalog says they are.
+    (sorted-unique! :contributors-not-sorted-unique
+                    (mapv (juxt #(get % "person_id") #(get % "relation_to_work"))
+                          contributors)
+                    {:slug slug}))
+  catalog)
+
+(defn check-event!
+  [event]
+  (sorted-unique! :entries-not-sorted-unique
+                  (mapv #(get % "slug") (get event "entries")) {})
+  event)
+
+(def check-for
+  "Artifact type -> its single-object semantic check."
+  {"release-manifest" check-manifest!
+   "assessment-snapshot" check-snapshot!
+   "admission-report" check-report!
+   "governance-event" check-event!
+   "catalog" check-catalog!})

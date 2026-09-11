@@ -1,0 +1,91 @@
+# The serving configuration for one exported soranoha serving tree.
+# The environment supplies the deployment-specific values:
+#   SORANOHA_SERVE_LISTEN  host:port to listen on
+#   SORANOHA_SERVE_ROOT    path of the exported serving tree
+# Every response is a file from the tree: static file serving only, no
+# directory listings, no body rewriting. Digest-addressed paths (blobs,
+# manifests, signatures, governance events) are immutable; the pointer
+# layer (releases/latest, releases/HEAD, catalog.json, works/, withdrawn/) and
+# the generated browse layer — pages and the pre-built bulk archives under
+# bulk/ — are short-cache, since they move with each release. A bulk archive
+# is large but not immutable: the same URL holds different bytes at the next
+# release, so it takes the pointer layer's cache policy and not the blob
+# layer's. Updating this file requires bumping the rev + hash pin in the
+# estate's soranoha-serve.nix, which is what keeps serving policy immutable
+# system state rather than release data.
+#
+# try_files gives the browse pages extensionless URLs (/rights -> rights.html,
+# /works/<id>/read -> read.html) without rewriting any body. It is tried after
+# the literal path, so it can never shadow a chain file: /works/<id>/tei
+# resolves to the symlink, and only a path with no file behind it falls through
+# to its .html page. The reading view therefore needs no route of its own — it
+# lives under the work's existing short-cache prefix.
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+http://{$SORANOHA_SERVE_LISTEN} {
+	root * {$SORANOHA_SERVE_ROOT}
+
+	# immutable only when the file exists: a digest-addressed 404 must
+	# never be retained, since the same URL can begin existing at the
+	# next serving-tree activation
+	@immutable {
+		path /blobs/sha256/* /governance/* /releases/*.json /releases/*.sig
+		file
+	}
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/*
+	header @pointer Cache-Control "public, max-age=60"
+
+	# generated presentation: a projection of this release, replaced whole at
+	# the next activation, so it is cached like the pointer layer and never
+	# like a digest-addressed file
+	@browse path / /index.html /style.css /search.js /copy.js /search-index.json /authors /authors/* /titles /titles/* /ndc /ndc/* /bulk/* /rights /citation /history /start-here /example /glossary /identifiers /validation /accountability /assessment /annotation-layers /ns/* /license/* /schemas/* /mappings/* /policies/*
+	header @browse Cache-Control "public, max-age=60"
+
+	# A mapping or policy document, and a schema reached by its versioned
+	# schema_id, is served at the path its IRI names, which has no extension.
+	# Every such file is JSON, so the type is stated here as it is for the
+	# extensionless work routes below.
+	@iri-json {
+		path /mappings/* /policies/* /schemas/*
+		not path *.json *.odd *.rng *.sch
+	}
+	header @iri-json Content-Type "application/json"
+
+	# Caddy types a response from the filename extension, and these routes have
+	# none, so they arrived with no Content-Type at all and a browser was left
+	# to guess the charset: /works/<id>/plaintext rendered as mojibake in
+	# Firefox while curl was fine. These are the URLs the pages tell a reader to
+	# cite, so each is given the type its extensioned twin already gets, because
+	# the pages promise the two URLs carry the same bytes.
+	@work-tei path /works/*/tei
+	header @work-tei Content-Type "text/xml; charset=utf-8"
+
+	@work-plaintext path /works/*/plaintext
+	header @work-plaintext Content-Type "text/plain; charset=utf-8"
+
+	@work-markdown path /works/*/markdown
+	header @work-markdown Content-Type "text/markdown; charset=utf-8"
+
+	@work-json path /works/*/tei-validation /releases/latest
+	header @work-json Content-Type "application/json"
+
+	@release-head path /releases/HEAD
+	header @release-head Content-Type "text/plain; charset=utf-8"
+
+	# A digest-addressed blob is bytes and nothing else: what artifact type it
+	# holds is a fact the manifest carries, not one the path can be read for.
+	# Declaring that rather than leaving the header absent keeps a client from
+	# sniffing a type the store never claimed.
+	@blob path /blobs/sha256/*
+	header @blob Content-Type "application/octet-stream"
+
+	try_files {path} {path}.html
+
+	file_server
+}

@@ -1,0 +1,116 @@
+{
+  "accept": [
+    {
+      "file": "release-manifest-valid.json",
+      "type": "release-manifest",
+      "id": "snh:1:release-manifest:2b1bbd500a18eaab33cb324c74ebf506a1d540ba6e46abbca0c44e22a3bf4061"
+    },
+    {
+      "file": "assessment-snapshot-valid.json",
+      "type": "assessment-snapshot",
+      "id": "snh:1:assessment-snapshot:9a65fe672c9599b4b04f418478f603261c0935b8797ae4bd11033000aa77da3d"
+    },
+    {
+      "file": "admission-report-valid.json",
+      "type": "admission-report",
+      "id": "snh:1:admission-report:bdf1d058edeb9baecac3b1ac8c8cd1e39d4410b42f43ff32f6777713c88b7f12"
+    },
+    {
+      "file": "governance-event-withdrawal-valid.json",
+      "type": "governance-event",
+      "id": "snh:1:governance-event:bca7658ee4ae0316fc7304aa5e3657761c167592f8a67a33cdb661bb37e70a59"
+    },
+    {
+      "file": "governance-event-amendment-valid.json",
+      "type": "governance-event",
+      "id": "snh:1:governance-event:954a8d6bb72f01cd78bb121afba8c04a46f9ad3efe981ba24cbfbe7224a11973"
+    },
+    {
+      "file": "catalog-valid.json",
+      "type": "catalog",
+      "id": "snh:1:catalog:e7d0a2fe998a26aaa01d91eb92be7d6ec36132b9720741994e4cb00a5d360ca1"
+    }
+  ],
+  "reject": [
+    {
+      "file": "release-manifest-noncanonical-whitespace.json",
+      "type": "release-manifest",
+      "reason": "noncanonical"
+    },
+    {
+      "file": "release-manifest-noncanonical-reordered.json",
+      "type": "release-manifest",
+      "reason": "noncanonical"
+    },
+    {
+      "file": "release-manifest-duplicate-key.json",
+      "type": "release-manifest",
+      "reason": "parse-invalid"
+    },
+    {
+      "file": "release-manifest-invalid-extra-member.json",
+      "type": "release-manifest",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "release-manifest-invalid-artifact-type-id-mismatch.json",
+      "type": "release-manifest",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "assessment-snapshot-invalid-not-evaluated-basis.json",
+      "type": "assessment-snapshot",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "assessment-snapshot-invalid-missing-work-assessment.json",
+      "type": "assessment-snapshot",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "release-manifest-invalid-relative-origin.json",
+      "type": "release-manifest",
+      "reason": "invalid-upstream-origin"
+    },
+    {
+      "file": "assessment-snapshot-invalid-impossible-date.json",
+      "type": "assessment-snapshot",
+      "reason": "invalid-effective-date"
+    },
+    {
+      "file": "admission-report-invalid-policy-id-member.json",
+      "type": "admission-report",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "governance-event-invalid-withdrawal-with-amends.json",
+      "type": "governance-event",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "governance-event-invalid-amendment-missing-amends.json",
+      "type": "governance-event",
+      "reason": "schema-invalid"
+    },
+    {
+      "file": "release-manifest-invalid-rights-statement-url.json",
+      "type": "release-manifest",
+      "reason": "invalid-rights-statement-url"
+    },
+    {
+      "file": "catalog-invalid-works-unsorted.json",
+      "type": "catalog",
+      "reason": "catalog-works-not-sorted-unique"
+    },
+    {
+      "file": "catalog-invalid-relative-card-url.json",
+      "type": "catalog",
+      "reason": "invalid-card-url"
+    },
+    {
+      "file": "catalog-invalid-extra-member.json",
+      "type": "catalog",
+      "reason": "schema-invalid"
+    }
+  ]
+}

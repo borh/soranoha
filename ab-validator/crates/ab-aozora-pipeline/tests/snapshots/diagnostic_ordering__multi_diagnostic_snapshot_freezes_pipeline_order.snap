@@ -1,0 +1,44 @@
+---
+source: crates/ab-aozora-pipeline/tests/diagnostic_ordering.rs
+expression: "format!(\"{:#?}\", out.diagnostics)"
+---
+[
+    AccentDecompositionApplied {
+        at: SourceSpan {
+            offset: SourceOffset(
+                3,
+            ),
+            length: 2,
+        },
+        span: Span {
+            start: 3,
+            end: 5,
+        },
+    },
+    UnmatchedClose {
+        at: SourceSpan {
+            offset: SourceOffset(
+                10,
+            ),
+            length: 3,
+        },
+        kind: Bracket,
+        span: Span {
+            start: 10,
+            end: 13,
+        },
+    },
+    UnclosedBracket {
+        at: SourceSpan {
+            offset: SourceOffset(
+                17,
+            ),
+            length: 3,
+        },
+        kind: Bracket,
+        span: Span {
+            start: 17,
+            end: 20,
+        },
+    },
+]

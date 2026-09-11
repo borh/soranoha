@@ -1,0 +1,18 @@
+[package]
+name = "ab-notation-strategies"
+description = "Proptest strategies generating Aozora notation input, plus the shared proptest configuration the workspace's property suites run under. Dev-only; never linked into a released binary."
+version = "0.1.0"
+edition.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ab-aozora-spec = { path = "../ab-aozora-spec" }
+proptest = "1.11"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

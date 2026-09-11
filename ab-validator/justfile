@@ -1,0 +1,168 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+repo_root := `pwd`
+
+default_workspace_root := `root="$(git rev-parse --path-format=absolute --show-toplevel)"; if [ -d "$root/ab-validator" ]; then printf '%s\n' "$root"; else dirname "$root"; fi`
+
+workspace_root := env_var_or_default("AB_WORKSPACE_ROOT", default_workspace_root)
+
+vibrato_dictionary_root := repo_root + "/dictionary"
+
+vibrato_compiled_dir := vibrato_dictionary_root + "/compiled"
+
+default:
+	@just --list
+
+fmt:
+	@cargo fmt --all
+
+fmt-check:
+	@cargo fmt --all -- --check
+
+workspace-check:
+	@cargo check --workspace --all-targets
+
+clippy:
+	@cargo clippy --workspace --all-targets --all-features
+
+# Keep workspace JSON ordering stable and test converter canonicalization
+# separately with insertion-order maps enabled.
+preserve-order-hazard-check:
+	@set -euo pipefail; \
+	export RUSTC_WRAPPER= SCCACHE_DISABLE=1; \
+	bash "{{repo_root}}/tests/workspace-no-preserve-order.sh"; \
+	cargo test --manifest-path "{{repo_root}}/tools/preserve-order-canary/Cargo.toml"
+
+cargo-deny:
+	@cargo deny check
+
+quality:
+	@just fmt-check
+	@just workspace-check
+	@just clippy
+	@just cargo-deny
+
+flake-cargo *ARGS:
+	@nix develop "{{repo_root}}#default" --command cargo {{ARGS}}
+
+flake-python *ARGS:
+	@nix develop "{{repo_root}}#default" --command python {{ARGS}}
+
+quality-fix:
+	@just fmt
+	@just workspace-check
+	@just clippy
+
+aat-to-parser-ir-smoke:
+	@bash tests/aat-to-parser-ir-cli-smoke.sh
+
+aat-to-parser-ir-flake-smoke:
+	@system="$(nix eval --impure --raw --expr builtins.currentSystem)"; \
+	nix build "{{repo_root}}#checks.$system.aat-to-parser-ir-smoke" --print-build-logs
+
+source-inventory-smoke:
+	@bash "{{repo_root}}/tests/source-inventory-smoke.sh"
+
+source-representability-gate-smoke:
+	@bash "{{repo_root}}/tests/source-representability-gate-smoke.sh"
+
+source-inventory-flake-smoke:
+	@system="$(nix eval --impure --raw --expr builtins.currentSystem)"; \
+	nix build "{{repo_root}}#checks.$system.source-inventory-smoke" --print-build-logs
+
+source-inventory-full JOBS="24" INDEX="" CORPUS="" OUT="":
+	@test -n "{{INDEX}}" || { echo "INDEX=/path/to/index.json is required" >&2; exit 2; }
+	@test -n "{{CORPUS}}" || { echo "CORPUS=/path/to/aozorabunko is required" >&2; exit 2; }
+	@test -n "{{OUT}}" || { echo "OUT=/path/to/output-dir is required" >&2; exit 2; }
+	@cargo build -p ab-coverage --bin ab-source-inventory --release --jobs "{{JOBS}}"
+	@mkdir -p "{{OUT}}"
+	@"{{repo_root}}/target/release/ab-source-inventory" \
+		--matrix "{{repo_root}}/data/aozora-syntax-coverage.toml" \
+		--index "{{INDEX}}" \
+		--corpus "{{CORPUS}}" \
+		--allowlist "{{repo_root}}/data/aozora-source-inventory-allowlist.toml" \
+		--jobs "{{JOBS}}" \
+		--output-json "{{OUT}}/source-authority-representability.summary.json" \
+		--report-md "{{OUT}}/source-authority-representability.md" \
+		--unknown-workset "{{OUT}}/unknown-workset.json" \
+		--strict-representability
+
+monorepo-workspace-layout-smoke:
+	@bash "{{repo_root}}/tests/monorepo-workspace-layout-smoke.sh"
+
+dictionary-build-cwj:
+	@nix build .#vibrato-dict-cwj --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+dictionary-build-csj:
+	@nix build .#vibrato-dict-csj --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+dictionary-build-novel:
+	@nix build .#vibrato-dict-novel --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+dictionary-build-qkana:
+	@nix build .#vibrato-dict-qkana --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+dictionary-build-kindai-bungo:
+	@nix build .#vibrato-dict-kindai-bungo --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+# 近世 (Edo-period) editions for the ~2% of Aozora by pre-Meiji authors.
+dictionary-build-kinsei-edo:
+	@nix build .#vibrato-dict-kinsei-edo --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+dictionary-build-kinsei-bungo:
+	@nix build .#vibrato-dict-kinsei-bungo --no-link --print-out-paths | while read -r out; do \
+		for dict in "$out"/share/vibrato/*.dic.zst; do \
+			[ -f "$dict" ] || continue; \
+			ln -sf "$dict" "{{vibrato_compiled_dir}}/$(basename "$dict")"; \
+			echo "  linked $(basename "$dict")"; \
+		done; \
+	done
+
+# Build all available vibrato dictionaries and link them.
+# NOTE: linking is the LEGACY fallback. Prefer AB_VIBRATO_DICT_DIR (see
+# `just dictionary-env`): the dev shell exports it automatically, and it needs
+# no per-dictionary symlink into the repo.
+dictionary-build-all: dictionary-build-cwj dictionary-build-csj dictionary-build-novel dictionary-build-qkana dictionary-build-kindai-bungo dictionary-build-kinsei-edo dictionary-build-kinsei-bungo
+	@echo "All vibrato dictionaries built and linked."
+
+# Print the env exports that make every nix-built vibrato dictionary resolvable
+# by name with no symlinking: `eval "$(just dictionary-env)"`. This is what the
+# dev shell sets for you; use it for ad-hoc `cargo run` outside `nix develop`.
+dictionary-env:
+	@printf 'export AB_VIBRATO_DICT_DIR=%s/share/vibrato\n' "$(nix build .#vibrato-dictionaries --no-link --print-out-paths)"

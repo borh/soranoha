@@ -1,0 +1,5 @@
+#kaocha/v1
+{:bindings {clojure.core/*warn-on-reflection* true}
+ :tests [{:id :unit
+          :source-paths ["src"]
+          :test-paths ["test"]}]}

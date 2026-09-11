@@ -1,0 +1,66 @@
+//! Forked from <https://github.com/P4suta/aozora>
+//! at rev 1a4f864603970983719655aa4af4525958ac2d38 (independent fork).
+//! Upstream crate: aozora-render. License: MIT OR Apache-2.0 (see NOTICE).
+
+//! HTML / Aozora-source renderers over the semantic AST.
+//!
+//! Consumes an [`ab_aozora_syntax::ast::LexOutput`] and emits semantic
+//! HTML5 or canonical Aozora source text.
+//!
+//! # Public surface
+//!
+//! - [`html::render_html`] — HTML rendering. Pair with
+//!   [`ab_aozora_pipeline::lex`].
+//! - [`html::render_html_normalized`] — the opt-in twin that first
+//!   normalises Tier1 directive near-misses to canonical form (via the
+//!   formatter rewrite) so a known 揺れ renders non-inert. See
+//!   [`html::RenderOptions`].
+//! - [`serialize::serialize`] — round-trip the parsed tree back to
+//!   Aozora source text.
+//!
+//! The [`spelling`] module holds the shared, lifetime-free byte-spelling
+//! helpers every renderer reuses (container tags, marker spellings, the text
+//! escaper); [`spelling::source::container_close_source`] /
+//! `container_open_source` are the splice layer's canonical marker source.
+
+#![forbid(unsafe_code)]
+
+pub mod classes;
+pub mod html;
+mod render_node;
+pub mod serialize;
+pub mod spelling;
+mod walk;
+
+pub use classes::AOZORA_CLASSES;
+pub use html::{RenderOptions, render_html, render_html_normalized};
+pub use serialize::{DirectiveNormalization, SerializeOptions, serialize, serialize_with};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_renders_plain_text_in_paragraph() {
+        let out = ab_aozora_pipeline::lex("hello, world");
+        let html = render_html(&out);
+        assert!(html.contains("hello, world"), "html: {html}");
+    }
+
+    #[test]
+    fn serialize_round_trips_plain_text() {
+        let out = ab_aozora_pipeline::lex("plain text");
+        let s = serialize(&out);
+        assert_eq!(s, "plain text");
+    }
+    #[test]
+    fn quoted_image_caption_is_escaped_metadata_not_an_extra_visible_caption() {
+        let source =
+            "［＃「説明&<字>」のキャプション付きの図（fig.png、横10×縦20）入る］\n説明&<字>";
+        let tree = ab_aozora_pipeline::lex(source);
+        let html = render_html(&tree);
+        assert!(html.contains("alt=\"説明&amp;&lt;字&gt;\""), "{html}");
+        assert!(!html.contains("figcaption"), "{html}");
+        assert!(html.contains("width=\"10\" height=\"20\""), "{html}");
+    }
+}

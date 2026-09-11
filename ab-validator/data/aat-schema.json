@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abc.local/schemas/aat-v2.json",
+  "type": "object",
+  "required": ["version", "work_id", "blocks", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 2 },
+    "work_id": { "type": "string" },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+    "meta": { "$ref": "#/$defs/meta" }
+  },
+  "$defs": {
+    "sourceSpan":{"type":"object","additionalProperties":false,"required":["start","end","coordinate_system"],"properties":{"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"line":{"type":"integer","minimum":1},"coordinate_system":{"const":"decoded_utf8"}}},
+    "relativePlacement": {
+      "type":"object", "additionalProperties":false,
+      "required":["relation","anchor_kind","anchor_span"],
+      "properties":{
+        "relation":{"const":"below"}, "anchor_kind":{"enum":["text","horizontal-block"]},
+        "anchor_span":{"$ref":"#/$defs/sourceSpan"},
+        "offset_chars":{"type":"integer","minimum":0,"maximum":255,"description":"Supplied fullwidth-character distance from the anchor lower edge."}
+      },
+      "allOf":[{"if":{"properties":{"anchor_kind":{"const":"text"}}},"then":{"required":["offset_chars"]},"else":{"not":{"required":["offset_chars"]}}}]
+    },
+
+    "interpretationFact": {"type":"object","additionalProperties":false,"required":["kind","outcome","aspects","source_span"],"properties":{"kind":{"enum":["ruby","gaiji","gaiji-ruby","iteration-mark","supplied-diacritic","illustration","baseline-position","exponent","emphasis","warichu","kunten","heading","caption","translation","text-variant","annotated-text","layout","editorial-note","line-layout","formula","table","layout-break","external-table-reference","glyph-shape-assertion","supplied-mark","quotation","letter"]},"outcome":{"const":"established"},"aspects":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["content","structure","layout"]}},"source_span":{"$ref":"#/$defs/sourceSpan"}}},
+    "span": {
+      "type": "object",
+      "required": ["line_start", "line_end", "byte_start", "byte_end"],
+      "additionalProperties": false,
+      "properties": {
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "byte_start": { "type": "integer", "minimum": 0 },
+        "byte_end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": [
+        "adapter",
+        "adapter_version",
+        "source_encoding",
+        "source_hash",
+        "parse_complete",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adapter": { "type": "string" },
+        "adapter_version": { "type": "string" },
+        "source_encoding": { "enum": ["utf-8", "utf-8-bom", "windows-31j", "windows-31j-lossy"] },
+        "primary_text_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "source_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "parse_complete": { "type": "boolean" },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } },
+        "interpretation_facts": {"type":"array", "items":{"$ref":"#/$defs/interpretationFact"}},
+        "interpretation_problems": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["kind","code","aspects","influence","raw","source_span"],"properties":{"kind":{"$ref":"#/$defs/raw/properties/interpretation_problem/properties/kind"},"code":{"$ref":"#/$defs/raw/properties/interpretation_problem/properties/code"},"aspects":{"$ref":"#/$defs/raw/properties/interpretation_problem/properties/aspects"},"influence":{"$ref":"#/$defs/raw/properties/interpretation_problem/properties/influence"},"raw":{"type":"string"},"source_span":{"$ref":"#/$defs/interpretationFact/properties/source_span"}},"allOf":[{"if":{"properties":{"kind":{"const":"content-outside-primary-input"}}},"then":{"properties":{"code":{"const":"content-outside-primary-input"},"aspects":{"const":["content"]},"influence":{"const":{"kind":"source-location"}}}},"else":{"properties":{"code":{"not":{"const":"content-outside-primary-input"}},"influence":{"const":{"kind":"document"}}}}}]}},
+        "metrics": { "$ref": "#/$defs/metrics" },
+        "semantic_summary": { "$ref": "#/$defs/semantic_summary" }
+      }
+    },
+    "semantic_summary": {
+      "type": "object",
+      "required": ["syntax"],
+      "additionalProperties": false,
+      "properties": {
+        "syntax": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/semantic_summary_node" }
+          }
+        }
+      }
+    },
+    "semantic_summary_node": {
+      "type": "object",
+      "required": ["kind", "value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "source_span": { "$ref": "#/$defs/source_span" },
+        "kind": { "type": "string" },
+        "value": { "type": "object" },
+        "provenance": { "type": "string" }
+      }
+    },
+    "source_span": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "decode_ms",
+        "body_selection_ms",
+        "tokenize_ms",
+        "scopenize_ms",
+        "retokenize_ms",
+        "aat_build_ms",
+        "projection_check_ms",
+        "fallback_build_ms",
+        "source_bytes",
+        "validation_body_bytes",
+        "parser_body_bytes",
+        "tokenized_count",
+        "retokenized_count",
+        "parser_nodes",
+        "parser_normalized_nodes",
+        "source_supplement_nodes",
+        "source_fallback_nodes",
+        "fallback_used",
+        "fallback_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decode_ms": { "type": "number", "minimum": 0 },
+        "body_selection_ms": { "type": "number", "minimum": 0 },
+        "tokenize_ms": { "type": "number", "minimum": 0 },
+        "scopenize_ms": { "type": "number", "minimum": 0 },
+        "retokenize_ms": { "type": "number", "minimum": 0 },
+        "aat_build_ms": { "type": "number", "minimum": 0 },
+        "projection_check_ms": { "type": "number", "minimum": 0 },
+        "fallback_build_ms": { "type": "number", "minimum": 0 },
+        "source_bytes": { "type": "integer", "minimum": 0 },
+        "validation_body_bytes": { "type": "integer", "minimum": 0 },
+        "parse_body_strategy": { "enum": ["parser_meta", "separator_fallback"] },
+        "parser_body_bytes": { "type": "integer", "minimum": 0 },
+        "tokenized_count": { "type": "integer", "minimum": 0 },
+        "retokenized_count": { "type": "integer", "minimum": 0 },
+        "parser_nodes": { "type": "integer", "minimum": 0 },
+        "parser_normalized_nodes": { "type": "integer", "minimum": 0 },
+        "source_supplement_nodes": { "type": "integer", "minimum": 0 },
+        "source_fallback_nodes": { "type": "integer", "minimum": 0 },
+        "fallback_used": { "type": "boolean" },
+        "fallback_reason": {
+          "enum": [
+            "none",
+            "projection_mismatch",
+            "large_body",
+            "source_supplement_hotspot",
+            "parser_failure"
+          ]
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["code", "severity", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "enum": ["error", "warning", "note"] },
+        "message": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" },
+        "path": { "type": "string" }
+      }
+    },
+    "source_note": {
+      "type": "object",
+      "required": ["kind", "placement", "region_class", "content"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "source_note" },
+        "placement": { "enum": ["front", "body", "back", "unknown"] },
+        "region_class": {
+          "enum": [
+            "front_legend",
+            "terminal_provenance",
+            "colophon_metadata",
+            "body_end_boundary",
+            "malformed_residue"
+          ]
+        },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/inline" } },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "block": {
+      "oneOf": [
+        { "$ref": "#/$defs/paragraph" },
+        { "$ref": "#/$defs/heading" },
+        { "$ref": "#/$defs/block_container" },
+        { "$ref": "#/$defs/source_note" }
+      ]
+    },
+    "inline": {
+      "oneOf": [
+        { "$ref": "#/$defs/heading" },
+        { "$ref": "#/$defs/text" },
+        { "$ref": "#/$defs/ruby" },
+        { "$ref": "#/$defs/gaiji" },
+        { "$ref": "#/$defs/accent" },
+        { "$ref": "#/$defs/figure" },
+        { "$ref": "#/$defs/raw" },
+        { "$ref": "#/$defs/text_variant" },
+        { "$ref": "#/$defs/editorial_note" },
+        { "$ref": "#/$defs/annotated_text" },
+        { "$ref": "#/$defs/inline_container" },
+        { "$ref": "#/$defs/warigaki" },
+        { "$ref": "#/$defs/warichu" },
+        { "$ref": "#/$defs/layout_break" },
+        { "$ref": "#/$defs/kunten" },
+        { "$ref": "#/$defs/iterationMark" },
+        { "$ref": "#/$defs/suppliedDiacritic" }
+      ]
+    },
+    "layout_break":{"type":"object","required":["kind","break_kind","span"],"additionalProperties":false,
+      "properties":{"kind":{"const":"layout_break"},"break_kind":{"enum":["page","kaicho","column","kaimihiraki"]},"span":{"$ref":"#/$defs/span"}}},
+    "paragraph": {
+      "type": "object",
+      "required": ["kind", "content"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "paragraph" },
+        "span": { "$ref": "#/$defs/span" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/inline" } }
+      }
+    },
+    "heading": {
+      "type": "object",
+      "required": ["kind", "level", "style", "content"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "interpretation_marker_spans": { "type": "array", "items": { "$ref": "#/$defs/span" } },
+        "kind": { "const": "heading" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "style": { "type": "string" },
+        "indent": { "type": "integer", "minimum": 0 },
+        "span": { "$ref": "#/$defs/span" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/inline" } }
+      }
+    },
+    "block_container": {
+      "type": "object",
+      "required": ["kind", "children"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": {
+          "enum": [
+            "jisage_block",
+            "quote_block",
+            "caption_block",
+            "translation_block",
+            "warichu_block",
+            "jizume_block",
+            "layout_block",
+            "typography_block"
+          ]
+        },
+        "span": { "$ref": "#/$defs/span" },
+        "formatting": {"oneOf":[{"$ref":"#/$defs/formatting_attribute"},{"type":"array","minItems":2,"uniqueItems":true,"items":{"$ref":"#/$defs/formatting_attribute"}}]},
+        "interpretation_marker_spans":{"type":"array","items":{"$ref":"#/$defs/span"}},
+        "indent": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "continuation_indent": {"type":"integer","minimum":0},
+        "offset_from_end": {"type":"integer","minimum":0},
+        "line_count": {"type":"integer","minimum":1},
+        "column_count":{"type":"integer","minimum":1},
+        "column_rule":{"const":true},
+        "role":{"enum":["table","formula","figure-table","quotation","letter"]},
+        "table_rules":{"const":false},
+        "page_placement": {"const":"horizontal-center"},
+        "direction":{"enum":["horizontal","vertical"]},
+        "relative_placement":{"$ref":"#/$defs/relativePlacement"},
+        "align":{"enum":["center","right"]},
+        "source_end":{"type":"object","required":["kind","span"],"additionalProperties":false,
+          "properties":{"kind":{"enum":["layout-replacement","page-break"]},"span":{"$ref":"#/$defs/span"}}},
+        "children": { "type": "array", "items": { "$ref": "#/$defs/block" } }
+      },
+      "allOf": [
+        {"if":{"required":["column_rule"]},"then":{"required":["column_count"],"properties":{"kind":{"const":"layout_block"}}}},
+        {"if":{"required":["table_rules"]},"then":{"required":["role"],"properties":{"kind":{"const":"layout_block"},"role":{"enum":["table","figure-table"]}}}},
+        {"if":{"anyOf":[{"required":["direction"]},{"required":["align"]},{"required":["continuation_indent"]},{"required":["offset_from_end"]},{"required":["line_count"]},{"required":["page_placement"]},{"required":["source_end"]}]},"then":{"properties":{"kind":{"const":"layout_block"}}}},
+        {"if":{"properties":{"kind":{"const":"layout_block"}}},"then":{"required":["span","interpretation_marker_spans"],"anyOf":[{"required":["indent"]},{"required":["width"]},{"required":["offset_from_end"]},{"required":["align"]},{"required":["page_placement"]},{"required":["column_count"]},{"required":["role"]},{"required":["direction"]},{"required":["formatting"]}]}},
+        {"if":{"properties":{"kind":{"const":"typography_block"}}},"then":{"required":["formatting","span","interpretation_marker_spans"]}},
+        {
+          "if": { "properties": { "kind": { "const": "jisage_block" } } },
+          "then": { "required": ["indent"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "jizume_block" } } },
+          "then": { "required": ["width"] }
+        }
+      ]
+    },
+    "text": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "text" },
+        "value": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "ruby": {
+      "type": "object",
+      "required": ["kind", "base", "reading"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "interpretation_marker_spans": { "type": "array", "items": { "$ref": "#/$defs/span" } },
+        "kind": { "const": "ruby" },
+        "base": { "type": "string" },
+        "reading": { "type": "string" },
+        "base_content": { "type": "array", "items": { "$ref": "#/$defs/inline" } },
+        "reading_content": { "type": "array", "items": { "$ref": "#/$defs/inline" } },
+        "direction": { "enum": ["right", "left"] },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "gaiji": {
+      "type": "object",
+      "required": ["kind", "description", "resolved", "unresolved_reason"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "gaiji" },
+        "description": { "type": "string" },
+        "resolved": { "type": ["string", "null"] },
+        "jis_code": { "type": ["string", "null"] },
+        "unresolved_reason": { "type": ["string", "null"] },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "accent": {
+      "type": "object",
+      "required": ["kind", "code", "name", "resolved"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "accent" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "resolved": { "type": ["string", "null"] },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "figure": {
+      "type": "object",
+      "required": ["kind", "filename", "alt", "css_class"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "figure" },
+        "source": {"type":"string"},
+        "number": {"type":"string"},
+        "dimensions_source": {"type":"string"},
+        "caption_source": {"type":"string"},
+        "description_source": {"type":"string"},
+        "filename_source": {"type":"string"},
+        "interpretation_problem": {"$ref":"#/$defs/raw/properties/interpretation_problem"},
+        "filename": { "type": ["string", "null"] },
+        "alt": { "type": "string" },
+        "css_class": { "type": "string" },
+        "width": { "type": ["integer", "null"], "minimum": 0 },
+        "height": { "type": ["integer", "null"], "minimum": 0 },
+        "description_content": {"type":"array","items":{"$ref":"#/$defs/inline"}},
+        "annotation_content": {"type":"array","items":{"$ref":"#/$defs/inline"}},
+        "caption": { "type": ["array", "null"], "items": { "$ref": "#/$defs/inline" } },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "raw": {
+      "type": "object",
+      "required": ["kind", "source"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "raw" },
+        "source": { "type": "string" },
+        "x-provenance": {
+          "type": "string",
+          "enum": ["parser-derived", "source-derived", "adapter-derived"]
+        },
+        "x-source-marker-kind": { "type": "string" },
+        "interpretation_problem": {"type":"object","additionalProperties":false,"required":["kind","code","aspects","influence"],"properties":{"kind":{"enum":["unknown-notation","unresolved-variant","uninterpreted-notation","content-outside-primary-input"]},"code":{"enum":["unknown-notation","unresolved-variant","uninterpreted-notation","unparsed-source-gap","content-outside-primary-input"]},"aspects":{"enum":[["layout"],["structure"],["content","structure","layout"],["content","structure"],["content","layout"],["structure","layout"],["content"]]},"influence":{"enum":[{"kind":"document"},{"kind":"source-location"}]}},"allOf":[{"if":{"properties":{"kind":{"const":"content-outside-primary-input"}}},"then":{"properties":{"code":{"const":"content-outside-primary-input"},"aspects":{"const":["content"]},"influence":{"const":{"kind":"source-location"}}}},"else":{"properties":{"code":{"not":{"const":"content-outside-primary-input"}},"influence":{"const":{"kind":"document"}}}}}]},
+            "text_variant": {
+          "type": "object", "required": ["target_kind", "current", "base_text"], "additionalProperties": false,
+          "properties": {
+            "target_kind": { "enum": ["ruby-reading", "text"] },
+            "current": { "type": "string", "minLength": 1 },
+            "editorial_statement": { "type":"string", "minLength":1 },
+            "current_content": { "type":"array", "items":{"$ref":"#/$defs/inline"} },
+            "base_content": { "type":"array", "items":{"$ref":"#/$defs/inline"} },
+            "base_text": { "type": "string", "description": "Explicit witness text; empty means source-stated absence." }
+          }
+        },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "editorial_note": {"type":"object","additionalProperties":false,"required":["kind","note_kind","span"],"oneOf":[{"required":["text"],"not":{"required":["annotation_content"]}},{"required":["annotation_content"],"not":{"required":["text"]}}],"properties":{"interpretation_marker_spans":{"type":"array","items":{"$ref":"#/$defs/span"}},"kind":{"const":"editorial_note"},"note_kind":{"enum":["base-edition","first-publication","transcription","omission","incompleteness","explanation","external-table-reference","figure-insertion","sic"]},"text":{"type":"string","minLength":1},"span":{"$ref":"#/$defs/span"},"target_source_spans":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/span"}},"closing_source_span":{"$ref":"#/$defs/span"},"annotation_content":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/inline"}},"source_filename":{"type":"string","minLength":1,"pattern":"^[A-Za-z0-9_.-]+$","not":{"enum":[".",".."]}},"source":{"type":"string","minLength":1},"interpretation_problem":{"$ref":"#/$defs/raw/properties/interpretation_problem"}},"allOf":[{"if":{"required":["note_kind"],"properties":{"note_kind":{"const":"external-table-reference"}}},"then":{"required":["text","source_filename","source","interpretation_problem"],"properties":{"interpretation_problem":{"properties":{"kind":{"const":"content-outside-primary-input"}}}}},"else":{"not":{"anyOf":[{"required":["source_filename"]},{"required":["source"]},{"required":["interpretation_problem"]}]}}}]},
+    "gap": {
+      "type":"object", "additionalProperties":false,
+      "required":["kind","reason"],
+      "oneOf":[{"required":["quantity","unit"],"not":{"required":["extent"]}},{"required":["extent"],"not":{"anyOf":[{"required":["quantity"]},{"required":["unit"]}]}}],
+      "properties":{"kind":{"const":"gap"},"reason":{"const":"concealed"},"unit":{"const":"chars"},"quantity":{"type":"integer","minimum":1},"extent":{"const":"unknown"}}
+    },
+    "annotated_text": {
+      "type":"object", "additionalProperties":false,
+      "required":["kind","content","annotation_content","note_kind","span"],
+      "if":{"properties":{"note_kind":{"enum":["annotation-number","author-note","glyph-shape"]}}}, "then":{"not":{"required":["position"]}},
+      "allOf":[{"if":{"properties":{"note_kind":{"const":"supplied-mark"}}},"then":{"required":["position"]}}],
+      "properties":{
+        "kind":{"const":"annotated_text"},
+        "content":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/inline"}},
+        "annotation_content":{"type":"array","minItems":1,"items":{"oneOf":[{"$ref":"#/$defs/inline"},{"$ref":"#/$defs/gap"}]}},
+        "note_kind":{"enum":["gloss","marginal","cross-reference","base-edition","source-concealment","annotation-number","author-note","glyph-shape","supplied-mark"]},
+        "position":{"enum":["left","right"]},
+        "anchor":{"description":"Where along the target the source located the mark. Independent of position, which is the physical side: the source states the two separately. Absent when the mark accompanies the target as a whole.","enum":["between"]},
+        "span":{"$ref":"#/$defs/span"}
+      }
+    },
+    "text_variant": {"type":"object","required":["kind","content","base_text","base_content","source","span"],"additionalProperties":false,"properties":{"kind":{"const":"text-variant"},"current_interpretation_facts":{"description":"Source-owned claims for the supplied current quotation, emitted only after its target and structural constraints match.","type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/interpretationFact"}},"content":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/inline"}},"base_text":{"type":"string","description":"Explicit witness text; empty means source-stated absence."},"base_content":{"type":"array","items":{"$ref":"#/$defs/inline"}},"source":{"type":"string","minLength":1},"span":{"$ref":"#/$defs/span"}}},
+    "formatting_attribute": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","align","offset_from_end"],"properties":{"kind":{"const":"chitsuki"},"align":{"const":"right"},"offset_from_end":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","position"],"properties":{"kind":{"const":"baseline_position"},"position":{"const":"lowered"}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["yokogumi","fraction","exponent"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","border"],"properties":{"kind":{"const":"keigakomi"},"border":{"enum":["rule","unspecified","dashed-rule","box","circle","dotted-circle","double-rule"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["caption","warichu"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","source_kind"],"properties":{"kind":{"const":"translation"},"source_kind":{"const":"banknote-text"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","purpose","placement"],"properties":{"kind":{"const":"caption"},"purpose":{"const":"figure-explanation"},"placement":{"const":"below"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","style_type"],"properties":{"kind":{"const":"style"},"style_type":{"enum":["bold","italic","gothic","textbook","bouten","bosen"]},"decoration":{"type":"object","additionalProperties":false,"required":["kind","position"],"properties":{"kind":{"type":"string"},"position":{"enum":["right","left","both","unknown"]}}}}},
+        {"type":"object","additionalProperties":false,"required":["kind","size_type","level"],"properties":{"kind":{"const":"font_size"},"size_type":{"enum":["large","small"]},"level":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","size_type","direction"],"properties":{"kind":{"const":"font_size"},"size_type":{"const":"qualitative"},"direction":{"enum":["larger","smaller"]},"qualifier":{"enum":["やや","ひとまわり"]}}},
+        { "type":"object", "additionalProperties":false, "required":["kind"], "properties":{"kind":{"const":"tcy"}} },
+        { "type":"object", "additionalProperties":false, "required":["kind","position"], "properties":{"kind":{"const":"small_script"},"position":{"enum":["right","left"]}} }
+      ]
+    },
+    "inline_container": {
+      "type": "object",
+      "required": ["kind", "content"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "interpretation_marker_spans": { "type": "array", "items": { "$ref": "#/$defs/span" } },
+        "kind": { "enum": ["style", "formatting", "font_size", "small_script", "baseline_position", "chitsuki", "exponent", "tcy", "keigakomi", "yokogumi", "caption", "fraction"] },
+        "border": {"enum":["rule","unspecified","dashed-rule","box","circle","dotted-circle","double-rule"]},
+        "decoration": {"type":"object", "additionalProperties":false, "required":["kind","position"], "properties":{"kind":{"type":"string"}, "position":{"enum":["right","left","both","unknown"]}}},
+        "attributes": { "type":"array", "minItems":2, "uniqueItems":true, "items": { "$ref":"#/$defs/formatting_attribute" } },
+        "style_type": { "type": "string" },
+        "size_type": { "enum": ["large", "small", "absolute", "qualitative"] },
+        "direction": { "enum": ["larger", "smaller"] },
+        "qualifier": { "enum": ["やや", "ひとまわり"] },
+        "level": { "type": "integer", "minimum": 1 },
+        "size": { "enum": ["extra-large", "large", "medium", "small"] },
+        "position": { "enum": ["right", "left", "lowered"] },
+        "class_name": { "type": "string" },
+        "align": { "const": "right" },
+        "offset_from_end": { "type": "integer", "minimum": 0 },
+        "indent_first": { "type": "integer", "minimum": 0 },
+        "indent_rest": { "type": "integer", "minimum": 0 },
+        "span": { "$ref": "#/$defs/span" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/inline" } }
+      },
+      "allOf": [
+        {"if":{"properties":{"kind":{"const":"chitsuki"}}},"then":{"required":["align","offset_from_end"]}},
+        {"if":{"properties":{"kind":{"const":"baseline_position"}}},"then":{"required":["position"],"properties":{"position":{"const":"lowered"}}}},
+        {"if":{"properties":{"kind":{"enum":["baseline_position","exponent"]}}},"then":{"not":{"anyOf":[{"required":["level"]},{"required":["size"]},{"required":["size_type"]}]}}},
+        { "if":{"properties":{"kind":{"const":"formatting"}}}, "then":{"required":["attributes"]}, "else":{"not":{"required":["attributes"]}} },
+        {
+          "if": { "properties": { "kind": { "const": "small_script" } } },
+          "then": { "required": ["position"], "properties":{"position":{"enum":["right","left"]}} }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "font_size" } } },
+          "then": {
+            "required": ["size_type"],
+            "oneOf": [
+              { "properties": { "size_type": { "enum": ["large", "small"] } }, "required": ["level"], "not": { "anyOf": [{"required":["size"]},{"required":["direction"]},{"required":["qualifier"]}] } },
+              { "properties": { "size_type": { "const": "absolute" } }, "required": ["size"], "not": { "anyOf": [{"required":["level"]},{"required":["direction"]},{"required":["qualifier"]}] } },
+              { "properties": { "size_type": { "const": "qualitative" } }, "required": ["direction"], "not": { "anyOf": [{"required":["level"]},{"required":["size"]}] } }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "style" }, "style_type": { "const": "chitsuki" } },
+            "required": ["style_type"]
+          },
+          "then": { "required": ["align", "offset_from_end"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "style" }, "style_type": { "const": "burasage" } },
+            "required": ["style_type"]
+          },
+          "then": { "required": ["indent_first", "indent_rest"] }
+        }
+      ]
+    },
+    "suppliedDiacritic": {
+      "type":"object", "additionalProperties":false, "patternProperties":{"^x-":true},
+      "required":["kind","text","source","span","interpretation_marker_spans"],
+      "properties":{"kind":{"const":"supplied-diacritic"}, "text":{"type":"string","minLength":1},
+        "source":{"type":"string","minLength":1}, "span":{"$ref":"#/$defs/span"},
+        "interpretation_marker_spans":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/span"}}}
+    },
+    "iterationMark": {
+      "type":"object", "additionalProperties":false,
+      "required":["kind","text","source","span"],
+      "properties":{"kind":{"const":"iteration-mark"}, "text":{"enum":["〱","〲"]},
+        "source":{"enum":["／＼","／″＼"]}, "span":{"$ref":"#/$defs/span"}},
+      "oneOf":[{"properties":{"text":{"const":"〱"},"source":{"const":"／＼"}}},
+               {"properties":{"text":{"const":"〲"},"source":{"const":"／″＼"}}}]
+    },
+    "kunten": {
+      "type":"object", "additionalProperties":false,
+      "required":["kind","kunten_kind","text","span"],
+      "properties":{"kind":{"const":"kunten"}, "kunten_kind":{"enum":["return-mark","okurigana"]},
+        "text":{"type":"string","minLength":1}, "span":{"$ref":"#/$defs/span"},
+        "interpretation_marker_spans":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/span"}}}
+    },
+    "warichu": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "content", "span"],
+      "properties": {"interpretation_marker_spans": {"type":"array", "items":{"$ref":"#/$defs/span"}}, "kind": {"const": "warichu"}, "span": {"$ref": "#/$defs/span"},
+        "content": {"type": "array", "items": {"$ref": "#/$defs/inline"}}}
+    },
+    "warigaki": {
+      "type": "object",
+      "required": ["kind", "upper", "lower"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "kind": { "const": "warigaki" },
+        "span": { "$ref": "#/$defs/span" },
+        "upper": { "type": "array", "items": { "$ref": "#/$defs/inline" } },
+        "lower": { "type": "array", "items": { "$ref": "#/$defs/inline" } }
+      }
+    }
+  }
+}

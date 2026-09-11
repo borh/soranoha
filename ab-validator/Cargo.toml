@@ -1,0 +1,186 @@
+[workspace]
+members = [
+    "crates/ab-source-syntax",
+    "crates/ab-encoding",
+    "crates/ab-check",
+    "crates/ab-coverage",
+    "crates/ab-diff-utils",
+    "crates/ab-morph-diff",
+    "crates/ab-ortho-detect",
+    "crates/ab-plaintext",
+    "crates/ab-morph-analyzers",
+    "crates/ab-aat-to-parser-ir",
+    "crates/ab-notation-strategies",
+    # Forked parser crates from P4suta/aozora (MIT OR Apache-2.0).
+    "crates/ab-aozora-spec",
+    "crates/ab-aozora-encoding",
+    "crates/ab-aozora-syntax",
+    "crates/ab-aozora-pipeline",
+    "crates/ab-aozora-render",
+    "crates/ab-aozora-facade",
+    "crates/ab-aozora-corpus",
+    "crates/ab-aat",
+    "crates/ab-aozora",
+    "crates/ab-artifact-store",
+]
+resolver = "2"
+exclude = [
+    "references",
+    # Isolate the canary's serde_json/preserve_order feature from the workspace.
+    "tools/preserve-order-canary",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Apache-2.0 for locally authored code; forked crates specify MIT OR Apache-2.0.
+license = "Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+non_ascii_idents = "deny"
+
+missing_debug_implementations = "warn"
+missing_copy_implementations = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+unreachable_pub = "warn"
+single_use_lifetimes = "warn"
+elided_lifetimes_in_paths = "warn"
+redundant_lifetimes = "warn"
+explicit_outlives_requirements = "warn"
+
+let_underscore_drop = "warn"
+keyword_idents_2024 = "warn"
+# `variant_size_differences` (rustc): used to nudge fat variants
+# behind `Box`. The lexer's `SpanKind::Aozora` already wraps its
+# inner `AozoraNode` in `Box` so the variant is 8 bytes, but the
+# residual ratio against 0-byte unit variants (`Plain`, `Newline`)
+# still trips the heuristic. Allowed at the workspace level; the
+# related `clippy::large_enum_variant` carve-out below documents the
+# same call.
+variant_size_differences = "allow"
+ambiguous_negative_literals = "warn"
+
+dead_code = "deny"
+missing_docs = "warn"
+
+rust_2024_compatibility = { level = "warn", priority = -1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+invalid_rust_codeblocks = "deny"
+bare_urls = "deny"
+redundant_explicit_links = "deny"
+unescaped_backticks = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+clone_on_ref_ptr = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+missing_assert_message = "warn"
+
+str_to_string = "warn"
+absolute_paths = "warn"
+allow_attributes_without_reason = "warn"
+empty_structs_with_brackets = "warn"
+if_then_some_else_none = "warn"
+let_underscore_must_use = "warn"
+mixed_read_write_in_expression = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+same_name_method = "warn"
+semicolon_outside_block = "warn"
+try_err = "warn"
+unneeded_field_pattern = "warn"
+verbose_file_reads = "warn"
+format_push_string = "warn"
+unnecessary_self_imports = "warn"
+assertions_on_result_states = "warn"
+filetype_is_file = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+lossy_float_literal = "warn"
+suspicious_xor_used_as_pow = "warn"
+
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+missing_const_for_fn = "allow"
+redundant_pub_crate = "allow"
+# Cargo metadata lint inspects unrelated workspace packages as well.
+cargo_common_metadata = "allow"
+# `large_enum_variant`: SpanKind::Aozora already wraps its inner
+# `AozoraNode` in `Box` (~8 bytes ptr) to keep the variant data 7×
+# smaller than the inline form (~56 bytes). The clippy heuristic
+# still flags Box-vs-1-byte ContainerKind discrepancy as "more than
+# 3× larger"; further uniformisation (boxing every variant) would
+# regress code clarity and force Box::new at every construction
+# site for negligible additional layout savings.
+large_enum_variant = "allow"
+
+[workspace.dependencies]
+anyhow = "1.0"
+ab-diff-utils = { path = "crates/ab-diff-utils" }
+ab-morph-diff = { path = "crates/ab-morph-diff" }
+ab-ortho-detect = { path = "crates/ab-ortho-detect" }
+ab-plaintext = { path = "crates/ab-plaintext" }
+ab-morph-analyzers = { path = "crates/ab-morph-analyzers" }
+ab-check = { path = "crates/ab-check" }
+ab-source-syntax = { path = "crates/ab-source-syntax" }
+ab-encoding = { path = "crates/ab-encoding" }
+clap = { version = "4.5", features = ["derive"] }
+criterion = "0.8"
+encoding_rs = "0.8"
+flate2 = "1.0"
+jsonschema = "0.46"
+rayon = "1.10"
+regex = "1.10"
+roxmltree = "0.20"
+bincode = "1"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["unbounded_depth"] }
+serde_stacker = "0.1"
+sha2 = "0.10"
+tempfile = "3"
+toml = "1.1.2"
+toml_edit = "0.22"
+thiserror = "2"
+unicode-normalization = "0.1"
+proptest = "1.5"
+vaporetto = "0.6.5"
+vibrato-rkyv = { git = "https://github.com/o24s/vibrato-rkyv.git", rev = "6467251cdb945f8f0ca0c6bfd8c96036ab9d4e12", features = ["legacy"] }
+walkdir = "2.5"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+# Keep this aligned with vibrato-rkyv's Sudachi benchmark pin.
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git", rev = "54e85e8f7e0a6c4b570cd7b103506b080dc60c92" }
+zstd = "0.13"
+
+# rkyv is a transitive dependency via vibrato-rkyv. Force pointer_width_64
+# so that the serialized dictionary format matches what mecab-dic-converter
+# produces (it also enables this feature on its rkyv dependency). Without
+# this, dictionaries produced by mecab-dic-converter are incompatible with
+# ab-validator's vibrato-rkyv fork.
+rkyv = { version = "0.8", features = ["pointer_width_64"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"

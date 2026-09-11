@@ -1,0 +1,931 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://w3id.org/soranoha/schemas/parser-ir.schema.json",
+  "title": "ABC Parser IR",
+  "version": "0.55.0",
+  "type": "object",
+  "required": ["schema_id", "schema_hash", "source", "nodes", "warnings", "errors", "interpretation_problems", "interpretation_facts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_id": { "type": "string" },
+    "schema_hash": { "$ref": "#/$defs/hash" },
+    "derived_from": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "aat_version",
+        "aat_adapter",
+        "parse_complete",
+        "mapping_id",
+        "mapping_version",
+        "mapping_schema_hash"
+      ],
+      "properties": {
+        "aat_version": { "type": "integer", "minimum": 1 },
+        "aat_adapter": { "type": "string" },
+        "aat_adapter_version": { "type": ["string", "null"] },
+        "parse_complete": { "type": "boolean" },
+        "mapping_id": { "type": "string", "format": "uri" },
+        "mapping_version": { "type": "string" },
+        "mapping_schema_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["work_content_hash", "encoding", "decode_outcome", "normalization"],
+      "additionalProperties": false,
+      "properties": {
+        "work_content_hash": { "$ref": "#/$defs/hash" },
+        "primary_text_hash": { "$ref": "#/$defs/hash" },
+        "source_path": { "type": ["string", "null"] },
+        "encoding": { "type": "string", "enum": ["Shift_JIS", "UTF-8", "EUC-JP", "unknown"] },
+        "decode_outcome": { "enum": ["utf-8", "utf-8-bom", "windows-31j", "windows-31j-lossy"] },
+        "normalization": { "type": "string", "enum": ["source", "NFC", "NFKC"] }
+      }
+    },
+    "interpretation_facts": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["kind","outcome","aspects","source_span"],"properties":{"kind":{"enum":["ruby","gaiji","gaiji-ruby","iteration-mark","supplied-diacritic","illustration","baseline-position","exponent","emphasis","warichu","kunten","heading","caption","translation","text-variant","annotated-text","layout","editorial-note","line-layout","formula","table","layout-break","external-table-reference","glyph-shape-assertion","supplied-mark","quotation","letter"]},"outcome":{"const":"established"},"aspects":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["content","structure","layout"]}},"source_span":{"type":"object","additionalProperties":false,"required":["start","end","coordinate_system"],"properties":{"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":0},"line":{"type":"integer","minimum":1},"coordinate_system":{"const":"decoded_utf8"}}}}}},
+    "interpretation_problems": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["kind","code","raw","source_span","aspects","influence"],"properties":{"kind":{"enum":["unknown-notation","unresolved-variant","uninterpreted-notation","content-outside-primary-input"]},"code":{"enum":["unknown-notation","unresolved-variant","uninterpreted-notation","unparsed-source-gap","content-outside-primary-input"]},"raw":{"type":"string"},"source_span":{"$ref":"#/$defs/sourceSpan"},"aspects":{"enum":[["layout"],["structure"],["content","structure","layout"],["content","structure"],["content","layout"],["structure","layout"],["content"]]},"influence":{"enum":[{"kind":"document"},{"kind":"source-location"}]}},"allOf":[{"if":{"properties":{"kind":{"const":"content-outside-primary-input"}}},"then":{"properties":{"code":{"const":"content-outside-primary-input"},"aspects":{"const":["content"]},"influence":{"const":{"kind":"source-location"}}}},"else":{"properties":{"code":{"not":{"const":"content-outside-primary-input"}},"influence":{"const":{"kind":"document"}}}}}]}},
+    "layout_blocks": {
+      "type": "array",
+      "description": "Source scopes in postorder: when ranges coincide, the inner scope precedes its enclosing scope.",
+      "items": {
+        "type": "object",
+        "required": ["node_range", "source_pointer"],
+        "anyOf":[{"required":["indent"]},{"required":["width"]},{"required":["offset_from_end"]},{"required":["align"]},{"required":["direction"]},{"required":["page_placement"]},{"required":["typography"]},{"required":["role"]},{"required":["column_count"]}],
+        "additionalProperties": false,
+        "dependentRequired":{"column_rule":["column_count"],"placement":["role"],"source_kind":["role"],"table_rules":["role"]},
+        "allOf":[{"if":{"required":["source_kind"]},"then":{"properties":{"role":{"const":"translation"}}}},{"if":{"required":["role"],"properties":{"role":{"const":"translation"}}},"then":{"required":["source_kind"]}},{"if":{"required":["placement"]},"then":{"properties":{"role":{"const":"figure-explanation"}}}},{"if":{"required":["role"],"properties":{"role":{"const":"figure-explanation"}}},"then":{"required":["placement"]}},{"if":{"required":["table_rules"]},"then":{"properties":{"role":{"enum":["table","figure-table"]}}}}],
+        "properties": {
+          "source_span": {"$ref":"#/$defs/sourceSpan"},
+          "typography": {"$ref":"#/$defs/layoutScopeSet"},
+          "role":{"enum":["caption","warichu","table","figure-explanation","translation","formula","figure-table","quotation","letter"]},
+          "table_rules":{"const":false,"description":"The source states that the supplied table has no rules, an explicit absence rather than an unstated one."},
+          "source_kind":{"const":"banknote-text","description":"The translated source is supplied banknote lettering, without an inferred image identifier or language."},
+          "placement":{"const":"below","description":"Supplied placement below a figure or table; it does not identify an associated figure."},
+          "node_range": { "$ref": "#/$defs/nodeRange", "description": "Half-open indices into nodes, delimiting one enclosing source layout scope independently of heading and paragraph roles." },
+          "indent": { "type": "integer", "minimum": 0 },
+          "continuation_indent": {"type":"integer","minimum":0},
+          "offset_from_end": {"type":"integer","minimum":0},
+          "width": {"type":"integer","minimum":1},
+          "line_count": {"type":"integer","minimum":1},
+          "column_count":{"type":"integer","minimum":1},
+          "column_rule":{"const":true,"description":"The source supplies a rule between columns, without stroke dimensions or color."},
+          "page_placement": {"const":"horizontal-center"},
+          "direction": { "enum": ["horizontal","vertical"] },
+          "relative_placement":{"$ref":"#/$defs/relativePlacement"},
+          "align": { "enum": ["center","right"] },
+          "source_pointer": { "type": "string" }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "paragraphs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/paragraph" },
+      "default": []
+    },
+    "orthographic_annotations": { "$ref": "#/$defs/orthographicAnnotations" },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "relativePlacement": {
+      "type":"object", "additionalProperties":false,
+      "required":["relation","anchor_kind","anchor_span"],
+      "properties":{
+        "relation":{"const":"below"}, "anchor_kind":{"enum":["text","horizontal-block"]},
+        "anchor_span":{"$ref":"#/$defs/sourceSpan"},
+        "offset_chars":{"type":"integer","minimum":0,"maximum":255,"description":"Supplied fullwidth-character distance from the anchor lower edge."}
+      },
+      "allOf":[{"if":{"properties":{"anchor_kind":{"const":"text"}}},"then":{"required":["offset_chars"]},"else":{"not":{"required":["offset_chars"]}}}]
+    },
+
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "span": {
+      "type": "object",
+      "$comment": "Half-open UTF-8 byte offsets in the converter's parser text projection, before publication whitespace filtering. parser_text_utf8 includes structural and source-note text traversed by the converter. reading_utf8 is local to the containing ruby reading; each nested ruby reading owns a new axis starting at zero. witness_utf8 is local to the containing base-text alternative, starting at zero independently of the principal text and ruby readings. annotation_utf8 is local to each target-associated editorial note, independently of its principal target. None of these axes is the decoded source or final plaintext. end must be greater than or equal to start.",
+      "required": ["start", "end", "coordinate_system"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "coordinate_system": { "enum": ["parser_text_utf8", "reading_utf8", "witness_utf8", "annotation_utf8"] }
+      }
+    },
+    "sourceSpan": {
+      "type": "object",
+      "$comment": "Exact half-open UTF-8 byte extent in the complete decoded source, including source markup. Source extents are absent when an exact mapping is unknown, including newly split fragments. line and column refer to the source and are 1-based when known.",
+      "required": ["start", "end", "coordinate_system"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "end_line": { "type": ["integer", "null"], "minimum": 1 },
+        "column": { "type": ["integer", "null"], "minimum": 1 },
+        "coordinate_system": { "const": "decoded_utf8" }
+      }
+    },
+    "baseNode": {
+      "type": "object",
+      "required": ["type", "span"],
+      "properties": {
+        "type": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" },
+        "source_span": { "$ref": "#/$defs/sourceSpan" }
+      }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/textNode" },
+        { "$ref": "#/$defs/rubyNode" },
+        { "$ref": "#/$defs/gaijiNode" },
+        { "$ref": "#/$defs/editorNoteNode" },
+        { "$ref": "#/$defs/kuntenNode" },
+        { "$ref": "#/$defs/iterationMarkNode" },
+        { "$ref": "#/$defs/suppliedDiacriticNode" },
+        { "$ref": "#/$defs/baseTextVariantNode" },
+        { "$ref": "#/$defs/annotatedTextNode" },
+        { "$ref": "#/$defs/warichuNode" },
+        { "$ref": "#/$defs/emphasisNode" },
+        { "$ref": "#/$defs/layoutSpanNode" },
+        { "$ref": "#/$defs/headingNode" },
+        { "$ref": "#/$defs/indentationNode" },
+        { "$ref": "#/$defs/pageBreakNode" },
+        { "$ref": "#/$defs/columnBreakNode" },
+        { "$ref": "#/$defs/lineBreakNode" },
+        { "$ref": "#/$defs/imageNode" },
+        { "$ref": "#/$defs/captionNode" },
+        { "$ref": "#/$defs/quoteNode" },
+        { "$ref": "#/$defs/sourceNoteNode" }
+      ]
+    },
+    "inlineNode": {
+      "oneOf": [
+        { "$ref": "#/$defs/imageNode" },
+        { "$ref": "#/$defs/pageBreakNode" },
+        { "$ref": "#/$defs/headingNode" },
+        { "$ref": "#/$defs/captionNode" },
+        { "$ref": "#/$defs/textNode" },
+        { "$ref": "#/$defs/rubyNode" },
+        { "$ref": "#/$defs/gaijiNode" },
+        { "$ref": "#/$defs/editorNoteNode" },
+        { "$ref": "#/$defs/kuntenNode" },
+        { "$ref": "#/$defs/iterationMarkNode" },
+        { "$ref": "#/$defs/suppliedDiacriticNode" },
+        { "$ref": "#/$defs/baseTextVariantNode" },
+        { "$ref": "#/$defs/annotatedTextNode" },
+        { "$ref": "#/$defs/warichuNode" },
+        { "$ref": "#/$defs/emphasisNode" },
+        { "$ref": "#/$defs/layoutSpanNode" },
+        { "$ref": "#/$defs/columnBreakNode" },
+        { "$ref": "#/$defs/lineBreakNode" }
+      ]
+    },
+    "nodeRange": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "byteRange": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "orthographicAnnotations": {
+      "type": "object",
+      "required": [
+        "work_id",
+        "coordinate_system",
+        "detector_id",
+        "annotations"
+      ],
+      "anyOf": [
+        { "required": ["primary_text_hash"] },
+        { "required": ["work_content_hash"] }
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "work_id": { "type": "string" },
+        "primary_text_hash": { "$ref": "#/$defs/hash" },
+        "work_content_hash": { "$ref": "#/$defs/hash" },
+        "coordinate_system": { "const": "parser_text_utf8" },
+        "detector_id": { "$ref": "#/$defs/orthoDetectorId" },
+        "annotations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/orthographicAnnotation" }
+        }
+      }
+    },
+    "orthographicAnnotation": {
+      "type": "object",
+      "required": ["source_byte_range", "normalized_text", "kind", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "source_byte_range": { "$ref": "#/$defs/byteRange", "description": "Range in the detector input, on the enclosing bundle parser_text_utf8 axis." },
+        "normalized_text": { "type": "string" },
+        "kind": { "enum": ["ScriptKatakanaToHiragana", "HistoricalToModern"] },
+        "confidence": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 }
+      }
+    },
+    "orthoDetectorId": {
+      "oneOf": [
+        { "const": "HeuristicV1" },
+        {
+          "type": "object",
+          "required": ["MlLogisticRegression"],
+          "additionalProperties": false,
+          "properties": {
+            "MlLogisticRegression": {
+              "type": "object",
+              "required": ["model_hash"],
+              "additionalProperties": false,
+              "properties": {
+                "model_hash": { "$ref": "#/$defs/hash" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "paragraphLayout": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "source", "indent"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "jisage" },
+            "source": { "$ref": "#/$defs/paragraphLayoutSource" },
+            "indent": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source", "first_line_indent", "continuation_indent"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "burasage" },
+            "source": { "$ref": "#/$defs/paragraphLayoutSource" },
+            "first_line_indent": { "type": "integer", "minimum": 0 },
+            "continuation_indent": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source", "align", "offset_from_end"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "chitsuki" },
+            "source": { "$ref": "#/$defs/paragraphLayoutSource" },
+            "align": { "type": "string", "enum": ["right"] },
+            "offset_from_end": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source", "width"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "jizume" },
+            "source": { "$ref": "#/$defs/paragraphLayoutSource" },
+            "width": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source", "indent"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "line-jisage" },
+            "source": { "$ref": "#/$defs/paragraphLayoutSource" },
+            "indent": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "paragraphLayoutSource": {
+      "type": "string",
+      "enum": ["aat-block", "aat-style", "source-derived", "heuristic"]
+    },
+    "layoutScopeSource": {
+      "type": "string",
+      "enum": ["aat-inline", "aat-block", "source-derived", "heuristic"]
+    },
+    "layoutScopeSet": {"oneOf":[{"$ref":"#/$defs/layoutScope"},{"type":"array","minItems":2,"uniqueItems":true,"items":{"$ref":"#/$defs/layoutScope"}}]},
+    "layoutScope": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","source","align","offset_from_end"],"properties":{"kind":{"const":"chitsuki"},"source":{"$ref":"#/$defs/layoutScopeSource"},"align":{"const":"right"},"offset_from_end":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","source","position"],"properties":{"kind":{"const":"baseline-position"},"source":{"$ref":"#/$defs/layoutScopeSource"},"position":{"const":"lowered"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","source"],"properties":{"kind":{"const":"exponent"},"source":{"$ref":"#/$defs/layoutScopeSource"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","source","style"],
+         "properties":{"kind":{"const":"emphasis"},"source":{"$ref":"#/$defs/layoutScopeSource"},
+           "style":{"enum":["bold","italic","gothic","textbook","bouten","bosen"]},"decoration":{"type":"object","additionalProperties":false,"required":["kind","position"],"properties":{"kind":{"type":"string"},"position":{"enum":["right","left","both","unknown"]}}}}},
+        {
+          "type": "object",
+          "required": ["kind", "source", "size_type"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "font-size" },
+            "source": { "$ref": "#/$defs/layoutScopeSource" },
+            "size_type": { "enum": ["large", "small", "absolute", "qualitative"] },
+            "direction": { "enum": ["larger", "smaller"] },
+            "qualifier": { "enum": ["やや", "ひとまわり"] },
+            "level": { "type": "integer", "minimum": 1 },
+            "size": { "enum": ["extra-large", "large", "medium", "small"] },
+            "marker": { "type": ["string", "null"] }
+          },
+          "oneOf": [
+            { "properties": { "size_type": { "enum": ["large", "small"] } }, "required": ["level"], "not": { "anyOf": [{"required":["size"]},{"required":["direction"]},{"required":["qualifier"]}] } },
+            { "properties": { "size_type": { "const": "absolute" } }, "required": ["size"], "not": { "anyOf": [{"required":["level"]},{"required":["direction"]},{"required":["qualifier"]}] } },
+            { "properties": { "size_type": { "const": "qualitative" } }, "required": ["direction"], "not": { "anyOf": [{"required":["level"]},{"required":["size"]}] } }
+          ]
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "source", "position"],
+          "properties": {
+            "kind": { "const": "small-script" },
+            "source": { "$ref": "#/$defs/layoutScopeSource" },
+            "position": { "enum": ["right", "left"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "tcy" },
+            "source": { "$ref": "#/$defs/layoutScopeSource" },
+            "marker": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "keigakomi" },
+            "source": { "$ref": "#/$defs/layoutScopeSource" },
+            "border": { "type": ["string", "null"] },
+            "marker": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source", "direction"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "yokogumi" },
+            "source": { "$ref": "#/$defs/layoutScopeSource" },
+            "direction": { "type": "string", "enum": ["horizontal"] },
+            "marker": { "type": ["string", "null"] }
+          }
+        },
+        {"type":"object","additionalProperties":false,"required":["kind","source"],
+         "properties":{"kind":{"const":"fraction"},"source":{"$ref":"#/$defs/layoutScopeSource"}}}
+      ]
+    },
+    "paragraph": {
+      "type": "object",
+      "required": ["id", "span", "span_source", "node_range", "role", "source_pointer", "classification"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^p[0-9]{6}$" },
+        "span": { "$ref": "#/$defs/span" },
+        "source_span": { "$ref": "#/$defs/sourceSpan" },
+        "span_source": { "type": "string", "enum": ["direct", "derived", "synthesized", "unknown"] },
+        "node_range": { "$ref": "#/$defs/nodeRange" },
+        "role": { "type": "string", "enum": ["body", "source-note", "unknown"] },
+        "source_pointer": { "type": ["string", "null"] },
+        "classification": { "type": "string", "enum": ["direct", "heuristic", "unknown"] },
+        "layout": { "$ref": "#/$defs/paragraphLayout" }
+      }
+    },
+    "textNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "gaiji": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_marker",
+        "resolved"
+      ],
+      "properties": {
+        "raw_marker": {
+          "type": "string"
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unicode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ivs": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image_or_glyph_fallback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "warichuNode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "span", "text"],
+      "oneOf": [{"required": ["inline_children"]}, {"required": ["upper_children", "lower_children"]}],
+      "properties": {
+        "type": {"const": "warichu"}, "span": {"$ref": "#/$defs/span"},
+        "source_span": {"$ref": "#/$defs/sourceSpan"}, "text": {"type": "string"},
+        "inline_children": {"type": "array", "items": {"$ref": "#/$defs/inlineNode"}},
+        "upper_children": {"type": "array", "items": {"$ref": "#/$defs/inlineNode"}},
+        "lower_children": {"type": "array", "items": {"$ref": "#/$defs/inlineNode"}}
+      }
+    },
+    "rubyReadingNode": {
+      "allOf": [
+        { "$ref": "#/$defs/inlineNode" },
+        { "properties": { "span": { "properties": { "coordinate_system": { "const": "reading_utf8" } } } } }
+      ]
+    },
+    "witnessNode": {
+      "allOf": [
+        { "$ref": "#/$defs/inlineNode" },
+        { "properties": { "span": { "properties": { "coordinate_system": { "const": "witness_utf8" } } } } }
+      ]
+    },
+    "gapNode": {
+      "type":"object", "additionalProperties":false,
+      "required":["type","span","reason"],
+      "oneOf":[{"required":["quantity","unit"],"not":{"required":["extent"]}},{"required":["extent"],"not":{"anyOf":[{"required":["quantity"]},{"required":["unit"]}]}}],
+      "properties":{"type":{"const":"gap"},"span":{"$ref":"#/$defs/span"},"reason":{"const":"concealed"},"unit":{"const":"chars"},"quantity":{"type":"integer","minimum":1},"extent":{"const":"unknown"}}
+    },
+    "annotationNode": {
+      "allOf":[{"oneOf":[{"$ref":"#/$defs/inlineNode"},{"$ref":"#/$defs/gapNode"}]},{"properties":{"span":{"properties":{"coordinate_system":{"const":"annotation_utf8"}}}}}]
+    },
+    "annotatedTextNode": {
+      "type":"object", "additionalProperties":false,
+      "required":["type","span","text","inline_children","annotation_children","note_kind"],
+      "if":{"properties":{"note_kind":{"enum":["annotation-number","author-note","glyph-shape"]}}}, "then":{"not":{"required":["position"]}},
+      "allOf":[{"if":{"properties":{"note_kind":{"const":"supplied-mark"}}},"then":{"required":["position"]}}],
+      "properties":{
+        "type":{"const":"annotated-text"}, "span":{"$ref":"#/$defs/span"}, "source_span":{"$ref":"#/$defs/sourceSpan"},
+        "text":{"type":"string"}, "note_kind":{"enum":["gloss","marginal","cross-reference","base-edition","source-concealment","annotation-number","author-note","glyph-shape","supplied-mark"]}, "position":{"enum":["left","right"]},
+        "anchor":{"description":"Where along the target the source located the mark. Independent of position, which is the physical side: the source states the two separately. Absent when the mark accompanies the target as a whole.","enum":["between"]},
+        "inline_children":{"type":"array","items":{"$ref":"#/$defs/inlineNode"}},
+        "annotation_children":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/annotationNode"}}
+      }
+    },
+    "baseTextVariantNode": {
+      "type": "object",
+      "required": ["type", "span", "text", "inline_children", "variant"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "base-text-variant" },
+        "span": { "$ref": "#/$defs/span" },
+        "source_span": { "$ref": "#/$defs/sourceSpan" },
+        "text": { "type": "string" },
+        "inline_children": { "type": "array", "items": { "$ref": "#/$defs/inlineNode" } },
+        "variant": {
+          "type": "object", "required": ["base_text", "base_children"], "additionalProperties": false,
+          "properties": { "base_text": { "type": "string" }, "base_children": { "type":"array", "items":{"$ref":"#/$defs/witnessNode"} } }
+        }
+      }
+    },
+    "rubyNode": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseNode"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "span",
+            "ruby"
+          ],
+          "properties": {
+            "type": {
+              "const": "ruby"
+            },
+            "span": {
+              "$ref": "#/$defs/span"
+            },
+            "source_span": {
+              "$ref": "#/$defs/sourceSpan"
+            },
+            "inline_children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/inlineNode"
+              }
+            },
+            "ruby": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "base",
+                "reading",
+                "scope"
+              ],
+              "properties": {
+                "base": {
+                  "type": "string"
+                },
+                "reading": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "explicit",
+                    "inferred",
+                    "group",
+                    "mid-word",
+                    "ambiguous"
+                  ]
+                },
+                "direction": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "left",
+                    "right",
+                    null
+                  ],
+                  "description": "Ruby reading placement relative to base text: left (before base) or right (after base)."
+                }
+              }
+            },
+            "reading_children": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/rubyReadingNode"
+              },
+              "description": "Structured ruby reading content. Reading spans use reading_utf8 relative to this ruby reading, not the body axis. source_span locates exact decoded source extents when known."
+            }
+          }
+        }
+      ]
+    },
+    "gaijiNode": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseNode"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "span",
+            "gaiji"
+          ],
+          "properties": {
+            "type": {
+              "const": "gaiji"
+            },
+            "span": {
+              "$ref": "#/$defs/span"
+            },
+            "source_span": {
+              "$ref": "#/$defs/sourceSpan"
+            },
+            "gaiji": {
+              "$ref": "#/$defs/gaiji"
+            }
+          }
+        }
+      ]
+    },
+    "suppliedDiacriticNode": {
+      "allOf":[{"$ref":"#/$defs/baseNode"}, {
+        "type":"object", "additionalProperties":false, "required":["type","span","text","source","annotation_span"],
+        "properties":{"type":{"const":"supplied-diacritic"}, "span":{"$ref":"#/$defs/span"},
+          "annotation_span":{"$ref":"#/$defs/sourceSpan"},
+          "source_span":{"$ref":"#/$defs/sourceSpan"}, "text":{"type":"string","minLength":1},
+          "source":{"type":"string","minLength":1}}
+      }]
+    },
+    "iterationMarkNode": {
+      "allOf":[{"$ref":"#/$defs/baseNode"}, {
+        "type":"object", "additionalProperties":false, "required":["type","span","text","source"],
+        "properties":{"type":{"const":"iteration-mark"}, "span":{"$ref":"#/$defs/span"},
+          "source_span":{"$ref":"#/$defs/sourceSpan"}, "text":{"enum":["〱","〲"]},
+          "source":{"enum":["／＼","／″＼"]}},
+        "oneOf":[{"properties":{"text":{"const":"〱"},"source":{"const":"／＼"}}},
+                 {"properties":{"text":{"const":"〲"},"source":{"const":"／″＼"}}}]
+      }]
+    },
+    "kuntenNode": {
+      "allOf":[{"$ref":"#/$defs/baseNode"}, {
+        "type":"object", "additionalProperties":false, "required":["type","span","kunten_kind","text"],
+        "properties":{"type":{"const":"kunten"}, "span":{"$ref":"#/$defs/span"},
+          "source_span":{"$ref":"#/$defs/sourceSpan"}, "kunten_kind":{"enum":["return-mark","okurigana"]},
+          "text":{"type":"string","minLength":1}}
+      }]
+    },
+    "editorNoteNode": {"allOf":[{"$ref":"#/$defs/baseNode"},{"type":"object","additionalProperties":false,"required":["type","span"],"oneOf":[{"required":["note"],"not":{"anyOf":[{"required":["note_kind"]},{"required":["text"]},{"required":["annotation_children"]}]}},{"required":["note_kind","text"],"not":{"anyOf":[{"required":["note"]},{"required":["annotation_children"]}]}},{"required":["note_kind","annotation_children"],"not":{"anyOf":[{"required":["note"]},{"required":["text"]}]}}],"properties":{"type":{"const":"editor-note"},"span":{"$ref":"#/$defs/span"},"source_span":{"$ref":"#/$defs/sourceSpan"},"note":{"$ref":"#/$defs/note"},"note_kind":{"enum":["base-edition","first-publication","transcription","omission","incompleteness","explanation","external-table-reference","figure-insertion","sic"]},"text":{"type":"string","minLength":1},"target_source_spans":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/sourceSpan"}},"closing_source_span":{"$ref":"#/$defs/sourceSpan"},"annotation_children":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/annotationNode"}},"source_filename":{"type":"string","minLength":1,"pattern":"^[A-Za-z0-9_.-]+$","not":{"enum":[".",".."]}}},"allOf":[{"if":{"required":["note_kind"],"properties":{"note_kind":{"const":"external-table-reference"}}},"then":{"required":["text","source_filename"]},"else":{"not":{"anyOf":[{"required":["source_filename"]}]}}}]}]},
+    "emphasisNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "style"],
+          "anyOf": [
+            { "required": ["text"] },
+            { "required": ["inline_children"] }
+          ],
+          "properties": {
+            "type": { "const": "emphasis" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" },
+            "inline_children": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/inlineNode" }
+            },
+            "decoration": {"type":"object", "additionalProperties":false, "required":["kind","position"], "properties":{"kind":{"type":"string"}, "position":{"enum":["right","left","both","unknown"]}}},
+            "style": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "layoutSpanNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "text", "layout"],
+          "properties": {
+            "type": { "const": "layout-span" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" },
+            "inline_children": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/inlineNode" }
+            },
+            "layout": {"$ref":"#/$defs/layoutScopeSet"}
+          }
+        }
+      ]
+    },
+    "headingNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "text", "level", "style"],
+          "properties": {
+            "type": { "const": "heading" },
+            "style": { "enum": ["normal", "dogyo", "mado"] },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" },
+            "inline_children": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/inlineNode" }
+            },
+            "indent": { "type": "integer", "minimum": 0 },
+            "level": { "type": "integer", "minimum": 1, "maximum": 6 }
+          }
+        }
+      ]
+    },
+    "indentationNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "depth"],
+          "properties": {
+            "type": { "const": "indentation" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "depth": { "type": "integer", "minimum": 0 },
+            "text": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "pageBreakNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "marker"],
+          "properties": {
+            "type": { "const": "page-break" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "marker": { "type": "string" },
+            "page_number": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "columnBreakNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "marker"],
+          "properties": {
+            "type": { "const": "column-break" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "marker": { "type": "string" },
+            "page_number": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "lineBreakNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "marker"],
+          "properties": {
+            "type": { "const": "line-break" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "marker": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "imageNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "src"],
+          "properties": {
+            "type": { "const": "image" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "number":{"type":"string"},
+            "width":{"type":"integer","minimum":0}, "height":{"type":"integer","minimum":0},
+            "dimensions_source":{"type":"string"}, "caption_source":{"type":"string"}, "description_source":{"type":"string"},
+            "src_source":{"type":"string"},
+            "description_children":{"type":"array","items":{"$ref":"#/$defs/annotationNode"}},
+            "annotation_children":{"type":"array","items":{"$ref":"#/$defs/annotationNode"}},
+            "caption_reference_children":{"type":"array","items":{"$ref":"#/$defs/annotationNode"}},
+            "src": { "type": ["string", "null"] },
+            "alt": { "type": ["string", "null"] },
+            "path_hint": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "captionNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "text"],
+          "properties": {
+            "type": { "const": "caption" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" },
+            "inline_children": {"type":"array", "items":{"$ref":"#/$defs/inlineNode"}},
+            "target": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "quoteNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "marker_type"],
+          "properties": {
+            "type": { "const": "quote" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "marker_type": { "type": "string", "enum": ["open", "close", "inline", "unknown"] },
+            "nesting_level": { "type": ["integer", "null"], "minimum": 0 },
+            "text": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "sourceNoteNode": {
+      "allOf": [
+        { "$ref": "#/$defs/baseNode" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "span", "text", "note_type", "placement", "classification", "source_pointer"],
+          "properties": {
+            "type": { "const": "source-note" },
+            "span": { "$ref": "#/$defs/span" },
+            "source_span": { "$ref": "#/$defs/sourceSpan" },
+            "text": { "type": "string" },
+            "note_type": { "type": "string", "enum": ["source-attribution", "bibliographic-note", "transcriber-note", "body-end-boundary", "unknown"] },
+            "placement": { "type": "string", "enum": ["front", "body", "back", "unknown"] },
+            "classification": { "type": "string", "enum": ["direct", "heuristic", "unknown"] },
+            "source_pointer": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw", "category"],
+      "properties": {
+        "resolution": { "const": "unresolved" },
+        "raw": { "type": "string" },
+        "category": {
+          "type": "string",
+          "enum": ["emphasis", "heading", "indentation", "page-break", "image", "caption", "external-character", "accent-mark", "ruby", "correction", "variant", "misc"]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["severity", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": { "type": "string", "enum": ["fatal", "error", "warning", "info", "note"] },
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "span": {
+          "anyOf": [
+            { "$ref": "#/$defs/sourceSpan" },
+            { "type": "null" }
+          ]
+        },
+        "construct": { "type": ["string", "null"] },
+        "recovery": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

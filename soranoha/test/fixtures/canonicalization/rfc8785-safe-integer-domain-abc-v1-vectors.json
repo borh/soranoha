@@ -1,0 +1,54 @@
+{
+  "schema_version": "abc/rfc8785-cross-language-vectors/v1",
+  "algorithm_id": "sha256-rfc8785-safe-integer-domain-abc-v1",
+  "numeric_domain": "integers-minus-or-plus-9007199254740991",
+  "vectors": [
+    {
+      "name": "rfc8785-section-3.2.3-property-sorting",
+      "source": "RFC 8785 section 3.2.3",
+      "input": {
+        "€": "Euro Sign",
+        "\r": "Carriage Return",
+        "דּ": "Hebrew Letter Dalet With Dagesh",
+        "1": "One",
+        "😀": "Emoji",
+        "": "Control",
+        "ö": "Latin Small Letter O With Diaeresis"
+      },
+      "canonical_json": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}",
+      "sha256": "1e8c3e92f238849d50410dbb84b2345288bc4efd9bf16181b78a85d1da5443d8"
+    },
+    {
+      "name": "unicode-slash-control-safe-integer-boundary",
+      "input": {
+        "作品/😀": [{"control": "\u0000\n", "count": 9007199254740991}],
+        "negative": -9007199254740991
+      },
+      "canonical_json": "{\"negative\":-9007199254740991,\"作品/😀\":[{\"control\":\"\\u0000\\n\",\"count\":9007199254740991}]}",
+      "sha256": "bfd1442d6b3534ef0205b757402312c57692495d049c742469020d534e8a2250"
+    },
+    {
+      "name": "recognition-corpus-index-projection",
+      "input": {
+        "schema_version": "abc/parser-rq-source-recognition-index/v1",
+        "status": "ok",
+        "expected_work_count": 2,
+        "records": [
+          {
+            "work_id": "作品/一",
+            "bytes": 512,
+            "capture_generation_ref": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "work_id": "work😀",
+            "bytes": 0,
+            "capture_generation_ref": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+          }
+        ],
+        "errors": []
+      },
+      "canonical_json": "{\"errors\":[],\"expected_work_count\":2,\"records\":[{\"bytes\":512,\"capture_generation_ref\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"work_id\":\"作品/一\"},{\"bytes\":0,\"capture_generation_ref\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"work_id\":\"work😀\"}],\"schema_version\":\"abc/parser-rq-source-recognition-index/v1\",\"status\":\"ok\"}",
+      "sha256": "ea9d4287b1c2051a07a9f51b7f8a1c541fe83d3c3e91951f179acd2ac09b8773"
+    }
+  ]
+}

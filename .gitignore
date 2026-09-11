@@ -1,0 +1,27 @@
+.direnv/
+.ruff_cache/
+.mypy_cache/
+.lsp/
+.clj-kondo/
+.cargo/
+.hegel/
+.soranoha/
+.worktrees/
+.claude/
+scratch/
+out/
+# Derived build and publication artifacts.
+/target/
+result
+result-*
+
+# Stray vibrato dictionary root created when `nix develop` runs from the repo
+# root (the shellHook's `mkdir -p dictionary/...` is CWD-relative). The real,
+# intended cache lives in ab-validator/dictionary/ (see ab-validator/.gitignore);
+# this anchors the root duplicate so it never shows as untracked churn.
+/dictionary/
+__pycache__/
+*.pyc
+
+# Clojure classpath cache (soranoha kernel)
+.cpcache/

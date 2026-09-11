@@ -1,0 +1,733 @@
+//! Source-stated witness alternatives, editorial notes, and concealment.
+
+use std::{num::NonZeroU32, ops::Range};
+
+use ab_aozora_encoding::gaiji::{
+    is_mencode_shaped, is_page_line_shaped, recognize_gaiji_body, reference_clauses,
+};
+
+/// Content addressed by a quoted base-text note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextVariantTarget {
+    /// The reading attached to a base character sequence.
+    RubyReading,
+    /// An unqualified quotation, matched against principal text first.
+    Text,
+}
+
+/// Edition described by a retained editorial statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditionNoteKind {
+    /// The edition used as the source of the transcription.
+    BaseEdition,
+    /// The work's first publication, without asserting it is the base edition.
+    FirstPublication,
+}
+
+/// Boundary of a source-stated range in the base edition, not a presentation command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditionRangeBoundary {
+    /// The range begins after this marker.
+    Start,
+    /// The range ends before this marker.
+    End,
+}
+
+/// Location asserted for the bounded source content in the base edition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditionRangeLocation {
+    /// The upper part identified by the source as 上段.
+    Upper,
+    /// The lower part identified by the source as 下段.
+    Lower,
+}
+
+/// One explicitly supplied boundary marker of an edition-only annotation range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditionRangeMarker {
+    /// Which endpoint the supplied marker identifies.
+    pub boundary: EditionRangeBoundary,
+    /// The stated base-edition location, used to match the other endpoint.
+    pub location: EditionRangeLocation,
+}
+
+/// Interpret source-stated upper/lower edition-range markers.
+#[must_use]
+pub fn edition_range_marker(source: &str) -> Option<EditionRangeMarker> {
+    let body = source.strip_prefix("［＃")?.strip_suffix('］')?;
+    let (boundary, statement) = if let Some(tail) = body.strip_prefix("ここから底本では") {
+        (EditionRangeBoundary::Start, tail)
+    } else {
+        (
+            EditionRangeBoundary::End,
+            body.strip_prefix("ここまで底本では")?,
+        )
+    };
+    let location = match statement {
+        "上段" => EditionRangeLocation::Upper,
+        "下段" => EditionRangeLocation::Lower,
+        _ => return None,
+    };
+    Some(EditionRangeMarker { boundary, location })
+}
+
+fn split_attribution(body: &str, edition: EditionNoteKind) -> Option<(&str, &str)> {
+    let delimiters: &[&str] = match edition {
+        EditionNoteKind::BaseEdition => &[
+            "」は底本では",
+            "」は、底本では",
+            "」底本では",
+            "」では底本では",
+        ],
+        EditionNoteKind::FirstPublication => &["」は初出では", "」は、初出では"],
+    };
+    if delimiters
+        .iter()
+        .map(|delimiter| body.matches(delimiter).count())
+        .sum::<usize>()
+        != 1
+    {
+        return None;
+    }
+    let (current, witness) = delimiters
+        .iter()
+        .find_map(|delimiter| body.split_once(delimiter))?;
+    Some((
+        current,
+        witness.strip_prefix(['、', ' ']).unwrap_or(witness),
+    ))
+}
+
+/// A supplied reading or text and its explicitly stated base-text alternative.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextVariant<'s> {
+    /// Whether the source explicitly names the reading or leaves the target unqualified.
+    pub target: TextVariantTarget,
+    /// The spelling supplied in the Aozora text.
+    pub current: &'s str,
+    /// Witness fragment before any separate continuation; empty for explicit absence.
+    pub base_text: &'s str,
+    /// UTF-8 byte range of the quoted current fragment within the annotation.
+    pub current_span: Range<usize>,
+    /// UTF-8 byte range of the witness fragment; absent for stated omission.
+    pub base_span: Option<Range<usize>>,
+    /// Shared literal continuation supplied after the witness quotation.
+    pub base_continuation: Option<WitnessContinuation<'s>>,
+    /// Complete editorial statement when the note makes an additional assertion.
+    pub editorial_statement: Option<&'s str>,
+}
+
+/// A source-supplied continuation whose spelling also ends the current quotation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WitnessContinuation<'s> {
+    /// Literal spelling supplied after the closing quote.
+    pub text: &'s str,
+    /// Exact UTF-8 range within the annotation, excluding the preceding quote.
+    pub span: Range<usize>,
+}
+
+fn witness_continuation<'s>(
+    witness: &'s str,
+    current: &str,
+    start: usize,
+) -> Option<WitnessContinuation<'s>> {
+    let (quoted, text) = witness.rsplit_once('」')?;
+    if !quoted
+        .strip_prefix('「')
+        .is_some_and(|interior| !interior.is_empty() && !interior.contains(['「', '」']))
+        || text.is_empty()
+        || !text.chars().all(char::is_alphanumeric)
+        || current.strip_suffix(text).is_none_or(str::is_empty)
+    {
+        return None;
+    }
+    let end = start + witness.len();
+    Some(WitnessContinuation {
+        text,
+        span: end - text.len()..end,
+    })
+}
+
+/// Reading alternatives qualified by the same parenthesized principal continuation.
+/// The consumer must verify that continuation against the addressed ruby's source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextualReading<'s> {
+    /// Supplied reading without the parenthesized continuation.
+    pub current: &'s str,
+    /// Base-edition reading without the same continuation.
+    pub base_text: &'s str,
+    /// Exact principal text required between the ruby and annotation.
+    pub continuation: &'s str,
+}
+
+/// Separate a shared continuation without asserting that a source target exists.
+#[must_use]
+pub fn contextual_reading<'s>(
+    current: &'s str,
+    base_text: &'s str,
+) -> Option<ContextualReading<'s>> {
+    let split = |text: &'s str| {
+        let (reading, continuation) = text.strip_suffix('）')?.rsplit_once('（')?;
+        (!reading.is_empty()
+            && !continuation.is_empty()
+            && !reading.contains(['（', '）', '\n', '\r'])
+            && !continuation.contains(['（', '）', '\n', '\r']))
+        .then_some((reading, continuation))
+    };
+    let (current, continuation) = split(current)?;
+    let (base_text, witness_continuation) = split(base_text)?;
+    (continuation == witness_continuation).then_some(ContextualReading {
+        current,
+        base_text,
+        continuation,
+    })
+}
+
+/// Recognize a quoted current target and its explicitly attributed base-text alternative.
+/// Other editorial prose remains unclassified by this recognizer.
+#[must_use]
+pub fn text_variant(source: &str) -> Option<TextVariant<'_>> {
+    let statement = source.strip_prefix("［＃")?.strip_suffix('］')?;
+    let (target, body) = if let Some(body) = statement.strip_prefix("ルビの「") {
+        (TextVariantTarget::RubyReading, body)
+    } else {
+        (TextVariantTarget::Text, statement.strip_prefix('「')?)
+    };
+    let (current, witness) = split_attribution(body, EditionNoteKind::BaseEdition)?;
+    let witness_start = source.len() - '］'.len_utf8() - witness.len();
+    let current_start = source.len() - '］'.len_utf8() - body.len();
+    variant_parts(
+        statement,
+        target,
+        current,
+        current_start,
+        witness,
+        witness_start,
+    )
+}
+
+/// Separate an edition clause from a shared-target formatting suffix.
+/// The caller must interpret the returned formatting suffix in its own closed vocabulary.
+#[must_use]
+pub fn formatted_text_variant(source: &str) -> Option<(&str, TextVariant<'_>)> {
+    let statement = source.strip_prefix("［＃")?.strip_suffix('］')?;
+    let (formatted, suffix) = statement.strip_prefix('「')?.split_once("」は")?;
+    if formatted.is_empty() || formatted.contains(['「', '」', '\n']) {
+        return None;
+    }
+    let (formatting, current, current_start, witness) =
+        if let Some((formatting, witness)) = suffix.split_once("、底本では") {
+            (formatting, formatted, "［＃「".len(), witness)
+        } else {
+            let (formatting, assertion) = suffix.split_once("、「")?;
+            let (current, witness) = assertion.split_once("」が底本では")?;
+            if current.contains(['「', '」', '\n']) {
+                return None;
+            }
+            let start = source.len() - '］'.len_utf8() - assertion.len();
+            (formatting, current, start, witness)
+        };
+    let witness_start = source.len() - '］'.len_utf8() - witness.len();
+    Some((
+        formatting,
+        variant_parts(
+            statement,
+            TextVariantTarget::Text,
+            current,
+            current_start,
+            witness,
+            witness_start,
+        )?,
+    ))
+}
+
+/// Locate a source assertion about an incorrectly printed base-edition glyph.
+/// The assertion remains documentary text; it does not supply another Unicode value.
+#[must_use]
+pub fn gaiji_edition_note(source: &str) -> Option<&str> {
+    let body = source.strip_prefix("※［＃")?.strip_suffix('］')?;
+    let parsed = recognize_gaiji_body(body)?;
+    let mut clauses = reference_clauses(parsed.mencode?).peekable();
+    while let Some(clause) = clauses.next() {
+        let statement = clause.trim();
+        if clauses.peek().is_some() {
+            if !is_mencode_shaped(statement) && !is_page_line_shaped(statement) {
+                return None;
+            }
+            continue;
+        }
+        let description = statement
+            .strip_prefix("底本はこの字を「")?
+            .strip_suffix("」と作字上の誤り")?;
+        return (!description.is_empty() && !description.contains(['\n', '［', '］']))
+            .then_some(statement);
+    }
+    None
+}
+
+/// Preserve an edition statement about lettering inside an explicitly inserted image.
+#[must_use]
+pub fn image_edition_note(body: &str) -> Option<(&str, &str)> {
+    let (image, statement) = body.split_once("入る。")?;
+    let quoted = statement.strip_prefix('「')?;
+    let (current, witness) = quoted.split_once("」とあるのは底本では「")?;
+    let witness = witness.strip_suffix('」')?;
+    if current.is_empty()
+        || witness.is_empty()
+        || current.contains(['「', '」', '\n'])
+        || witness.contains(['「', '」', '\n'])
+    {
+        return None;
+    }
+    Some((&body[..image.len() + "入る".len()], statement))
+}
+
+/// Separate a formatting suffix and an explicitly attributed edition statement.
+/// The formatting caller must still recognize its complete suffix.
+#[must_use]
+pub fn formatting_edition_note(source: &str) -> Option<(&str, &str)> {
+    let body = source.strip_prefix("［＃「")?.strip_suffix('］')?;
+    let (target, suffix) = body.split_once('」')?;
+    if target.is_empty() || target.contains(['「', '\n']) {
+        return None;
+    }
+    let (formatting, statement) = suffix.split_once("、底本では")?;
+    let statement = &suffix[suffix.len() - statement.len() - "底本では".len()..];
+    edition_statement(statement)?;
+    Some((formatting, statement))
+}
+
+fn witness_statement_tail<'s>(witness: &'s str, current: &str) -> Option<&'s str> {
+    if let Some((quoted, reference)) = witness.rsplit_once('、')
+        && (is_page_line_shaped(reference) || reference == "正誤表による訂正")
+    {
+        return Some(quoted);
+    }
+    if let Some((quoted, repeated)) = witness.rsplit_once("」と「")
+        && let Some(repeated) = repeated.strip_suffix("」が重複")
+        && !repeated.is_empty()
+        && !repeated.contains(['「', '」', '［', '］', '\n'])
+    {
+        return Some(&witness[..quoted.len() + '」'.len_utf8()]);
+    }
+    if let Some((quoted, explanation)) = witness.rsplit_once("」。")
+        && explanation.starts_with('【')
+        && explanation.ends_with("に合わせました。")
+        && !explanation.contains("［＃")
+    {
+        return Some(&witness[..quoted.len() + '」'.len_utf8()]);
+    }
+    if let Some((quoted, supplied)) = witness.rsplit_once("（本文は「")
+        && supplied.strip_suffix("」）") == Some(current)
+    {
+        return Some(quoted);
+    }
+    None
+}
+
+fn variant_parts<'s>(
+    statement: &'s str,
+    target: TextVariantTarget,
+    current: &'s str,
+    current_start: usize,
+    witness: &'s str,
+    witness_start: usize,
+) -> Option<TextVariant<'s>> {
+    let with_statement_tail = witness_statement_tail(witness, current);
+    let witness = with_statement_tail.unwrap_or(witness);
+    let asserted = [
+        "と誤記",
+        "と誤植",
+        "となっている",
+        "となっている。誤記か",
+        "と欠字",
+    ]
+    .iter()
+    .find_map(|suffix| {
+        witness
+            .strip_suffix(suffix)
+            .filter(|quoted| quoted.ends_with('」'))
+    });
+    let editorial_statement =
+        (asserted.is_some() || with_statement_tail.is_some()).then_some(statement);
+    let witness = asserted.unwrap_or(witness);
+    let base_continuation = (target == TextVariantTarget::Text)
+        .then(|| witness_continuation(witness, current, witness_start))
+        .flatten();
+    let witness = base_continuation.as_ref().map_or(witness, |continuation| {
+        &witness[..witness.len() - continuation.text.len()]
+    });
+    let (base_text, quote_prefix) = match witness {
+        "欠落" | "なし" | "無し" | "脱落" | "欠如" | "欠" | "脱字" => ("", 0),
+        glyph
+            if glyph
+                .strip_prefix("※［＃")
+                .and_then(|text| text.strip_suffix('］'))
+                .and_then(recognize_gaiji_body)
+                .is_some() =>
+        {
+            (glyph, 0)
+        }
+        quoted => {
+            let text = quoted.strip_prefix('「')?.strip_suffix('」')?;
+            if text.is_empty() {
+                return None;
+            }
+            (text, '「'.len_utf8())
+        }
+    };
+    if current.is_empty() || current.contains('\n') || base_text.contains('\n') {
+        return None;
+    }
+    let base_span = (!base_text.is_empty()).then(|| {
+        let start = witness_start + quote_prefix;
+        start..start + base_text.len()
+    });
+    let (target, current, base_text, current_start, base_span) = if target
+        == TextVariantTarget::Text
+        && let (Some(current), Some(base_text), Some(span)) = (
+            current
+                .strip_prefix('《')
+                .and_then(|text| text.strip_suffix('》')),
+            base_text
+                .strip_prefix('《')
+                .and_then(|text| text.strip_suffix('》')),
+            base_span.as_ref(),
+        )
+        && !current.is_empty()
+        && !base_text.is_empty()
+    {
+        (
+            TextVariantTarget::RubyReading,
+            current,
+            base_text,
+            current_start + '《'.len_utf8(),
+            Some(span.start + '《'.len_utf8()..span.end - '》'.len_utf8()),
+        )
+    } else {
+        (target, current, base_text, current_start, base_span)
+    };
+    Some(TextVariant {
+        target,
+        current,
+        base_text,
+        current_span: current_start..current_start + current.len(),
+        base_span,
+        base_continuation,
+        editorial_statement,
+    })
+}
+
+/// The supplied placeholder explicitly identified as concealed text, without a quantity.
+#[must_use]
+pub fn concealed_placeholder(source: &str) -> Option<&str> {
+    let target = source
+        .strip_prefix("［＃「")?
+        .strip_suffix("」は伏せ字］")?;
+    (!target.is_empty() && !target.contains(['「', '」', '［', '］', '\n', '\r'])).then_some(target)
+}
+
+/// Number of concealed characters explicitly attributed to the base edition.
+/// Placeholder identity and quantity agreement are established at the target.
+#[must_use]
+pub fn base_edition_concealed_characters(source: &str) -> Option<NonZeroU32> {
+    let digits = source.strip_prefix("［＃底本")?.strip_suffix("字伏字］")?;
+    let count = digits.chars().try_fold(0u32, |count, ch| {
+        let digit = match ch {
+            '0'..='9' => u32::from(ch) - u32::from('0'),
+            '０'..='９' => u32::from(ch) - u32::from('０'),
+            _ => return None,
+        };
+        count.checked_mul(10)?.checked_add(digit)
+    })?;
+    NonZeroU32::new(count)
+}
+
+/// Preserve edition statements as apparatus without applying their descriptions
+/// to the principal text. Mixed transcription instructions and malformed quoted
+/// alternatives remain outside this grammar.
+#[must_use]
+pub fn edition_note(source: &str) -> Option<(EditionNoteKind, &str)> {
+    edition_statement(source.strip_prefix("［＃")?.strip_suffix('］')?)
+}
+
+fn quoted_spatial_description(description: &str) -> bool {
+    let Some((glyph, relation)) = description
+        .strip_prefix('「')
+        .and_then(|s| s.split_once('」'))
+    else {
+        return false;
+    };
+    !glyph.is_empty()
+        && !glyph.contains(['「', '［', '］', '\n'])
+        && (relation == "の転倒" || relation == "の右横に付く" || relation == "が左に90度回転")
+}
+
+/// Interpret one source-owned edition statement, including a clause within a layout marker.
+#[must_use]
+pub fn edition_statement(body: &str) -> Option<(EditionNoteKind, &str)> {
+    if let Some(statement) = body.strip_prefix("入力者註：")
+        && statement.starts_with("底本では")
+        && statement.len() > "底本では".len()
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    if let Some((context, statement)) = body.split_once("。底本では")
+        && !context.is_empty()
+        && !context.contains("［＃")
+        && !context.starts_with(['「', '［'])
+        && !["ルビの", "ここから", "ここまで", "ここで"]
+            .iter()
+            .any(|prefix| context.starts_with(prefix))
+        && !statement.is_empty()
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    if body
+        .strip_prefix("底本では")
+        .or_else(|| body.strip_prefix("底本で"))
+        .is_some_and(|text| !text.is_empty())
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    if let Some(quoted) = body
+        .strip_prefix("ルビの「")
+        .or_else(|| body.strip_prefix('「'))
+    {
+        if let Some((current, witness)) =
+            split_attribution(quoted, EditionNoteKind::FirstPublication)
+            && !current.is_empty()
+            && !current.contains(['「', '」', '\n'])
+            && witness.starts_with('「')
+            && witness.ends_with('」')
+        {
+            return Some((EditionNoteKind::FirstPublication, body));
+        }
+        if let Some((current, witness)) = split_attribution(quoted, EditionNoteKind::BaseEdition)
+            && !current.is_empty()
+            && witness.starts_with('「')
+            && let Some((base, bibliography)) = witness.split_once("」。以下の本では「")
+            && base.len() > '「'.len_utf8()
+            && bibliography.contains('『')
+            && bibliography.contains('』')
+        {
+            return Some((EditionNoteKind::BaseEdition, body));
+        }
+        if let Some((current, description)) =
+            split_attribution(quoted, EditionNoteKind::BaseEdition)
+            && !current.is_empty()
+            && !description.is_empty()
+            && (!description.starts_with(['「', '※']) || quoted_spatial_description(description))
+        {
+            return Some((EditionNoteKind::BaseEdition, body));
+        }
+    }
+    if let Some((subject, description)) = body
+        .split_once("は底本では")
+        .or_else(|| body.split_once("は、底本では"))
+        && let Some((quoted, qualification)) =
+            subject.strip_prefix('「').and_then(|s| s.split_once('」'))
+        && !quoted.is_empty()
+        && qualification.starts_with('の')
+        && qualification.len() > 'の'.len_utf8()
+        && !qualification.contains(['「', '」', '［', '］', '\n'])
+        && !description.is_empty()
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    if let Some((subject, description)) = body
+        .split_once("は底本では")
+        .or_else(|| body.split_once("は、底本では"))
+        && let Some((qualifier, quoted)) = subject.split_once('「')
+        && !qualifier.is_empty()
+        && !qualifier.starts_with("ここから")
+        && !qualifier.starts_with("ここまで")
+        && !qualifier.contains(['、', '」', '［', '］', '\n'])
+        && (qualifier != "ルビの" || quoted.matches('「').count() > 0)
+        && quoted.contains('」')
+        && !description.is_empty()
+        && !description.contains("は底本では")
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    if let Some((subject, description)) = body
+        .split_once("は底本では")
+        .or_else(|| body.split_once("、底本では"))
+        && !subject.is_empty()
+        && !subject.contains(['、', '「', '」', '［', '］', '\n'])
+        && !subject.starts_with("ここから")
+        && !subject.starts_with("ここまで")
+        && !subject.starts_with("ここで")
+        && !description.is_empty()
+    {
+        return Some((EditionNoteKind::BaseEdition, body));
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TextVariantTarget, base_edition_concealed_characters, text_variant};
+
+    #[test]
+    fn embedded_glyph_statement_owns_only_a_complete_reference_tail() {
+        let statement = "底本はこの字を「さんずい＋「仰」のつくり」と作字上の誤り";
+        let source =
+            format!("※［＃「※」は「さんずい＋卯」、第4水準2-78-35、17-上-9、{statement}］");
+        assert_eq!(super::gaiji_edition_note(&source), Some(statement));
+        for source in [
+            format!("※［＃「字」、U+6CD6、{statement}、未知］"),
+            format!("※［＃「字」、U+6CD6、未知、{statement}］"),
+            format!("※［＃「{statement}」、U+6CD6］"),
+            "※［＃「字」、U+6CD6、底本はこの字を「」と作字上の誤り］".to_owned(),
+        ] {
+            assert!(super::gaiji_edition_note(&source).is_none(), "{source}");
+        }
+    }
+
+    #[test]
+    fn concealment_quantity_retains_only_explicit_base_edition_character_counts() {
+        for (source, quantity) in [
+            ("［＃底本１字伏字］", 1),
+            ("［＃底本２字伏字］", 2),
+            ("［＃底本４字伏字］", 4),
+            ("［＃底本12字伏字］", 12),
+        ] {
+            assert_eq!(
+                base_edition_concealed_characters(source).unwrap().get(),
+                quantity
+            );
+        }
+        for source in [
+            "［＃底本０字伏字］",
+            "［＃底本字伏字］",
+            "［＃底本2行伏字］",
+            "［＃初出２字伏字］",
+            "［＃底本２字伏字、復元］",
+            "［＃底本4294967296字伏字］",
+        ] {
+            assert!(
+                base_edition_concealed_characters(source).is_none(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn quoted_alternatives_preserve_the_attribution_without_asserting_error() {
+        let reading = text_variant("［＃ルビの「ざる」は底本では「さる」］").unwrap();
+        assert_eq!(reading.target, TextVariantTarget::RubyReading);
+        assert_eq!((reading.current, reading.base_text), ("ざる", "さる"));
+        let text = text_variant("［＃「甍の」は底本では「薨の」］").unwrap();
+        assert_eq!(text.target, TextVariantTarget::Text);
+        assert_eq!((text.current, text.base_text), ("甍の", "薨の"));
+    }
+
+    #[test]
+    fn quotation_characters_are_target_data_and_keep_exact_fragment_extents() {
+        for source in [
+            "［＃「……』」は底本では「……」」］",
+            "［＃「』」は、底本では「」」］",
+            "［＃「』」は底本では、「」」］",
+        ] {
+            let variant = text_variant(source).unwrap();
+            assert_eq!(&source[variant.current_span.clone()], variant.current);
+            assert_eq!(
+                &source[variant.base_span.clone().unwrap()],
+                variant.base_text
+            );
+            assert!(variant.base_text.ends_with('」'));
+        }
+    }
+
+    #[test]
+    fn variant_assertions_and_source_locators_preserve_whole_statements() {
+        for (source, expected) in [
+            ("［＃「藤井」は底本では「蔵井」、412-13］", "蔵井"),
+            ("［＃「山」は底本では「出」と誤植、25-上-1］", "出"),
+            ("［＃「平和」は底本では「価格」、正誤表による訂正］", "価格"),
+            (
+                "［＃「如何《どう》」は底本では「如何《どう》う」と「う」が重複］",
+                "如何《どう》う",
+            ),
+        ] {
+            let variant = text_variant(source).unwrap_or_else(|| panic!("{source}"));
+            assert_eq!(variant.base_text, expected);
+            assert_eq!(&source[variant.base_span.unwrap()], expected);
+            assert_eq!(
+                variant.editorial_statement,
+                Some(&source["［＃".len()..source.len() - '］'.len_utf8()])
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_attribution_accepts_supplied_particles_and_direct_glyph_witnesses() {
+        for source in [
+            "［＃「ひとりっきり」では底本では「ひとりきりっ」］",
+            "［＃「餡」は底本では※［＃「飮のへん＋稻のつくり」、第4水準2-92-68］］",
+        ] {
+            let variant = text_variant(source).unwrap_or_else(|| panic!("{source}"));
+            assert_eq!(&source[variant.current_span], variant.current);
+            assert_eq!(&source[variant.base_span.unwrap()], variant.base_text);
+        }
+        assert!(text_variant("［＃「字」は底本では※［＃未知の指示］］").is_none());
+    }
+
+    #[test]
+    fn qualified_base_edition_geometry_is_documentary_apparatus() {
+        for source in [
+            "［＃左図の解説文、底本では横組み］",
+            "［＃「differentiation」の左から２番目のtは底本では上下逆］",
+            "［＃「5」の傍線は底本では欠落］",
+            "［＃「士は、」の後は、底本では改行１字下げ］",
+            "［＃「％」は底本では「・」の右横に付く］",
+            "［＃ルビの「ゲトウ」は、底本では「ゲ」が左に90度回転］",
+        ] {
+            let (_, statement) = super::edition_note(source).unwrap_or_else(|| panic!("{source}"));
+            assert_eq!(
+                statement,
+                &source["［＃".len()..source.len() - '］'.len_utf8()]
+            );
+            assert!(text_variant(source).is_none());
+        }
+        assert!(super::edition_note("［＃「字」は底本では「他字］").is_none());
+        assert!(super::edition_note("［＃「字」は底本では「他字。底本ではそうだ。］").is_none());
+    }
+
+    #[test]
+    fn editorial_explanations_retain_witnesses_and_complete_assertions() {
+        for source in [
+            "［＃「１７５９２」は底本では「１７３９２」。【例題一】と同一と考えられるため、【例題一】に合わせました。］",
+            "［＃「幽明の交通」は底本では「幽明交通」（本文は「幽明の交通」）］",
+        ] {
+            let variant = text_variant(source).unwrap_or_else(|| panic!("{source}"));
+            assert_eq!(&source[variant.base_span.unwrap()], variant.base_text);
+            assert!(variant.editorial_statement.is_some());
+        }
+        for source in [
+            "［＃底本で第二十四頁にあるのは、例題七（底本では例題八）です。］",
+            "［＃次の手紙は「遺書」として書かれ投函されなかった。底本では第十九巻の巻末に収録］",
+            "［＃入力者註：底本では「中国」「支那」が共に使われているが、「中国」に統一した。］",
+        ] {
+            let (_, statement) = super::edition_note(source).unwrap_or_else(|| panic!("{source}"));
+            assert_eq!(
+                statement,
+                &source["［＃".len()..source.len() - '］'.len_utf8()]
+            );
+        }
+    }
+
+    #[test]
+    fn ambiguous_or_incomplete_notes_remain_unclassified() {
+        for source in [
+            "［＃ルビの「ざる」は底本では「さる」",
+            "［＃ルビの「」は底本では「さる」］",
+            "［＃ルビの「ざる」は底本では「さる」とある］",
+            "［＃「字」は底本では「字」は底本では「字」］",
+            "［＃ルビの「ざる」は底本では「さ\nる」］",
+        ] {
+            assert!(text_variant(source).is_none(), "{source}");
+        }
+    }
+}
