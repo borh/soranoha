@@ -37,13 +37,15 @@ and must remain stable.
 The URL is:
 
 ```
-https://soranoha.org/chain/soranoha-chain.git
+https://github.com/borh/soranoha-chain
 ```
 
-It is read-only and provides an anonymous public view of the publication origin.
-Publishers write to the same repository over authenticated SSH. This URL serves as the stable
-origin qualifier for every archived SWHID; changing it invalidates previously
-recorded identifiers.
+Anyone can clone it anonymously over HTTPS. Publishers write to the same
+repository over authenticated SSH, and the repository's branch rules refuse
+force pushes and branch deletion, so the fast-forward-only push the kernel
+relies on is enforced by the origin and not only by the publisher. This URL
+serves as the stable origin qualifier for every archived SWHID; changing it
+invalidates previously recorded identifiers.
 
 An archival observation records the authoritative origin that serializes
 releases, which a secondary mirror cannot replace.
@@ -122,7 +124,7 @@ the two walks agree at every step or the chain is broken.
 origin URL, a fully qualified identifier for one file is:
 
 ```
-swh:1:cnt:<git blob id>;origin=https://soranoha.org/chain/soranoha-chain.git;visit=swh:1:snp:<S>;anchor=swh:1:rev:<C>;path=/blobs/sha256/8b/8b2595...
+swh:1:cnt:<git blob id>;origin=https://github.com/borh/soranoha-chain;visit=swh:1:snp:<S>;anchor=swh:1:rev:<C>;path=/blobs/sha256/8b/8b2595...
 ```
 
 **Do not confuse the two digests.** A Soranoha artifact id carries the sha256
