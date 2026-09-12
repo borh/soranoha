@@ -38,11 +38,6 @@ forms filled in for the release you are reading are on the served
 [citation page](https://soranoha.org/citation), and every work page carries
 its own, ready to copy.
 
-> **Not yet minted.** The Zenodo concept and version DOIs are created at
-> public genesis. Until then the DOI lines below are shown in their intended
-> form with a placeholder, and the head is the only stable release
-> identifier.
-
 ## A release is citable once it has been archived
 
 The corpus is citable only where its bytes can still be reached after this

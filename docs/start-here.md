@@ -145,8 +145,10 @@ for work in catalog["works"]:
 ```
 
 Rate-limit automated requests when fetching individual texts, or use the bulk
-archives for complete corpus downloads. Quarterly Zenodo deposits are planned
-and not yet minted; [Citing Soranoha](citation.md) says what they will carry.
+archives for complete corpus downloads. The same two archives are deposited on
+Zenodo quarterly, beside the signed manifest they belong to, under the version
+DOI the served citation names; [Citing Soranoha](citation.md) says what the
+DOI does and does not identify.
 
 The site is served from one host the project operates. Availability is best
 effort and bandwidth is not guaranteed, so take the whole corpus through the

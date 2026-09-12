@@ -7,7 +7,7 @@ procedure.
 |---|---|---|
 | Purpose | Authenticates which public key holds which role | Archives a release's bytes independently of the publication channel |
 | Frequency | Once, before the first signed release | Quarterly |
-| Contents | The two role public keys and their role assignment | The then-current signed manifest and the records it names |
+| Contents | The two role public keys and their role assignment | The then-current signed manifest, the records it names, and the two bulk archives served for that release |
 | Discovery | Listed as a work on the owner's ORCID record | Cited by version DOI in each work's citation, when the serving release has one |
 
 Both deposits are made by the publication owner under the Zenodo account
@@ -142,23 +142,41 @@ a verifier reads, and they carry no DOI. `release-doi` is optional throughout
 for exactly this reason, and a citation simply omits the DOI line when the
 serving release has none.
 
-Deposit the manifest and the records it names, which is what a verifier needs
-and is small enough to deposit every time. The published artifacts are not
-deposited: the corpus export is several gigabytes per release, and a reader who
-has an artifact can check it against the deposited manifest without it. Do not
-include the role public keys either. They belong to the anchor, and a copy here
-would be a second place a verifier might take them from.
+Deposit two things. The manifest and the records it names are what a verifier
+needs, and are small enough to deposit every time. The two bulk archives the
+site serves for that release, TEI and plaintext, are what a reader who follows
+the DOI expects to find: a citation names the version DOI beside the head, and
+a record holding only proof files would send that reader back to the site the
+deposit exists to outlive. The archives are the served bytes unchanged, so
+their digests in `SHA256SUMS` tie the record to what the site offered, and the
+`catalog.csv` inside each names the release head and this DOI on every row.
+Together they were under a gigabyte at genesis, for about seventeen thousand
+works, against Zenodo's fifty gigabytes per record. Do not include the role
+public keys. They belong to the anchor, and a copy here would be a second place
+a verifier might take them from.
 
 ### Assemble it
 
-The five files come out of a chain clone with no tooling beyond coreutils and
-`jq`. Every name below is a content-addressed digest, so the script checks each
-file against its own name as it goes; a mismatch means the clone is damaged and
-the deposit must not be made from it.
+The archives carry the DOI they are deposited under, because the served tree
+is exported with `release-doi` as an input (below). So the DOI exists before
+the files do: reserve it on the Zenodo draft, record it and run
+`serving-activate`, and only then assemble the deposit from the tree activation
+exported. An archive taken from a tree exported without the DOI names its own
+record incompletely, and the fix is to re-export, not to edit the archive.
+
+The manifest, its signature and the three records come out of a chain clone
+with no tooling beyond coreutils and `jq`. The two archives come out of the
+serving root's `current` tree, or equivalently from
+`https://soranoha.org/bulk/`, and `unzip` reads their catalogs. Every chain
+file's name is a content-addressed digest, so the script checks each file
+against its own name as it goes, and it checks that every row of each archive's
+catalog names the manifest head. A mismatch means the clone is damaged or the
+tree is not this release's, and the deposit must not be made from it.
 
 ```sh
 set -eu
 clone=/path/to/chain-clone
+tree=/path/to/serve-root/current
 out="$PWD/deposit"
 mkdir -p "$out"
 
@@ -174,6 +192,11 @@ for field in .catalog .admission.assessment_snapshot .admission.admission_report
   cp "$src" "$out/$blob"
 done
 
+for zip in soranoha-tei.zip soranoha-plaintext.zip; do
+  cp "$tree/bulk/$zip" "$out/"
+  test "$(unzip -p "$out/$zip" catalog.csv | tail -n +2 | grep -vc "\"$hex\"")" = 0
+done
+
 (cd "$out" && sha256sum -- * > SHA256SUMS)
 cat "$out/SHA256SUMS"
 ```
@@ -181,7 +204,8 @@ cat "$out/SHA256SUMS"
 The three records keep their bare digest names, which are their identities. The
 manifest says which is which, by the `catalog`,
 `admission.assessment_snapshot` and `admission.admission_report` fields the
-script just read.
+script just read. The archives keep the names the site serves them under, so a
+reader can check a download from the site against the deposited digests.
 
 ### Upload it
 
@@ -191,10 +215,15 @@ omitted from signed manifests, the Zenodo deposit serves as their archived recor
 
 The upload itself is Zenodo's procedure and is not specified here; use the
 deposit form or the REST API under the `borh` account. Two things about it are
-Soranoha's and are fixed: the deposit is a **new version** of the release
-concept record rather than a new record, so that every release shares one
-concept DOI and each has its own version DOI, and the version DOI is what gets
-recorded below.
+Soranoha's and are fixed: the deposit is a **new version** of the record the
+first deposit created rather than a new record, so that every deposit shares
+one concept DOI and each has its own version DOI, and the version DOI is what
+gets recorded below.
+
+Zenodo lets a record's files be replaced for a limited time after publication
+and its metadata be edited at any time. Rely on neither: assemble the whole
+deposit, archives included, before publishing, so that the version DOI names
+its final bytes from the moment it resolves.
 
 ### Recording the DOI
 
@@ -208,7 +237,9 @@ render.
 
 So the DOI is deployment configuration. Set `release-doi` in
 `/etc/soranoha/publisher.json`, or pass `--release-doi`, and run
-`serving-activate`.
+`serving-activate`. Zenodo assigns the DOI to the unpublished draft on request,
+which is what lets activation run, and the archives be assembled from its
+tree, before the deposit is published.
 
 The value is the **bare DOI**, not a link. It is checked against
 `10.<4-9 digits>/<no whitespace>` before it reaches any citation, so
