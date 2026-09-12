@@ -213,6 +213,26 @@ Include the corpus release name in Zenodo's version field and the maturity label
 in the description, matching the served site. Because these editorial labels are
 omitted from signed manifests, the Zenodo deposit serves as their archived record.
 
+Set the record's licence to CC0 1.0, and no other unless the release contains a
+work under Creative Commons Attribution. CC0 is the grant Soranoha makes over
+its own layer, the encoding, and it is the only grant the depositor can make:
+the standing of the underlying works is not Soranoha's to license, and the
+[rights statement](rights.md) says so. The description carries what the
+licence field cannot. State the standing of the works in this release, which
+the manifest records beside each work:
+
+```sh
+jq -r '.works | map(.rights) | group_by(.) | map("\(.[0]) \(length)") | .[]' "$out/$hex.json"
+```
+
+When every work is `public-domain`, say so. When some are under Creative
+Commons Attribution, give their count, and add that licence to the record's
+licence list beside CC0, because a reader of the record's metadata must see the
+attribution condition without opening an archive. Name Aozora Bunko as the
+source in the description either way: the bibliographic fields of `catalog.csv`
+derive from its catalog, which it publishes under CC BY 4.0, and attribution is
+that licence's condition.
+
 The upload itself is Zenodo's procedure and is not specified here; use the
 deposit form or the REST API under the `borh` account. Two things about it are
 Soranoha's and are fixed: the deposit is a **new version** of the record the
