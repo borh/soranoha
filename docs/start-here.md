@@ -145,15 +145,14 @@ for work in catalog["works"]:
 ```
 
 Rate-limit automated requests when fetching individual texts, or use the bulk
-archives for complete corpus downloads. The same two archives are deposited on
-Zenodo quarterly, beside the signed manifest they belong to, under the version
-DOI the served citation names; [Citing Soranoha](citation.md) says what the
-DOI does and does not identify.
+archives for complete corpus downloads. The two archives are also deposited on
+Zenodo quarterly beside the signed manifest; [Citing Soranoha](citation.md)
+specifies the version DOI scope.
 
-The site is served from one host the project operates. Availability is best
-effort and bandwidth is not guaranteed, so take the whole corpus through the
-bulk archives rather than one text at a time. What persists is the signed
-release chain and its archived copies, not this host.
+Because site availability is best effort and bandwidth is limited, retrieve the
+full corpus via bulk archives rather than sequential requests. The persistent
+record resides in the signed release chain and its archived copies, not the
+serving host.
 
 ## Scale and coverage
 

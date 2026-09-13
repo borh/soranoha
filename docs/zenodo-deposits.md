@@ -1,7 +1,6 @@
 # Zenodo deposits and ORCID anchoring
 
-Soranoha makes two kinds of Zenodo deposit, and they are not variants of one
-procedure.
+Soranoha uses two distinct Zenodo deposit types:
 
 | | Trust anchor | Snapshot deposit |
 |---|---|---|
@@ -142,36 +141,27 @@ a verifier reads, and they carry no DOI. `release-doi` is optional throughout
 for exactly this reason, and a citation simply omits the DOI line when the
 serving release has none.
 
-Deposit two things. The manifest and the records it names are what a verifier
-needs, and are small enough to deposit every time. The two bulk archives the
-site serves for that release, TEI and plaintext, are what a reader who follows
-the DOI expects to find: a citation names the version DOI beside the head, and
-a record holding only proof files would send that reader back to the site the
-deposit exists to outlive. The archives are the served bytes unchanged, so
-their digests in `SHA256SUMS` tie the record to what the site offered, and the
-`catalog.csv` inside each names the release head and this DOI on every row.
-Together they were under a gigabyte at genesis, for about seventeen thousand
-works, against Zenodo's fifty gigabytes per record. Do not include the role
-public keys. They belong to the anchor, and a copy here would be a second place
-a verifier might take them from.
+Deposit the manifest and the records it names, along with the two served bulk
+archives (TEI and plaintext). The manifest and constituent records provide
+cryptographic verification, while the bulk archives ensure published texts
+remain retrievable independently of the serving site. The archives contain the
+exact served bytes, with `SHA256SUMS` matching the site's downloads and each
+archive's `catalog.csv` naming the release head and version DOI. Together they
+total under 1 GB, well within Zenodo's 50 GB per-record limit. Do not include
+role public keys; they belong exclusively to the trust anchor.
 
 ### Assemble it
 
-The archives carry the DOI they are deposited under, because the served tree
-is exported with `release-doi` as an input (below). So the DOI exists before
-the files do: reserve it on the Zenodo draft, record it and run
-`serving-activate`, and only then assemble the deposit from the tree activation
-exported. An archive taken from a tree exported without the DOI names its own
-record incompletely, and the fix is to re-export, not to edit the archive.
+Because `catalog.csv` in each bulk archive records `release-doi`, the DOI must
+be reserved on the Zenodo draft before running `serving-activate`. Assemble the
+deposit only after export. If a tree was exported without the DOI, re-export it
+rather than modifying the archive.
 
-The manifest, its signature and the three records come out of a chain clone
-with no tooling beyond coreutils and `jq`. The two archives come out of the
-serving root's `current` tree, or equivalently from
-`https://soranoha.org/bulk/`, and `unzip` reads their catalogs. Every chain
-file's name is a content-addressed digest, so the script checks each file
-against its own name as it goes, and it checks that every row of each archive's
-catalog names the manifest head. A mismatch means the clone is damaged or the
-tree is not this release's, and the deposit must not be made from it.
+The manifest, signature, and three constituent records are extracted from a
+chain clone; the two bulk archives are copied from the serving root's
+`current/bulk/` tree. The assembly script verifies each chain file against its
+digest filename and checks that all rows in each archive's `catalog.csv` match
+the manifest release head:
 
 ```sh
 set -eu
@@ -201,11 +191,11 @@ done
 cat "$out/SHA256SUMS"
 ```
 
-The three records keep their bare digest names, which are their identities. The
-manifest says which is which, by the `catalog`,
-`admission.assessment_snapshot` and `admission.admission_report` fields the
-script just read. The archives keep the names the site serves them under, so a
-reader can check a download from the site against the deposited digests.
+The three constituent records retain their bare content-addressed digest names,
+referenced by the manifest's `catalog`, `admission.assessment_snapshot`, and
+`admission.admission_report` fields. The bulk archives retain their standard
+filenames (`soranoha-tei.zip` and `soranoha-plaintext.zip`), allowing users to
+verify site downloads directly against deposited checksums.
 
 ### Upload it
 
@@ -213,37 +203,31 @@ Include the corpus release name in Zenodo's version field and the maturity label
 in the description, matching the served site. Because these editorial labels are
 omitted from signed manifests, the Zenodo deposit serves as their archived record.
 
-Set the record's licence to CC0 1.0, and no other unless the release contains a
-work under Creative Commons Attribution. CC0 is the grant Soranoha makes over
-its own layer, the encoding, and it is the only grant the depositor can make:
-the standing of the underlying works is not Soranoha's to license, and the
-[rights statement](rights.md) says so. The description carries what the
-licence field cannot. State the standing of the works in this release, which
-the manifest records beside each work:
+Set the record's licence to CC0-1.0, adding Creative Commons Attribution if the
+release includes CC BY works. CC0 applies to Soranoha's encoding layer;
+underlying work standings are not Soranoha's to license. State the admitted
+works' copyright standings in the deposit description, derived from the
+manifest:
 
 ```sh
 jq -r '.works | map(.rights) | group_by(.) | map("\(.[0]) \(length)") | .[]' "$out/$hex.json"
 ```
 
-When every work is `public-domain`, say so. When some are under Creative
-Commons Attribution, give their count, and add that licence to the record's
-licence list beside CC0, because a reader of the record's metadata must see the
-attribution condition without opening an archive. Name Aozora Bunko as the
-source in the description either way: the bibliographic fields of `catalog.csv`
-derive from its catalog, which it publishes under CC BY 4.0, and attribution is
-that licence's condition.
+If all works are in the public domain, state this directly. If works under
+Creative Commons Attribution are included, state their count and list the
+corresponding CC BY licence in Zenodo's metadata so attribution conditions are
+visible without downloading archives. In all cases, attribute Aozora Bunko in
+the description for the bibliographic metadata in `catalog.csv` (licensed CC BY
+4.0).
 
-The upload itself is Zenodo's procedure and is not specified here; use the
-deposit form or the REST API under the `borh` account. Two things about it are
-Soranoha's and are fixed: the deposit is a **new version** of the record the
-first deposit created rather than a new record, so that every deposit shares
-one concept DOI and each has its own version DOI, and the version DOI is what
-gets recorded below.
+The upload itself follows Zenodo's procedure, using the deposit form or REST
+API under the `borh` account. Each snapshot deposit is created as a **new
+version** of the initial deposit rather than a separate record, sharing a single
+concept DOI while assigning a unique version DOI to each release.
 
-Zenodo lets a record's files be replaced for a limited time after publication
-and its metadata be edited at any time. Rely on neither: assemble the whole
-deposit, archives included, before publishing, so that the version DOI names
-its final bytes from the moment it resolves.
+Do not rely on post-publication file replacement or metadata edits: assemble all
+files, including bulk archives, before publishing so the version DOI resolves
+immediately to fixed bytes.
 
 ### Recording the DOI
 
@@ -278,12 +262,11 @@ Activation therefore waits on Zenodo being reachable. For a research corpus
 that delay is acceptable, and recording it as policy here is what keeps it from
 arriving as a surprise mid-release.
 
-## Checking a deposit you were given
+## Verifying deposit integrity
 
-The deposit contains the manifest bytes, so the DOI's correspondence to a
-release stays checkable outside the chain. A reader who is given a DOI can check
-it with `openssl` and coreutils alone, using only the release key published in
-the trust anchor:
+Because the deposit includes manifest bytes, the correspondence between a DOI
+and a release is verifiable independently of the publication chain using
+`openssl`, coreutils, and the release key from the trust anchor:
 
 ```sh
 set -eu

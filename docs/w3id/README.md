@@ -8,10 +8,10 @@ and every release manifest and TEI file names the rights statement as
 `https://w3id.org/soranoha/rights`. Those IRIs are in signed,
 content-addressed bytes, so they must stay stable independently of where the
 project is served. This directory holds the files registered in
-[perma-id/w3id.org](https://github.com/perma-id/w3id.org), merged there on
-2026-09-11, kept here because the redirect map is a permanent commitment of
-the project rather than a one-time chore. A change to the map is a further
-pull request against that repository, made from these files.
+[perma-id/w3id.org](https://github.com/perma-id/w3id.org), kept here because the
+redirect map is a permanent commitment of the project rather than a one-time
+chore. Subsequent modifications to the map are submitted as pull requests
+against that repository from these files.
 
 The registration is `ids/soranoha/.htaccess` and `ids/soranoha/README.md` in
 that repository. `htaccess` and `w3id-README.md` here are those two files; the
