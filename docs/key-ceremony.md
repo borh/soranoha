@@ -17,7 +17,7 @@ Both keys are generated fresh for the public chain. No key that has been residen
 a network-connected host may be pinned, because the pinned set cannot later be
 retired, so any exposure in a key's history is permanent.
 
-The two roles fail differently:
+Compromise or loss has different consequences for each role:
 - A compromised release key can publish an unwanted release but cannot withdraw a work.
 - A compromised governance key can withdraw published works.
 - A lost release key prevents signing subsequent releases, as the pinned key cannot be replaced.
@@ -26,7 +26,7 @@ Both keys require durable backups on the offline governance media created below.
 
 ## Ceremony parameters
 
-This document does not name the hardware. The ceremony records the following in the
+This document does not identify the hardware. The ceremony records the following in the
 custody inventory at execution time, and the inventory is not kept in this
 repository:
 
@@ -51,16 +51,16 @@ checked rather than assumed:
 - The image ships a network stack with wireless enabled, which contradicts the
   requirement that the machine have no path to a network.
 
-Building the image instead of assembling one by hand also gives the ceremony
-parameters something better to record than a downloaded checksum: the image is a
-function of pinned inputs, so it can be rebuilt later and compared against what the
-inventory says was used.
+Building the image instead of assembling one by hand also lets the ceremony
+parameters record a reproducible build rather than a downloaded checksum: the image
+is a function of pinned inputs, so it can be rebuilt later and compared against what
+the inventory records as used.
 
 The module is [nix/snh-ceremony-iso.nix](../nix/snh-ceremony-iso.nix), exposed by
 the repository flake as `nixosModules.snh-ceremony-iso` for an estate configuration
 to import, and as the configuration `nixosConfigurations.snh-ceremony` that builds
-the image from this repository alone. Build it on a networked machine; nothing about
-the build touches key material.
+the image from this repository alone. Build it on a networked machine; the build reads
+no key material.
 
 ```sh
 nix build .#nixosConfigurations.snh-ceremony.config.system.build.isoImage
@@ -68,8 +68,8 @@ sha256sum result/iso/snh-ceremony.iso
 readlink -f result
 ```
 
-The module sets `image.baseName`, which names both the derivation and the file
-inside it, so `result/iso/snh-ceremony.iso` above is the image.
+The module sets `image.baseName`, which sets the name of both the derivation and
+the file inside it, so `result/iso/snh-ceremony.iso` above is the image.
 
 Record both the store path and the digest in the ceremony parameters, then write the
 image to the boot medium.
@@ -98,9 +98,9 @@ mkdir -m 0700 /run/ceremony/mnt
 
 Every block below that opens a medium mounts it at `/run/ceremony/mnt`, which
 is why it is created once here. The path is written out rather than held in a
-variable so that each block stands on its own: the only thing a block needs
-from outside itself is the device, and each one sets that explicitly, because
-which medium is being opened is the one decision no default can make.
+variable so that each block is self-contained: the only external input a block
+needs is the device, and each block sets that explicitly, because no default can
+select which medium is being opened.
 
 The procedure needs only OpenSSL 3, GNU coreutils, `cryptsetup` and `e2fsprogs`, all
 of which the image carries.
@@ -108,8 +108,8 @@ of which the image carries.
 ## Prove the toolchain before generating anything
 
 The specification defines exact bytes, and a signing procedure that produces
-plausible-looking output over the wrong bytes is the failure this step exists to
-catch. Before any real key exists, reproduce a signature that is already checked into
+plausible-looking output over the wrong bytes is the failure this step
+detects. Before any real key exists, reproduce a signature that is already checked into
 the repository. The three constants below are transcribed from
 `soranoha/resources/snh/vectors/signature-vectors.json`, so nothing needs to be
 carried to the offline machine for this step.
@@ -220,14 +220,14 @@ medium under the halt rule below.
 
 Use a distinct passphrase for each medium so that disclosure of one does not
 compromise the other, and ensure each passphrase is independently recoverable
-because the protocol tolerates loss of one medium only if the surviving medium
+because the protocol tolerates loss of one medium only if the remaining medium
 can still be unlocked. Custody of these passphrases is an operational matter that
 the specification places outside the wire protocol; record the arrangement in the inventory.
 
-The manifest is written from inside the mount so that it names the four files
-and not the path they happened to be mounted at. A manifest carrying absolute
-paths would only check against the same mount point, which is exactly the
-condition a readback on another machine cannot rely on.
+The manifest is written from inside the mount so that it lists the four files by
+name and not by the path they were mounted at. A manifest carrying absolute
+paths would only check against the same mount point, which is the condition a
+readback on another machine cannot rely on.
 
 After both media exist, reopen each one and confirm its `MANIFEST` still matches, so
 that the inventory records two copies that have both been read back rather than two
@@ -249,7 +249,7 @@ The inventory is the accountability record for a key that is a file rather than 
 physical token, so there is no "lost but unread" state to fall back on. It lists the
 complete set of authorized persistent copies (in v1, exactly two), together with the
 copy operation that produced the second, and it is maintained outside this
-repository. Governance operates only while every surviving inventoried medium is
+repository. Governance operates only while every remaining inventoried medium is
 accounted for and controlled.
 
 The release seed also exists as a CI secret, which is not part of the
@@ -280,10 +280,10 @@ The two `.pub` files become the deployment's pinned verifier configuration, inst
 as root-owned files that the publisher cannot write. In the estate configuration that
 is `environment.etc."soranoha/pinned/release.pub"` and its governance counterpart,
 whose contents are the 65-byte files produced above, hex plus one newline. These
-bytes are non-authenticating: they say which keys this deployment verifies against,
-and only the trust anchor says which key holds which role.
+bytes are non-authenticating: they state which keys this deployment verifies against,
+and only the trust anchor states which key holds which role.
 
-Replacing the pins is part of the ceremony's aftermath rather than a later chore. Any
+Replacing the pins is the closing step of the ceremony rather than a later task. Any
 key that was resident on CI during private testing is disposable, and leaving it
 pinned would mean verifying against a key whose exposure history is permanent.
 
@@ -315,7 +315,7 @@ vector in `soranoha/resources/snh/vectors/signature-vectors.json` is the fixture
 signature under the fixture key, and a ceremony signature never replaces it.
 
 Rehearse the second medium the same way, with `dev` set to that device. Both media
-must be demonstrated to sign, not just to be readable.
+must be demonstrated to sign, not only to be readable.
 
 ## Sign a governance event after genesis
 
@@ -329,17 +329,17 @@ nix run .#soranoha-kernel -- governance-event-prepare \
 ```
 
 Write `candidate.json` however is convenient; key order and surrounding whitespace
-belong to the canonicalization rather than to the author. The command rejects
+are set by the canonicalization rather than by the author. The command rejects
 anything the chain would later reject about the event on its own: a duplicate key,
 a non-integral number, a schema violation, an unrecognized reason code, and entries
-that are not sorted by slug or name one work twice. It needs no chain clone and no
+that are not sorted by slug or list one work twice. It needs no chain clone and no
 key material, and it prints the `sha256` that the next step signs alongside the
 event id. When it reports `"input_was_canonical": false`, `candidate.json` is not
 the file to carry; `event.json` is.
 
-Two conditions it cannot check need the chain: whether each slug names a work the
-current release admits, and whether an amendment's `amends` names an event the
-chain carries. The `governance` subcommand checks both when it appends the signed
+Two conditions it cannot check need the chain: whether each slug identifies a work the
+current release admits, and whether an amendment's `amends` identifies an event
+the chain carries. The `governance` subcommand checks both when it appends the signed
 event, and neither depends on the signature, so a mistake there costs a corrected
 event rather than a repeated ceremony.
 

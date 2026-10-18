@@ -1,54 +1,9 @@
 #!/usr/bin/env python3
-"""Re-derive the Aozora corpus figures this project quotes, and fail on drift.
+"""Verify consistency of quoted Aozora corpus and repository metrics.
 
-Counts such as "2357 works share an author-and-title pair" are arguments, not
-decoration: they are why a download filename carries the work identifier and why
-the TEI header records the subtitle. They were hand-measured against whichever
-catalog snapshot was current when the sentence was written, then repeated across
-several files, and nothing re-measured them, so a drift stayed invisible until
-someone checked by hand. This checks two things instead.
-
-The checkout holds the snapshot the figures came from. Both digests the rights
-evidence records are recomputed before anything else, so a failing figure is
-never ambiguous between a mistake in the prose and a newer catalog.
-
-The figure still holds. Each entry names how it is derived, and the derivation
-runs against the catalog in the corpus checkout. An upstream catalog that has
-moved fails here with both numbers.
-
-Every copy agrees. A figure appears in more than one file, so each entry lists
-where, and a file that quotes a different number for the same claim fails even
-when the upstream catalog has not moved. Both `2357` and `2,357` count as
-quoting it, because the documents differ on grouping and the claim does not.
-
-Each figure names its population, because the two available ones give different
-answers and a sentence that does not say which invites exactly the drift this
-guards against. `CATALOG` is every work the catalog lists; `WITH_TEXT` is the
-subset that has a downloadable text file, which is what a release can publish
-from. The published population itself is not available without a release run.
-
-Some figures are about upstream's commit history rather than its catalog: how
-often aozorabunko moves without moving a work archive, and how long a release
-takes to cover a revision it skipped. Those are the argument for skipping a
-revision at all, so they are derived here too, from the same checkout's git.
-
-Reading archive members costs a pass over every ZIP in the checkout, so the
-figures that need it are skipped unless `--stems` is given.
-
-Only the re-derivation needs a corpus. `--quotes-only` runs the agreement half
-against the prose alone, which is what the bundled gates can afford: the
-sandboxed checks have no checkout, so without it an edit that stops quoting a
-figure goes unnoticed until someone runs the full check by hand.
-
-The full check is bound to the pinned snapshot rather than to a schedule, and
-that is why no gate runs it. A publisher's checkout is at live upstream, so the
-digest check fails on it by construction; there is no cadence at which this
-could run unattended and pass. It runs when the pin moves, which is the only
-moment its answer can change and be correct. The procedure is recorded beside
-the pin, in `soranoha/docs/evidence/aozora-rights-source-contract.md`.
-
-    python scripts/catalog-figures-check.py --aozora-root "$CORPUS_CHECKOUT"
-    python scripts/catalog-figures-check.py --quotes-only
+Checks that figures quoted across documentation match their derivations from
+the pinned corpus snapshot (or, under --quotes-only, that all citing files
+agree with the recorded values).
 """
 
 from __future__ import annotations
@@ -78,23 +33,17 @@ AUTHOR = "著者"
 CATALOG = "catalog"
 WITH_TEXT = "with-text"
 ROWS = "rows"
-# Two populations that are not the catalog at all. `HISTORY` is aozorabunko's
-# first-parent commit history; `SKIPPED` is the subset of it a release passes
-# over. Both come from git rather than from the CSV, which is why they are
-# derived separately below.
+# Commit history populations derived from git history rather than catalog CSV.
 HISTORY = "first-parent-history"
 SKIPPED = "skipped-commits"
 
 WORK_ARCHIVES = "cards/*/files/*.zip"
 CATALOG_DIRECTORY = "index_pages/*"
 
-# 底本初版発行年 as Aozora records it when it records only a date: a Gregorian
-# year, its era form, and a full month and day. Anything else is irregular, and
-# `soranoha.za.citation/edition-year` exists because of it.
+# Matches standard edition date format: Gregorian year, era year, month, and day.
 PLAIN_EDITION_DATE = re.compile(r"^\d{4}（[^）]+）年\d+月\d+日")
 
-# The romanization `soranoha.za.naming/ascii-component` applies, reproduced
-# because the author-component figure describes what that function produces.
+# Transliteration mapping mirroring soranoha.za.naming/ascii-component.
 TRANSLITERATIONS = {
     "ł": "l",
     "Ł": "L",
@@ -140,9 +89,7 @@ class Digest(NamedTuple):
     quoted_in: Sequence[str]
 
 
-# Checked first, and reported on its own, because one moved snapshot explains
-# every figure that follows: a reader who sees these two agree knows a failing
-# figure is a mistake in the prose and not a newer catalog.
+# Pinned catalog archive and CSV digests.
 DIGESTS = [
     Digest(
         "the catalog archive",
@@ -298,9 +245,7 @@ FIGURES = [
         667,
         [CITATION, CITATION_SRC],
     ),
-    # `citation.clj` writes this one as a word ("in all but one it leads the
-    # string"), so only the derivation is checked: a numeral search would find
-    # every unrelated 1 in the file.
+    # Derived only; citation.clj writes the figure as prose rather than a numeral.
     Figure(
         "edition-year-not-leading",
         ROWS,
@@ -338,17 +283,7 @@ STEM_FIGURES = [
 ]
 
 
-# The figures that come out of aozorabunko's commit history rather than out of
-# its catalog. They are the whole argument for `release-needed!` skipping a
-# revision: how often upstream moves without moving a work archive, and how
-# long a skipped revision waits for the release that covers it. Every one of
-# them grows as upstream does.
-#
-# They are pinned by the same catalog digests as everything else, but less
-# tightly. A checkout whose catalog matches the pin can still be a few commits
-# past the revision these were measured at, because a commit that changes no
-# catalog byte moves the history without moving the digest. Seven commits in
-# the whole history are of that kind, so the slack is real and small.
+# Figures derived from commit history rather than catalog metadata.
 HISTORY_FIGURES = [
     Figure(
         "first-parent-commits",
@@ -392,11 +327,7 @@ HISTORY_FIGURES = [
         14,
         [MAIN],
     ),
-    # Registered for re-derivation only, with nowhere to check it against. The
-    # prose states this one as a bare `2`, and a bare `2` occurs in `main.clj`
-    # for unrelated reasons, so a quote check would pass whether or not the
-    # claim was still there. Listing a file here would raise the citation count
-    # by one and verify nothing.
+    # Derived only; cited in prose as a word/bare digit.
     Figure(
         "median-skip-wait-days",
         SKIPPED,
@@ -423,17 +354,7 @@ def git(aozora_root: Path, *arguments: str) -> list[str]:
 
 
 def measure_history(aozora_root: Path) -> dict[tuple[str, str], int]:
-    """The commit-history figures, from two walks of the first-parent path.
-
-    A skipped commit's wait is the time to the next commit that did move a
-    work archive, because that is the one whose release covers it.
-
-    Waits are rounded to whole days rather than truncated. Upstream commits at
-    a consistent time of day, so these land within seconds of a whole day: the
-    longest is fifteen seconds over fourteen days and the median nine seconds
-    under two. Truncating would report the second of those as one day, which
-    is a different claim than the prose makes and a wrong one.
-    """
+    """Derive commit-history and skipped-commit metrics from first-parent git log."""
     commits = [
         line.split()
         for line in git(
@@ -477,7 +398,7 @@ def measure_history(aozora_root: Path) -> dict[tuple[str, str], int]:
 
 
 def check_digests(aozora_root: Path) -> list[str]:
-    """Whether the checkout holds the snapshot the figures were derived from."""
+    """Verify that the checkout matches pinned catalog digests."""
     archive_path = aozora_root / CATALOG_ARCHIVE
     archive = zipfile.ZipFile(archive_path)
     member = next(name for name in archive.namelist() if name.endswith(".csv"))
@@ -493,7 +414,7 @@ def check_digests(aozora_root: Path) -> list[str]:
 
 
 def digest_quotes() -> list[str]:
-    """Whether every file that cites a pinned digest still states it."""
+    """Check that each file citing a pinned digest still states it."""
     return [
         f"{digest.what}: {name} no longer states {digest.sha256}"
         for digest in DIGESTS
@@ -517,11 +438,7 @@ def authors(work: Work) -> Work:
 
 
 def author_key(work: Work) -> tuple[str, ...]:
-    """The work's authorship, as the set of 著者 person ids.
-
-    Person ids rather than written names, because two people can share a name
-    and the id is what the catalog itself treats as the person.
-    """
+    """Return sorted author person IDs for a work."""
     return tuple(sorted(row["人物ID"] for row in authors(work)))
 
 
@@ -556,13 +473,7 @@ def author_component(work: Work) -> str:
 
 
 def archive_stems(aozora_root: Path, works: Iterable[Work]) -> list[str]:
-    """The stem of each work archive's single text member.
-
-    The stem is the member's name and never the archive's own: `92_ruby_164.zip`
-    holds `kumono_ito.txt`. An archive that is missing, unreadable, or does not
-    hold exactly one text member contributes nothing, because the source bundle
-    fails closed on it rather than picking one.
-    """
+    """Extract text member filename stems from work ZIP archives."""
     stems = []
     for work in works:
         match = TEXT_ARCHIVE.search(work[0]["テキストファイルURL"].strip())
@@ -597,9 +508,7 @@ def measure(works: dict[str, Work]) -> dict[tuple[str, str], int]:
         if match and written and written[0]["人物ID"].zfill(6) != match.group(1):
             filed_elsewhere += 1
     orthography = collections.Counter(work[0]["文字遣い種別"].strip() for work in with_text)
-    # One text can sit in the archive twice, once per orthography, as two works
-    # with two identifiers. A study that groups by title without the
-    # 文字遣い種別 field silently merges them.
+    # Group works by title and subtitle to find works split across orthographies.
     by_title: collections.defaultdict[tuple[str, str], set[str]] = collections.defaultdict(set)
     for work in with_text:
         style = work[0]["文字遣い種別"].strip()
@@ -676,16 +585,7 @@ def quotes(path: Path, value: int) -> bool:
 
 
 def figure_quotes(figures: Sequence[Figure]) -> list[str]:
-    """Whether every file that cites a figure still states the same number.
-
-    This half needs no corpus, which is why it is separable: a figure that has
-    stopped being quoted where it was recorded, or that two files now disagree
-    about, is visible from the prose alone. Only this half can run in the
-    bundled gates, because the corpus half needs a checkout the sandboxed
-    checks do not have. Editing an em-dash out of source prose once put a comma
-    against a figure and dropped it out of coverage, and only a hand run of the
-    full check noticed.
-    """
+    """Check that each file citing a figure quotes the recorded value."""
     return [
         f"{figure.key}: {name} no longer states {figure.quoted}"
         for figure in figures

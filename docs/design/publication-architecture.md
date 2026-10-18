@@ -60,17 +60,17 @@ routes are names over it. The browse layer is generated: a landing page, author,
 title and NDC indexes, one page per work, a reading view per work, a page for
 each withdrawn work, the rights and citation pages, the project's own
 documentation, and a search index the pages query in the browser. None of it is
-hashed into the chain or checked by a verifier, and no manifest names a browse
+hashed into the chain or checked by a verifier, and no manifest refers to a browse
 file, although the rights grant's `statement_url` is a route the browse layer
-answers. It exists so the corpus has an entry point that is not a 64-character
+serves. It exists so the corpus has an entry point that is not a 64-character
 hex string. Each artifact has two names for one blob:
 `/works/<identifier>/<type>` for citation links, and a descriptive filename for
 browser downloads. Site text is bilingual, Japanese first. Because generation is
 a pure function of the release being exported, the exporter's reuse check covers
 those pages exactly as it covers chain content, and the same commit re-exports
-byte-identically. Serving stays one static tree with no application runtime,
+byte-identically. Serving is one static tree with no application runtime,
 configured entirely by [the checked-in Caddyfile](../../soranoha/config/caddy/Caddyfile).
-Changing it requires bumping the revision and hash pin in the estate's
+Changing it requires updating the revision and hash pin in the estate's
 `soranoha-serve.nix`, which keeps serving policy immutable system state rather
 than release data.
 
@@ -79,13 +79,13 @@ from that work's own artifact bytes, rather than using a stylesheet reference
 inside the published file. An `<?xml-stylesheet?>` processing instruction would
 change every TEI artifact's bytes, moving presentation into the artifact ids,
 the conformance vectors, and genesis. That tight coupling would prevent presentation
-updates without republishing the corpus. A rendering that lives in the serving
+updates without republishing the corpus. A rendering held in the serving
 layer is replaced at the next activation. It states the
 release it was rendered from and links the artifact it was rendered out of, so
 a reader who doubts the rendering can check it against the bytes. It also selects
 the same text the published plaintext projection selects, one lemma from an
-apparatus and the first supported branch of a choice, so the two cannot disagree
-about which reading the work carries. They still differ in what surrounds that
+apparatus and the first supported branch of a choice, so the two always present
+the same reading of the work. They still differ in what surrounds that
 text: plaintext drops ruby readings and notes for analysis workflows that consume
 base text, and the reading view shows them.
 

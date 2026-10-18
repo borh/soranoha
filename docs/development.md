@@ -1,7 +1,7 @@
 # Development
 
 This is the canonical monorepo for the conversion and validation system. Readers
-of the corpus want [start here](start-here.md), [a worked example](worked-example.md)
+of the corpus are directed to [start here](start-here.md), [a worked example](worked-example.md)
 and the [glossary](user-glossary.md) instead; this document is for people who
 build or change the system.
 
@@ -64,8 +64,8 @@ revisions with the production stages and delta oracle. See
 
 ## Source identity
 
-Nix owns source identity and the toolchain; domain behaviour stays in Clojure,
-Rust and Python. Every evidence-bearing input (the TEI P5 source, the TEI-EAJ
+Nix owns source identity and the toolchain; domain behaviour is implemented in
+Clojure, Rust and Python. Every evidence-bearing input (the TEI P5 source, the TEI-EAJ
 reference, the corpus snapshot, dictionary and converter sources) is pinned by
 revision or release tag in its flake URL, not only in the lock, so a routine
 lock update cannot move it. Infrastructure inputs such as nixpkgs and clj-nix
@@ -73,9 +73,9 @@ are lock-only pins.
 
 The root `flake.lock` is the canonical lock. The `ab-validator/flake.lock`
 supports working in that component directly and must agree with the root lock
-for shared non-path inputs, so a shared input moves in both locks in one change.
+for shared non-path inputs, so one change updates a shared input in both locks.
 `just flake-input-policy` enforces both rules, and `just tei-version-coherence`
-holds every TEI reference in the repository at P5 4.11.0.
+checks that every TEI reference in the repository is P5 4.11.0.
 
 ## Where the rest is written
 
@@ -93,7 +93,7 @@ holds every TEI reference in the repository at P5 4.11.0.
   `https://w3id.org/soranoha/ns/tei` namespace, bound to `snh:`, with its
   attributes and validation rule identifiers.
 - [Work identifiers](../soranoha/docs/work-identifiers.md): the
-  `000092_000879` form, what it promises across releases, and where exact
+  `000092_000879` form, what it guarantees across releases, and where exact
   edition identity lives instead.
 - [Parser and rendering invariants](parser-invariants.md): the behaviour the
   converter must preserve, for use in code comments and commit messages.

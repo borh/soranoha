@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Compare non-oracle table row counts and oracle rows keyed by source, text,
-# region and projected character offsets. Older classifications come from
-# evidence_detail; tables are directories of Parquet parts.
+# region and projected character offsets. Prior-run classifications are read
+# from evidence_detail JSON; tables are directories of Parquet parts.
 PRIOR="${1:?usage: oracle-validation-diff.sh PRIOR_RUN_DIR NEW_RUN_DIR}"
 NEW="${2:?usage: oracle-validation-diff.sh PRIOR_RUN_DIR NEW_RUN_DIR}"
 rp() { printf "read_parquet('%s/%s.parquet/*.parquet')" "$1" "$2"; }

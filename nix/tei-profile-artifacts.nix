@@ -2,7 +2,7 @@
 
 let
   # TEI P5 version, stated again in ./tei.nix for the reference tree. The
-  # `monorepo-tei-version-coherence` check holds the two together; bump both.
+  # `monorepo-tei-version-coherence` check requires the two to agree; change both.
   teiP5Version = "4.11.0";
   teiStylesheetsVersion = "7.60.0";
 

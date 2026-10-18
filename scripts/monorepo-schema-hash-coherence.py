@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Recheck every recorded soranoha schema hash against the schema it names.
-
-A record that carries ``<name>_schema_id`` and ``<name>_schema_hash`` is
-asserting which schema it was written against. Nothing recomputed those
-assertions, so both the metadata-record and person-record pins drifted across
-two schema edits before this gate existed: the importer would have rejected
-every real export, and the fixtures claimed a digest no schema ever had.
-
-The check walks live JSON and recomputes each pin from the schema itself, so a
-schema edit fails here rather than at the first import of real data.
-"""
+"""Verify recorded schema hashes in repo records against canonical schema digests."""
 
 from __future__ import annotations
 
@@ -20,8 +10,7 @@ import re
 import sys
 from typing import Any
 
-# Frozen evidence of what was published. Its recorded hashes name the schema
-# as it stood, so recomputing them from today's schema is the wrong question.
+# Directories containing historical records pinned to earlier schema versions.
 SKIPPED = (
     ".beads",
     ".git",
@@ -29,10 +18,7 @@ SKIPPED = (
     "ab-validator/docs",
 )
 
-# A pin held in source rather than in a record. The constant is deliberate:
-# it states which schema the surrounding field mapping was written against, so
-# a schema change has to be reviewed alongside the mapping. What it cannot do
-# by itself is notice that the schema moved. No source holds one at present.
+# Source constants pinning schema hashes: (relative_path, constant_name, schema_id).
 SOURCE_PINS: tuple[tuple[str, str, str], ...] = ()
 
 ID_SUFFIX = "_schema_id"
@@ -40,16 +26,11 @@ HASH_SUFFIX = "_schema_hash"
 
 
 def canonical_bytes(value: Any) -> bytes:
-    """Encode under rfc8785-safe-integer-json-bytes-v1, the one canonicalizer.
-
-    Floats are rejected rather than encoded: the Clojure producer admits only
-    safe integers, and a silent float here would produce a digest no producer
-    can reproduce.
-    """
+    """Encode JSON bytes using RFC 8785 canonicalization, rejecting float values."""
 
     def reject_floats(node: Any) -> None:
         if isinstance(node, float):
-            raise ValueError(f"non-integer number is outside the canonicalizer: {node!r}")
+            raise TypeError(f"non-integer number is outside the canonicalizer: {node!r}")
         if isinstance(node, dict):
             for child in node.values():
                 reject_floats(child)
@@ -70,7 +51,7 @@ def schema_hashes(repo_root: pathlib.Path) -> dict[str, str]:
         schema = json.loads(path.read_text(encoding="utf-8"))
         schema_id = schema.get("$id")
         if not isinstance(schema_id, str):
-            raise ValueError(f"{path} has no string $id")
+            raise TypeError(f"{path} has no string $id")
         hashes[schema_id] = "sha256:" + hashlib.sha256(canonical_bytes(schema)).hexdigest()
     return hashes
 

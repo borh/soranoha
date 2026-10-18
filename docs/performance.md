@@ -18,20 +18,20 @@ checks out or updates a branch in the supplied repository. The output directory
 must not exist; results and diagnostics remain there after success or failure.
 Use `--limit N` only for an explicitly labelled partial-corpus experiment.
 
-Add `--endpoints-only` to build just the two ends of that range. The range is
-still resolved and still has to be a real first-parent range, so the answer
-remains about upstream history rather than about two unrelated commits; what is
-dropped is every build in between. This is what makes a comparison across an
-arbitrary distance affordable, and it is the difference between measuring how
-the build behaves over history and asking what two revisions differ by. The
-second build runs against the first one's cache, so only works whose sources
-moved are converted again.
+Add `--endpoints-only` to build only the two ends of that range. The range is
+still resolved and still has to be a valid first-parent range, so the answer
+remains about upstream history rather than about two unrelated commits; the
+option omits every build in between. This limits a comparison across an
+arbitrary distance to two builds, and distinguishes measuring how the build
+behaves over history from asking what two revisions differ by. The second build
+runs against the first one's cache, so only works whose sources changed are
+converted again.
 
 Use it to answer whether the current toolchain would produce different
 documents from the same sources, which is the one question
-[`corpus-delta`](start-here.md#what-signed-means-and-why-you-might-care) cannot: that command compares source
+[`corpus-delta`](start-here.md#what-signed-means-for-a-reader) cannot: that command compares source
 identities, and source identities are the whole answer only under an unchanged
-toolchain. Reach for this recipe when the toolchain has moved, and for
+toolchain. Use this recipe when the toolchain has changed, and
 `corpus-delta` otherwise, because comparing sources costs seconds and this
 costs a cold build.
 
@@ -41,7 +41,7 @@ then built again unchanged. The command fails if that repeat executes any stage,
 changes an artifact, or if the existing delta oracle finds unexplained execution
 between revisions. Detailed build reports remain under `build/runs/`.
 
-These are **build timings**, using all ordinary build stages, including independent
+These are build timings, using all ordinary build stages, including independent
 source accountability and interpretation-coverage reports. They exclude JVM
 startup, live assessment, publication transactions and serving export. An empty
 computation cache does not imply empty
@@ -103,8 +103,8 @@ synthetic document is an order-of-magnitude estimate, not a measurement of the
 corpus: works vary by more than an order of magnitude in size, and the estimate
 excludes writing the pages out.
 
-Rendering is per-work and independent, so it parallelizes if activation latency
-turns out to matter. It is sequential today because generation must produce
+Rendering is per-work and independent, so it can be parallelized if activation
+latency becomes a measured problem. It is sequential because generation must produce
 byte-identical output on every activation for the reuse check to hold, and that
 property is easier to maintain deterministically in a single thread than across a
 worker pool. Measure before changing it.
@@ -143,15 +143,15 @@ compare them byte for byte like everything else the browse layer writes.
 
 That DOI is the one input to an activation that is not chain content. Setting
 or changing it for a commit already exported makes the reuse check fail with
-`serving-tree-mismatch`, because the citations in the existing tree name a
-different release DOI. The failure is intended: the alternative is one tree
-serving two answers. Remove that tree and re-export.
+`serving-tree-mismatch`, because the citations in the existing tree contain a
+different release DOI. Without the failure, one tree would serve citations with
+two different DOIs. Remove that tree and re-export.
 
 Deflating each work once and reusing the compressed member across the three
 archives that hold it would cut the CPU by about two thirds, at the cost of
 writing the ZIP container by hand rather than through `ZipOutputStream`, which
-is also what handles ZIP64 when an archive outgrows the 32-bit fields. That
-trade is not worth taking until activation latency is a measured problem.
+is also what handles ZIP64 when an archive exceeds the 32-bit fields. That
+trade-off is not justified until activation latency is a measured problem.
 
 Run the complete publication path with recorded observations:
 
@@ -167,7 +167,7 @@ nix run .#soranoha-publication-replay -- \
   --concurrency 16
 ```
 
-This command covers the full selection and refuses `--limit`. It creates its own
+This command covers the full selection and rejects `--limit`. It creates its own
 source checkout, computation cache, reviewed-input repository, local publication
 origin, signing files from the public conformance vectors, and serving tree. It
 copies the supplied assessment source and policy; it reads retained evidence
@@ -192,7 +192,7 @@ commits can share a round without duplicating the response map:
 ```
 
 Supply every URL the assessment requests, including the catalog and edition ZIPs.
-`sha256` names a retained body at `evidence-root/DIGEST`; digests must be lowercase
+`sha256` identifies a retained body at `evidence-root/DIGEST`; digests must be lowercase
 SHA-256 hex. Recorded HTTP failures use statuses 100–599 except 200, including redirects. Body hashes are checked,
 and a missing round, missing response or changed body fails the experiment.
 There is no network fallback. The evaluator and release path consume these
@@ -302,23 +302,22 @@ All eight runs executed zero stages and preserved manifest
 
 Publishing a release verifies the whole chain. `transact/publish-build!` resolves
 the head through `verify/verify-repository-at` before it assembles anything, so
-release *n* verifies *n* manifests. Two rounds of measurement narrowed what that
-costs: the first found publication paying for the walk twice, the second found
-most of one walk going somewhere other than verification.
+release *n* verifies *n* manifests. Two rounds of measurement located that
+cost: the first found that publication walked the chain twice, the second that
+most of one walk was spent outside verification.
 
 `soranoha.snh.chain-bench` builds a synthetic chain at the production work
 count, so no corpus is needed and the repository path is what is timed. Ten
-releases over 17,602 works, three works moving per release so the verifier's
+releases over 17,602 works, three works changing per release so the verifier's
 reuse grant applies to the rest, as it does when an upstream commit touches a
 median of two works.
 
 The no-op is the quantity the prerequisite is stated against, because a job that
-fires on every upstream commit spends most of its runs discovering it has
-nothing to do. It is measured by repeating a release with its projection
+runs on every upstream commit finds nothing to publish on most of its runs. It is measured by repeating a release with its projection
 unchanged, which is what `decide-against-head` no-ops on, so it is the cost of
 resolving the head and deciding, with no assembly.
 
-### The walk was being paid for twice
+### Publication walked the chain twice
 
 Publication grew at twice the rate of the verification inside it, because
 `publish-build!` verified the chain twice: once on the fetched head before
@@ -335,8 +334,8 @@ same 17,602 work entries at every chain length.
 
 ### Most of a walk was not verification
 
-Verifying one commit at this work count cost about 3.2 seconds. Timing the parts
-of it found where that went, over a 10.7 MB manifest and a 10.1 MB catalog:
+Verifying one commit at this work count cost about 3.2 seconds. Timing its parts
+over a 10.7 MB manifest and a 10.1 MB catalog gives this distribution:
 
 | Per commit | Before | After |
 | --- | ---: | ---: |
@@ -346,11 +345,11 @@ of it found where that went, over a 10.7 MB manifest and a 10.1 MB catalog:
 
 The two boundary decodes were about two thirds of verifying one commit, and
 reading the JSON was 34 ms of that. The rest was producing the canonical form to
-compare the stored bytes against, and it was slow for two reasons that have
-nothing to do with what the canonical form is. Every object and array was
+compare the stored bytes against, and it was slow for two reasons unrelated
+to the canonical form itself. Every object and array was
 assembled with `str` and `join`, so the document was copied again at each
 nesting level on the way out; and each of its several hundred thousand strings
-went through a general JSON writer that pays its setup per call. Filling one
+went through a general JSON writer that repeats its setup on every call. Filling one
 buffer in place, and writing out the escaping that RFC 8785 inherits from RFC
 8259, left every output byte unchanged and took canonicalization to a ninth of
 what it was. Schema validation, at 142 ms, is now the largest part of a decode.
@@ -366,27 +365,28 @@ at each stage:
 | Full-chain verification | 3.1 s | 3.2 s | 0.95 s |
 | Publication, end to end | 6.3 s | 4.1 s | 0.97 s |
 
-The three now agree, which is the result to read. Publication grows at the rate
-of the one verification inside it, so nothing outside verification grows with
-chain length in a way this benchmark can see.
+The three rows agree in the last column, and that agreement is the result.
+Publication grows at the rate of the one verification inside it, so nothing
+outside verification grows with chain length by an amount this benchmark
+detects.
 
 That corrects a residual reported here earlier. Publication was said to run about
 0.6 seconds per release above the no-op, possibly a real write-path term. It was
 an artefact of taking the slope from the endpoints: the genesis release has no
-head to verify and sits well below the line, and including it inflates the
+head to verify and is well below the line, and including it inflates the
 publication slope alone. Fitting over chain lengths 2 to 10 puts publication
 about 40 milliseconds per release above the no-op, which ten releases cannot
 distinguish from noise. What separates them is a constant, not a slope: assembly
 and the repository write cost about 9 seconds at every chain length.
 
-### A run of releases carries its own proof and stops re-verifying the chain
+### A caller publishing a run of releases carries its proof forward instead of re-verifying the chain
 
 Publication verifies the chain because it has to resolve the head before it
 assembles anything. A publisher producing one release pays that once. A
 backfill producing thousands pays it once per release, and the sum over a
 chain is quadratic.
 
-`transact/publish-build!` now takes the proof its caller computed for that
+`transact/publish-build!` takes the proof its caller computed for that
 head, in the same process, from the same view and the same pinned keys, and
 returns the successor proof under the same key. A caller publishing a run of
 releases threads its own proof forward instead of walking the chain again.
@@ -404,19 +404,19 @@ Measured over 96 releases of 800 works, the same parameters run twice:
 
 The carried growth term is not small, it is absent: fitting it returns a
 coefficient of determination of 0.008, which is a flat line with noise on it.
-The uncarried slope is the loose figure of the two, fitting at 0.24 because
+The uncarried slope is the less precise figure of the two, fitting at 0.24 because
 that run shared the machine with other work; the totals and the endpoint
 ratios are what it supports. The advantage widens with the chain, from 2.3x
 at length 10 to 5.3x at length 96.
 
-The no-op and verification columns do not move, which is the point of
-measuring them alongside. They are what a party holding no proof pays: the
-scheduled job that fires on an upstream commit, and the third party checking
+The no-op and verification columns do not change; they are measured alongside
+as a control. They are what a party holding no proof pays: the
+scheduled job that runs on an upstream commit, and the third party checking
 the corpus.
 
 ### What that costs on the real corpus
 
-The synthetic chain uses small blobs, so it fixes the shape and not the
+The synthetic chain uses small blobs, so it determines the shape and not the
 constant. The constant comes from the reference comparison above: a repeat
 release over 17,308 published works and 51,929 verified blobs at chain length 3,
 with concurrency 16 and a warm cache, took 68.6 seconds. The same point on the
@@ -424,7 +424,7 @@ synthetic chain is 24.4 seconds, so the real corpus costs about 2.8 times the
 synthetic one at equal chain length.
 
 That single-point calibration is the weakest step here, and it was taken before
-the canonicalization work, which will have moved the real side too. Taking it
+the canonicalization work, which will also have changed the real figure. Taking it
 unchanged, so that the real figures are if anything pessimistic, each additional
 release costs roughly 2.6 seconds of no-op and 2.7 seconds of publication, and
 three consequences follow:
@@ -445,8 +445,7 @@ three consequences follow:
   than publication compute. A single-release scheduled job holds no prior proof
   and pays the 2.7-second incremental growth.
 
-The measurement that mattered most is the one that came back better than the
-ledger recorded. The publication rearchitecture ledger measured an unchanged
+The unchanged-invocation measurement is lower than the ledger recorded. The publication rearchitecture ledger measured an unchanged
 invocation at 1,319 seconds against the 30-minute bound and called the limit
 present. The batching work since has brought that to 68.6 seconds at the same
 work count. The bound is not currently breached; it is reached by growth, and
@@ -466,8 +465,9 @@ excluded.
 ### Verification splits across cores, and its runs have to be long
 
 A walk was one thread reading one manifest at a time. `verify-repository-at`
-now splits the chain into runs verified concurrently and joins them at the
-k-1 seams, a seam being the transition the runs deliberately leave open. Every
+splits the chain into runs verified concurrently and joins them at the
+k-1 seams, a seam being the transition between adjacent runs that neither run
+verifies. Every
 invariant the walk establishes is local to one commit or to one adjacent pair,
 which is what makes a split possible at all; the test
 `a-segmented-walk-rejects-exactly-what-one-walk-rejects` puts the whole build
@@ -475,7 +475,7 @@ mutation table through both forms and requires the same rejection from each.
 
 The newest commit of each run reads and hashes every artifact of its manifest,
 because no younger verified commit grants it reuse. That cost is paid once per
-run, so short runs waste it. Measured on one 96-release chain of 800 works,
+run, so short runs pay it more often. Measured on one 96-release chain of 800 works,
 verified ten times back to back on a machine with 32 cores:
 
 | Runs | Releases per run | Wall time | Speedup |
@@ -501,11 +501,11 @@ The fit holds within 7% while runs are 16 releases or longer and then breaks
 down. At runs of 8 the measured wall time is 27% above the model, at runs of 3
 it is 82% above, and speedup saturates near 7x rather than approaching the core
 count. Part of that is the fixed cost, which the model already carries; the
-remainder is unaccounted for and was not profiled. It is enough to fix the
-policy: the automatic run count never produces a run shorter than 32 releases,
-and it never asks for more runs than the machine has processors. An explicit
-`:segments` overrides both, which is what lets a test drive the seams over a
-chain of four.
+remainder is unaccounted for and was not profiled. The measurements are sufficient to set
+the policy: the automatic run count never produces a run shorter than 32
+releases, and it never requests more runs than the machine has processors. An
+explicit `:segments` overrides both, which is what lets a test exercise the
+seams over a chain of four.
 
 At corpus scale, carrying the 2.8x calibration above onto both constants, one
 commit with no grant costs 24.6 seconds and each further release in a run costs
@@ -521,7 +521,7 @@ Independent auditors can verify the entire corpus in minutes rather than hours,
 removing latency barriers to third-party verification. The 5,476-release row
 stays inside the validated range: at 32 runs, each run processes 171 releases.
 
-### What an origin holding the chain costs to keep and to hand out
+### What an origin holding the chain costs to store and to serve
 
 Software Heritage archives an origin by cloning the URL it is given, so what
 the origin costs to hold is also what an archive has to ingest. Two of its
@@ -570,8 +570,8 @@ clojure -Sdeps '{:paths ["src" "test" "resources"]}' -M \
 
 Pass `--tmp` a path on real storage: a corpus-scale chain is gigabytes of loose
 objects, and the system temp directory is memory-backed on these machines, so
-the default competes with the JVM heap being measured. `--changed all` moves
-every work instead, which is what a toolchain change does.
+the default competes with the JVM heap being measured. `--changed all` changes
+every work instead, as a toolchain change does.
 
 Add `--segments 1,2,4,8,16,32` to verify the finished chain once at each run
 count and emit a row for each. One walk is `segments 1`, so the rows compare
@@ -589,4 +589,4 @@ chains:
 Every marginal column here is the slope across a run rather than a single step;
 one step is noisy enough to come out negative. The reuse grant removes the
 re-hashing of unchanged blobs, and what remains is the per-manifest walk over
-every work entry, which is the term that does not go away.
+every work entry, which the reuse grant does not remove.

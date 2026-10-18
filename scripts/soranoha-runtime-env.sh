@@ -2,8 +2,8 @@
 # Shared local runtime paths for Soranoha tools.
 #
 # Source this file from direnv, shell smokes, or ad-hoc report scripts. Explicit
-# environment variables win over machine config files; config files win over
-# repo-local scratch defaults.
+# environment variables take precedence over machine config files; config files
+# take precedence over repo-local scratch defaults.
 
 _soranoha_runtime_env_pid="${BASHPID:-$$}"
 if [[ "${SORANOHA_RUNTIME_ENV_LOADED_PID:-}" == "$_soranoha_runtime_env_pid" ]]; then

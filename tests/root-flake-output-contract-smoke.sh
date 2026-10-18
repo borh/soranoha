@@ -49,7 +49,11 @@ expected = {
         "tei-version-coherence",
         "validate",
     },
-    "packages": {"tei-p5-reference", "tei-profile-artifacts"},
+    "packages": {
+        "soranoha-fidelity-probe",
+        "tei-p5-reference",
+        "tei-profile-artifacts",
+    },
     "devShells": {"default"},
     "checks": {
         "monorepo-active-path-hygiene",

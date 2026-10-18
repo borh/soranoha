@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Check source and documentation for recognizable coordination references.
-# Semantic accuracy and useful rationale still require review.
+# Check source and documentation for tracker identifiers and coordination markers.
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
@@ -14,8 +13,7 @@ report() {
   fi
 }
 
-# Git limits the scan to maintained files, including staged additions, without
-# walking build outputs or local corpus checkouts. Deleted files are skipped.
+# Collect tracked and staged files, excluding build artifacts and corpora.
 mapfile -d '' candidates < <(git ls-files -z -- '*.md' '*.rs' '*.clj' '*.cljc' '*.cljs' '*.py' '*.sh' '*.nix' '*.edn' '*.toml' '*.yml' '*.yaml' justfile)
 files=()
 for path in "${candidates[@]}"; do

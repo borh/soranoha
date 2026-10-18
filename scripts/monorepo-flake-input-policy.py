@@ -1,17 +1,11 @@
 #!/usr/bin/env python
-"""Check release-critical flake inputs are explicitly pinned.
-
-The root flake.lock is the monorepo's canonical lock, but source-evidence
-inputs should also carry an explicit rev or release tag in their flake URL so a
-routine `nix flake update` cannot silently change parser/corpus/TEI evidence.
-"""
+"""Check that release-critical flake inputs are explicitly pinned to a rev or tag."""
 
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-
 
 RELEASE_CRITICAL_INPUTS = {
     "aozorabunko-src",

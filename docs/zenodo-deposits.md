@@ -6,18 +6,16 @@ Soranoha uses two distinct Zenodo deposit types:
 |---|---|---|
 | Purpose | Authenticates which public key holds which role | Archives a release's bytes independently of the publication channel |
 | Frequency | Once, before the first signed release | Quarterly |
-| Contents | The two role public keys and their role assignment | The then-current signed manifest, the records it names, and the two bulk archives served for that release |
+| Contents | The two role public keys and their role assignment | The then-current signed manifest, the records it references, and the two bulk archives served for that release |
 | Discovery | Listed as a work on the owner's ORCID record | Cited by version DOI in each work's citation, when the serving release has one |
 
 Both deposits are made by the publication owner under the Zenodo account
 `borh`, from a machine that is not release CI. Zenodo credentials are never
-available to the release workflow. The release key signs manifests
-automatically, and adding archive credentials to the same automation would put
-the ability to publish and the ability to make something citable in one place.
+available to the release workflow.
 
-Cite a **version** DOI, never the concept DOI, wherever the DOI has to resolve
-to fixed bytes. A concept DOI resolves to the latest version, so what it names
-changes underneath a citation.
+Cite a version DOI, never the concept DOI, wherever the DOI has to resolve
+to fixed bytes. A concept DOI resolves to the latest version, so the bytes it
+resolves to change after a citation is written.
 
 ## Deposit the anchor and record it on ORCID before the first release is signed
 
@@ -27,7 +25,7 @@ to be abandoned rather than corrected.
 
 1. The [key ceremony](key-ceremony.md) produces `release.pub` and
    `governance.pub`.
-2. The anchor is deposited, and its **version** DOI recorded.
+2. The anchor is deposited, and its version DOI recorded.
 3. That DOI is added as a work on <https://orcid.org/0000-0003-2246-8774>.
 4. Only then is the first release signed.
 
@@ -45,17 +43,15 @@ RELEASE    = {K_release}
 GOVERNANCE = {K_governance}
 ```
 
-A flat list would be a different and weaker claim, because it would not say
-that the online release key is not authorized for governance. The role sets are
-disjoint, and the kernel rejects an overlapping or un-roled pinned
-configuration.
+The assignment states that the online release key is not authorized for
+governance. The role sets are disjoint, and the kernel rejects an overlapping
+or un-roled pinned configuration.
 
 ### Contents
 
 Deposit exactly three files: the two 65-byte `.pub` files the ceremony
-produced, unchanged, and a role-assignment statement. Generate the statement
-rather than typing it, so that the fingerprints in the anchor cannot disagree
-with the keys beside them:
+produced, unchanged, and a role-assignment statement generated from those two
+files.
 
 Run this in the directory holding the two `.pub` files.
 
@@ -92,24 +88,14 @@ cat role-assignment.txt
 ```
 
 Read the result against the fingerprints recorded by hand during the ceremony
-before depositing it. The guard above exists because the unguarded form fails
-in the worst available way: with one `.pub` file missing it wrote a complete
-and plausible anchor whose governance key was empty and whose fingerprint was
-`e3b0c442...`, the sha256 of no bytes, with the error on stderr and the
-document on stdout. An anchor is the permanent authority for the chain, so it
-is the last artifact that should be able to come out looking finished when it
-is not.
+before depositing it.
 
-The fingerprint is the sha256 of the **decoded 32 raw key bytes**, which is why
-the hex is turned back into bytes before hashing rather than being hashed as
-text. Hashing the 65-byte file instead produces a plausible digest that matches
-nothing, and the ceremony record is where that error would be caught.
+The fingerprint is the sha256 of the 32 raw key bytes decoded from the hex,
+not of the 65-byte file.
 
 Do not deposit private keys, medium passphrases, or the custody inventory. Do
-not deposit a second copy of the fingerprints anywhere else: the protocol
-publishes them in one place so that no two copies can drift. Do not deposit the
-serving domain or any other location, because deposit files are immutable and a
-frozen file should not name something that can move.
+not deposit a second copy of the fingerprints anywhere else. Do not deposit
+the serving domain or any other location.
 
 ### The ORCID entry
 
@@ -126,29 +112,28 @@ remaining copy, and a compromised role halts that role rather than rotating it.
 ## The snapshot deposit
 
 Deposits are quarterly, not per release. Each one carries the manifest that is
-current when it is made, and doubles as an independent authorship checkpoint:
+current when it is made, and also serves as an independent authorship checkpoint:
 the archive is a second, separately credentialed record of what this project
 published and when, held somewhere the publication channel does not control.
 
-A release is citable the moment it is reachable, and that does not depend on a
-deposit. The citable name of a release is its manifest id, which is the sha256
-of bytes anyone can check against the chain. A DOI names an archived copy; it
-is a convenience, not the identity.
+Citability does not depend on a deposit. The citable name of a release is its
+manifest id, the sha256 of bytes anyone can check against the chain, and a
+release becomes citable once a successful archival observation covers it (see
+[archival](archival.md)). A DOI identifies an archived copy of a release.
 
-Releases published between two snapshots are therefore not individually
-archived on Zenodo. Their bytes remain in the append-only chain, which is what
-a verifier reads, and they carry no DOI. `release-doi` is optional throughout
-for exactly this reason, and a citation simply omits the DOI line when the
-serving release has none.
+Releases published between two snapshots are not individually archived on
+Zenodo. Their bytes remain in the append-only chain, which is what a verifier
+reads, and they carry no DOI. `release-doi` is optional, and a citation omits
+the DOI line when the serving release has none.
 
-Deposit the manifest and the records it names, along with the two served bulk
+Deposit the manifest and the records it references, along with the two served bulk
 archives (TEI and plaintext). The manifest and constituent records provide
 cryptographic verification, while the bulk archives ensure published texts
 remain retrievable independently of the serving site. The archives contain the
 exact served bytes, with `SHA256SUMS` matching the site's downloads and each
-archive's `catalog.csv` naming the release head and version DOI. Together they
+archive's `catalog.csv` recording the release head and version DOI. Together they
 total under 1 GB, well within Zenodo's 50 GB per-record limit. Do not include
-role public keys; they belong exclusively to the trust anchor.
+role public keys; they are published only in the trust anchor.
 
 ### Assemble it
 
@@ -221,8 +206,8 @@ the description for the bibliographic metadata in `catalog.csv` (licensed CC BY
 4.0).
 
 The upload itself follows Zenodo's procedure, using the deposit form or REST
-API under the `borh` account. Each snapshot deposit is created as a **new
-version** of the initial deposit rather than a separate record, sharing a single
+API under the `borh` account. Each snapshot deposit is created as a new
+version of the initial deposit rather than a separate record, sharing a single
 concept DOI while assigning a unique version DOI to each release.
 
 Do not rely on post-publication file replacement or metadata edits: assemble all
@@ -231,36 +216,27 @@ immediately to fixed bytes.
 
 ### Recording the DOI
 
-The DOI is not in the chain. The signed catalog carries no DOI and no provider
-reference, and the manifest schema is closed, so a DOI field could never be
-removed once added. A DOI describes a deposit rather than a release: the same
-release could be deposited twice, deposited elsewhere, or not deposited at all.
-Reserving a DOI and signing it into an immutable manifest fails permanently
-when the deposit is abandoned, whereas a DOI held outside simply does not
-render.
-
-So the DOI is deployment configuration. Set `release-doi` in
+The DOI is deployment configuration and is not in the chain: the signed
+manifest and catalog carry no DOI and no provider reference. A DOI identifies a
+deposit rather than a release. Set `release-doi` in
 `/etc/soranoha/publisher.json`, or pass `--release-doi`, and run
 `serving-activate`. Zenodo assigns the DOI to the unpublished draft on request,
 which is what lets activation run, and the archives be assembled from its
 tree, before the deposit is published.
 
-The value is the **bare DOI**, not a link. It is checked against
+The value is the bare DOI, not a link. It is checked against
 `10.<4-9 digits>/<no whitespace>` before it reaches any citation, so
 `10.5281/zenodo.1234567` is accepted and `https://doi.org/10.5281/zenodo.1234567`
-is refused at activation. Refusing there costs one corrected flag; the
-alternative renders a dead pointer into the citation record of every work.
+is rejected at activation.
 
-Activation exports the tree, and the citations it generates name the DOI, so
+Activation exports the tree, and the citations it generates contain the DOI, so
 the DOI is an input to the export rather than a label applied after it. Setting
 or changing it for a commit that was already exported makes the reuse check
-fail closed with `serving-tree-mismatch`: the existing tree's citations name a
+fail closed with `serving-tree-mismatch`: the existing tree's citations contain a
 different DOI. Remove that tree and re-export. Activation is otherwise
 idempotent, so a DOI recorded late is recovered by re-running it.
 
-Activation therefore waits on Zenodo being reachable. For a research corpus
-that delay is acceptable, and recording it as policy here is what keeps it from
-arriving as a surprise mid-release.
+Activation therefore waits on Zenodo being reachable.
 
 ## Verifying deposit integrity
 
@@ -286,20 +262,19 @@ The message is exact ASCII with no trailing newline: 19 prefix characters plus
 64 hex characters is 83 bytes, and a trailing newline produces a verification
 failure rather than a warning.
 
-A DOI that names some other release fails the digest check. A manifest that was
+A DOI that identifies some other release fails the digest check. A manifest that was
 not signed by the pinned release key fails the signature check. The three
 records verify the same way, by hashing each file and comparing the digest with
 the id the manifest gives it. The mapping from DOI to release is configuration,
-but the claim it makes is checkable against the chain.
+but the correspondence it states is checkable against the chain.
 
-The kernel's `archive-verify` is not this check. It runs the chain verifier over
-an archived *repository*, so it needs a git view rather than a directory of
-loose files, and a Zenodo deposit is the latter.
+The kernel's `archive-verify` runs the chain verifier over an archived Git
+repository; it does not read a deposit's loose files.
 
 ## See also
 
 - [Key ceremony and offline governance signing](key-ceremony.md), which
-  produces the bytes the anchor deposits.
+  produces the bytes the anchor deposit contains.
 - [Citing Soranoha](citation.md), for how the version DOI appears in a
   citation.
 - [Archival](archival.md), the other independent record. A deposit holds loose

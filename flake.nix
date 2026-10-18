@@ -22,11 +22,11 @@
       flake = false;
     };
 
-    # The upstream repository left GitHub in 2026. This is the project's own
-    # mirror of its history, on the Forgejo host the runner can reach; the
-    # revision is upstream's own commit and the tree hashes the same.
+    # The upstream repository has not been on GitHub since 2026. This input is
+    # the project's mirror of its history, on the Forgejo host the runner can
+    # reach; the revision is upstream's commit and the tree hash is identical.
     aozorabunko-src = {
-      url = "git+ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git?rev=9bac324dfa6af3a5a035542440934266f76fb45d&shallow=1";
+      url = "git+ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git?rev=795f89df7bf0a995727f58ad998101458d5d91c2&shallow=1";
       flake = false;
     };
   };
@@ -60,8 +60,8 @@
           overlays = [ (_final: prev: { jdk = prev.jdk25_headless; }) ];
         };
 
-      # The dependency cache doubles as HOME so nothing under the real one
-      # reaches the classpath; the scratch directory holds the classpath
+      # The dependency cache is also HOME, so nothing under the user's HOME
+      # enters the classpath; the scratch directory holds the classpath
       # cache and XDG config so both stay writable.
       cljCacheExports = cache: scratch: ''
         export HOME="${cache}"
@@ -98,12 +98,12 @@
             "clj-nix-"
             + builtins.hashString "sha256" "${pkgs.clojure}\n${depsCache}\n${builtins.hashFile "sha256" ./soranoha/deps.edn}";
 
-          # The documents the browse layer serves, laid out exactly as they sit in
-          # the repository, so one repository-relative path names a file for both
-          # the served site and the link check. A developer running from the
-          # `soranoha` directory reaches the same layout through the default root
-          # of `..`; the wrapper points SORANOHA_SITE_DOCS at this instead,
-          # because a Nix store path has no repository around it.
+          # The documents the browse layer serves, laid out as they are in the
+          # repository, so one repository-relative path identifies a file for
+          # both the served site and the link check. A developer running from
+          # the `soranoha` directory reaches the same layout through the default
+          # root of `..`; the wrapper points SORANOHA_SITE_DOCS at this instead,
+          # because a Nix store path has no enclosing repository.
           siteDocs = pkgs.runCommand "soranoha-site-docs" { } ''
             mkdir -p "$out/soranoha"
             cp -R ${./docs} "$out/docs"
@@ -121,8 +121,10 @@
             cp ${ab-validator}/schemas/*.schema.json "$out/ab-validator/schemas/"
             cp ${ab-validator}/data/aat-to-parser-ir-mapping-v1.json \
               ${ab-validator}/data/aat-to-parser-ir-mapping-v2.json \
-              ${ab-validator}/data/source-region-publication-policy-v0.json \
               "$out/ab-validator/data/"
+            mkdir -p "$out/soranoha/data"
+            cp ${./soranoha/data/source-region-publication-policy-v0.json} \
+              "$out/soranoha/data/source-region-publication-policy-v0.json"
           '';
         in
         {
@@ -319,10 +321,10 @@
         in
         {
           # Evaluates the ceremony image without building it. nix flake check
-          # evaluates a NixOS configuration's toplevel, which never reaches the
-          # image derivation, so an option conflict there would otherwise show
-          # up only when someone builds the image. The context is discarded so
-          # this depends on the evaluation alone, not on the 1 GiB build.
+          # evaluates a NixOS configuration's toplevel, which does not include the
+          # image derivation, so without this check an option conflict there fails
+          # only when the image is built. The context is discarded so this
+          # depends on the evaluation alone, not on the 1 GiB build.
           monorepo-ceremony-image =
             pkgs.runCommand "monorepo-ceremony-image"
               {
@@ -515,16 +517,19 @@
       );
 
       packages = forEachSystem (
-        { tei, profile, ... }:
+        { tei, profile, ... }@ctx:
         {
           tei-p5-reference = tei.reference;
-          # The compiled profile, exposed so the checked-in artifacts can be
-          # regenerated. `apps` and `checks` import the same derivation, but
-          # only to consume it; without a package output there was no way to
-          # build the files that ori/validate.clj holds the ODD's hashes
-          # against, and editing the ODD failed 22 tests with no stated remedy.
-          # `just regenerate-tei-profile` copies this output into place.
+          # The compiled profile, exposed as a package so the checked-in
+          # artifacts that ori/validate.clj compares with the ODD's hashes can be
+          # regenerated. `apps` and `checks` import the same derivation only to
+          # consume it. `just regenerate-tei-profile` copies this output into
+          # place.
           tei-profile-artifacts = profile.artifacts;
+          soranoha-fidelity-probe = mkSoranohaApp ctx {
+            name = "soranoha-fidelity-probe";
+            invocation = "clojure -Sthreads 1 -J-Xmx4g -M -m soranoha.ori.fidelity-probe --assets-root ${./soranoha}";
+          };
         }
       );
 

@@ -12,7 +12,7 @@ and deleted; only this record was ever accepted under the number.
 
 The transaction verifies twice. Step 2 fully verifies the fetched head C, which
 is how the head is established at all. Step 5 then verified the newly written
-candidate C′, and the wording named the §8 primitive, which walks the chain from
+candidate C′, and the wording referred to the §8 primitive, which walks the chain from
 C′ back to genesis. The second walk therefore re-checked a prefix the same
 process had verified moments earlier, under the same pinned keys, and whose
 result it was still holding.
@@ -29,15 +29,16 @@ roughly five and a half.
 Step 5 may establish the §8 invariants for C′ alone against step 2's result,
 instead of applying the primitive to C′.
 
-The permission is narrow and the text says so. It binds to C's exact commit id
+The amended text states the limits of the permission. It binds to C's exact commit id
 and to the head C carries; it must establish at C′ everything the primitive
 would; and it is available only to a party holding its own §8 result for C. A
 verifier presented with a repository holds no such result and must walk.
 
 ## Why this is not a weakening
 
-A commit id is a content address over its whole history: a commit names its
-tree, a tree names its blobs, and a parent id names everything behind it. The
+A commit id is a content address over its whole history: a commit identifies
+its tree, a tree identifies its blobs, and a parent id identifies everything
+behind it. The
 prefix cannot differ without C differing, and the check is bound to C's id.
 Content addressing is what makes the carried-forward result a statement about
 the repository rather than about a moment in time, so the usual objection to
@@ -50,11 +51,11 @@ directories at construction.
 
 ## Why not leave the wording and record an interpretation
 
-Step 5's sentence names a procedure before the colon and states a requirement
+Step 5's sentence refers to a procedure before the colon and states a requirement
 after it, so reading the requirement as controlling was available, and §5's
 `not-evaluated` reading is precedent for interpreting frozen text without
-changing it. It was rejected here because that precedent's record did not
-survive: the ledger holding it was deleted and the interpretation had to be
+changing it. It was rejected here because that precedent's record was not
+retained: the ledger holding it was deleted and the interpretation had to be
 recovered from Git history. A reader comparing this specification against the
 implementation would find an apparent contradiction and no way to resolve it
 from the repository. Amending the text costs one pre-genesis edit and leaves
@@ -77,7 +78,7 @@ nothing to recover.
   nothing recorded, at roughly nine years of compute for the backfill instead of
   five and a half.
 - **Fold the shortcut into the §8 primitive**, so step 5 keeps its wording.
-  This buries a shortcut whose soundness depends on the caller having verified
+  This places a shortcut whose soundness depends on the caller having verified
   the prefix itself inside the function third parties call to verify from
   scratch. A separately named operation, documented as not a trust primitive, is
   harder to misuse.
