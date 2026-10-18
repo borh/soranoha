@@ -219,11 +219,17 @@
   "The element's `@source` reference as an HTML id, so that a link can address
   the place in the text the TEI identifies: `/works/<slug>/read#source-12-40`.
   The reference is `#source-<start>-<end>` in the work's own byte
-  coordinates, unique within the document because two elements never
-  account for the same span, and a paragraph carries none of its own: a link
-  to a paragraph is a link to its first segment."
-  [element]
-  (some-> (attr element "source") (string/replace-first #"^#" "")))
+  coordinates. A paragraph states its whole extent, and a paragraph with no
+  inline markup holds one segment of that same extent; the id goes to the
+  paragraph, and an element whose reference is its parent's carries none,
+  so ids stay unique."
+  [^Element element]
+  (let [source (attr element "source")
+        parent (.getParentNode element)]
+    (when (and source
+               (not (and (instance? Element parent)
+                         (= source (attr parent "source")))))
+      (string/replace-first source #"^#" ""))))
 
 (defn- element-attrs
   ([element extra] (element-attrs element extra nil))

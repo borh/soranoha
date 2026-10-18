@@ -267,6 +267,25 @@
       (is (= {"text" 2} (:node_counts result)))
       (is (empty? (:omitted result))))))
 
+(deftest a-body-paragraph-states-its-own-source-extent-test
+  (let [span (fn [start end] {"coordinate_system" "decoded_utf8" "start" start "end" end "line" 1})
+        result (parser-ir-tei/render
+                {"nodes" [{"type" "text" "span" {"start" 0 "end" 3} "text" "本文"
+                           "source_span" (span 0 6)}]
+                 "paragraphs" [{"id" "p000000"
+                                "span" {"start" 0 "end" 3 "coordinate_system" "parser_text_utf8"}
+                                "node_range" {"start" 0 "end" 1}
+                                "role" "body"
+                                "source_pointer" "blocks[0]"
+                                "classification" "direct"
+                                "source_span" (span 0 6)}]})
+        paragraph (some #(when (= :p (first %)) %) (hiccup-nodes (:body result)))]
+    (is (= [:p {:source "#source-0-6"} [:seg {:source "#source-0-6"} "本文"]] paragraph)
+        "the paragraph and its one segment state the same extent, and the TEI permits that")
+    (is (some #(= [:note {:type "source-span" :xml/id "source-0-6" :n "1"}] %)
+              (hiccup-nodes (:body result)))
+        "and the extent is declared once in the back matter")))
+
 (deftest paragraph-layout-renders-every-supported-rend-token-test
   (testing "each supported paragraph layout kind has a deterministic TEI rend token"
     (let [parser-ir {"nodes" [{"type" "text" "span" {"start" 0 "end" 1} "text" "一"}

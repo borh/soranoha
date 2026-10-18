@@ -54,9 +54,11 @@ To read it rather than download it, open
 `https://soranoha.org/works/000092_000879/` for the bibliography and
 `https://soranoha.org/works/000092_000879/read` for the text itself, with ruby
 glosses, in horizontal or vertical setting. Reading views support deep linking:
-each segment carries an HTML id matching its TEI source reference attribute
-(for example, `.../read#source-694-733`), anchoring directly to the corresponding
-UTF-8 byte span in the source text.
+each paragraph and each segment carries an HTML id matching its TEI source
+reference attribute (for example, `.../read#source-694-733`), anchoring directly
+to the corresponding UTF-8 byte span in the source text. A paragraph's id spans
+the whole paragraph; a paragraph without inline markup has the one id, on the
+paragraph.
 
 If you have an Aozora Bunko card URL, you already have the identifier. The card
 `https://www.aozora.gr.jp/cards/000879/card92.html` gives work id `92` and card

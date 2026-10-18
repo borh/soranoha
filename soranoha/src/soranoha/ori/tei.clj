@@ -1236,6 +1236,15 @@
        (pos? indent) (assoc :style (str "text-indent: " (+ hanging-offset indent) "em"))
        (pos? indent) (update :rend #(string/join " " (remove string/blank? [% (str "first-line-indent(" indent ")")]))))]))
 
+(defn- paragraph-source-attrs
+  "`attrs` with the paragraph's own extent as `@source`, registered like a
+  node's. A paragraph with no inline markup holds one `seg` of the same
+  extent; the paragraph still states it, so a block is addressable as a
+  block and not only through its first child."
+  [acc paragraph attrs]
+  (let [[acc reference] (register-source-span acc (get paragraph "source_span"))]
+    [acc (cond-> attrs reference (assoc :source (str "#" reference)))]))
+
 (defn- layout-block-attrs [block]
   (let [indent (get block "indent")
         placement (get block "relative_placement")
@@ -1321,6 +1330,7 @@
                                      (- (get block "indent") (get block "continuation_indent"))))
                                  (rseq frames)) 0)
         [nodes attrs] (paragraph-render-inputs nodes paragraph hanging-offset)
+        [acc attrs] (paragraph-source-attrs acc paragraph attrs)
         {start "start" end "end"} (paragraph-range paragraph)
         node-slice (subvec nodes start end)]
     (case (get paragraph "role")

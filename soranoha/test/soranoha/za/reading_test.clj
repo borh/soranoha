@@ -103,8 +103,32 @@
       (is (string/includes? rendered "id=\"source-0-27\""))
       (is (string/includes? rendered "id=\"source-27-45\""))
       (is (not (string/includes? rendered "id=\"#source"))))
-    (testing "and the paragraph around them has no id of its own to collide with"
+    (testing "and a paragraph the parser-IR did not delimit has no id of its own to collide with"
       (is (= 2 (count (re-seq #"id=\"source-" rendered)))))))
+
+(deftest a-paragraph-carries-the-id-of-its-whole-extent-test
+  (let [span (fn [start end] {"coordinate_system" "decoded_utf8" "start" start "end" end})
+        paragraph (fn [id start end node-start node-end]
+                    {"id" id "role" "body" "classification" "direct"
+                     "source_pointer" (str "blocks[" node-start "]")
+                     "span" {"start" start "end" end "coordinate_system" "parser_text_utf8"}
+                     "node_range" {"start" node-start "end" node-end}
+                     "source_span" (span start end)})
+        rendered (read-html
+                  {"nodes" [{"type" "text" "text" "「こら、バッグ」" "source_span" (span 0 24)}
+                            {"type" "text" "text" "白いらつぱ草の花が" "source_span" (span 24 51)}
+                            {"type" "ruby" "source_span" (span 51 69)
+                             "ruby" {"base" "涌水" "reading" "わきみず" "scope" "explicit"
+                                     "direction" "right"}}]
+                   "paragraphs" [(paragraph "p000000" 0 24 0 1)
+                                 (paragraph "p000001" 24 69 1 3)]})]
+    (testing "a paragraph with no inline markup is reached by the id of its one segment, on the paragraph"
+      (is (string/includes? rendered "<p id=\"source-0-24\"><span class=\"seg\">"))
+      (is (= 1 (count (re-seq #"id=\"source-0-24\"" rendered)))))
+    (testing "a paragraph with inline markup has its own id and its children keep theirs"
+      (is (string/includes? rendered "<p id=\"source-24-69\">"))
+      (is (string/includes? rendered "id=\"source-24-51\""))
+      (is (string/includes? rendered "id=\"source-51-69\"")))))
 
 (deftest a-source-reference-becomes-a-link-only-where-a-link-is-safe-test
   (testing "an external table reference shows its companion file as text"
