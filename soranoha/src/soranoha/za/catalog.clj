@@ -88,9 +88,13 @@
 
   `trailing-bytes-after-archive` records the trailing byte count for archives
   that carry trailing bytes after the zip end-of-central-directory record. Enables
-  readers and web views to distinguish upstream format anomalies from file corruption."
+  readers and web views to distinguish upstream format anomalies from file corruption.
+
+  `body-character-count` is the count the plaintext stage recorded in its
+  projection report, so a reader can size a selection without fetching a
+  text."
   [slug source-content-hash rights metadata-record persons primary-text-member
-   trailing-bytes-after-archive]
+   trailing-bytes-after-archive body-character-count]
   (let [work (get metadata-record "work")]
     (cond-> {"slug" slug
              "source_content_hash" source-content-hash
@@ -104,6 +108,7 @@
              "ndc" (get work "ndc")
              "card_url" (get work "card_url")
              "archive_stem" (archive-stem slug primary-text-member)
+             "body_character_count" body-character-count
              ;; by the pair, because the pair is the entry's identity: sorting on the
              ;; person alone would leave two relations of one person in the arbitrary
              ;; order of the metadata record
@@ -115,15 +120,15 @@
       (assoc "trailing_bytes_after_archive" trailing-bytes-after-archive))))
 
 (defn catalog-value
-  "The snh-catalog/1 value for `published` slugs, in the manifest's order.
+  "The snh-catalog/2 value for `published` slugs, in the manifest's order.
   `outputs` is the assembler's per-slug map; every field is read back out of
   the CAS rather than carried alongside, so the catalog describes the same
   bytes the release publishes."
   [cas-dir published outputs]
-  {"schema" "snh-catalog/1"
+  {"schema" "snh-catalog/2"
    "works"
    (mapv (fn [slug]
-           (let [{:keys [metadata-record persons primary-text-member
+           (let [{:keys [metadata-record persons primary-text-member plaintext-projection
                          source-content-hash rights trailing-bytes-after-archive]}
                  (or (get outputs slug)
                      (fail! :catalog-work-not-built {:slug slug}))]
@@ -138,5 +143,12 @@
                          (cas-json cas-dir persons
                                    :missing-person-records {:slug slug})
                          primary-text-member
-                         trailing-bytes-after-archive)))
+                         trailing-bytes-after-archive
+                         ;; from the projection report rather than the text: the
+                         ;; assembler reads catalog inputs, never payload blobs
+                         (or (get (cas-json cas-dir plaintext-projection
+                                            :missing-plaintext-projection {:slug slug})
+                                  "body_character_count")
+                             (fail! :plaintext-projection-without-character-count
+                                    {:slug slug})))))
          published)})

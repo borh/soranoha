@@ -42,6 +42,7 @@
         markdown (cas/put-bytes! cas-dir (fx/work-blob-bytes "markdown" slug "v1"))
         tei (cas/put-bytes! cas-dir (fx/work-blob-bytes "tei" slug "v1"))
         validation (cas/put-bytes! cas-dir (fx/validation-blob-bytes tei false))
+        projection (cas/put-bytes! cas-dir (.getBytes "{\"body_character_count\":12}" "UTF-8"))
         metadata (cas/put-bytes!
                   cas-dir
                   (.getBytes ^String
@@ -64,7 +65,8 @@
                               "given_name_romaji" nil}})
                             "UTF-8"))]
     {:rights "public-domain"
-     :plaintext text :markdown markdown :tei tei :tei-validation validation
+     :plaintext text :plaintext-projection projection
+     :markdown markdown :tei tei :tei-validation validation
      :metadata-record metadata :persons persons
      :primary-text-member (str slug ".txt")
      :source-content-hash (str "sha256:" (apply str (repeat 64 "1")))}))

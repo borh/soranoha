@@ -27,6 +27,14 @@
             #{} (:view/segments reading))
     (str out)))
 
+(defn body-character-count
+  "The number of Unicode code points in a plaintext projection that are not
+  White_Space. Line breaks, indentation and U+3000 are layout and do not
+  count; U+FFFC, the placeholder for an unresolved glyph, stands for one
+  character of the text and does."
+  [^String plaintext]
+  (count (re-seq #"\P{IsWhite_Space}" plaintext)))
+
 (defn- html-text [text]
   (string/escape text {\& "&amp;" \< "&lt;" \> "&gt;" \" "&quot;"}))
 

@@ -233,11 +233,16 @@
           {"tei" (utf8 (:tei rendered))}))})
 
 (defn plaintext-stage [clj-toolchain-id]
-  {:stage-id "plaintext" :stage-version "7" :toolchain-id clj-toolchain-id
+  {:stage-id "plaintext" :stage-version "8" :toolchain-id clj-toolchain-id
    :f (fn [{:keys [blob]} inputs]
-        (let [reading (view/from-tei (String. ^bytes (blob (get inputs "tei")) "UTF-8"))]
-          {"plaintext" (utf8 (projection/plaintext reading))
-           "plaintext-projection" (json-bytes (projection/report :projection/plaintext reading))}))})
+        (let [reading (view/from-tei (String. ^bytes (blob (get inputs "tei")) "UTF-8"))
+              text (projection/plaintext reading)]
+          {"plaintext" (utf8 text)
+           ;; the count is recorded here, where the text is in memory, because
+           ;; the release assembler must not read payload blobs
+           "plaintext-projection" (json-bytes (assoc (projection/report :projection/plaintext reading)
+                                                     "body_character_count"
+                                                     (projection/body-character-count text)))}))})
 
 (defn markdown-stage [clj-toolchain-id]
   {:stage-id "markdown" :stage-version "9" :toolchain-id clj-toolchain-id

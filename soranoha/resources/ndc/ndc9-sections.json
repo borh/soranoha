@@ -1,0 +1,4621 @@
+{
+  "sections":
+  {
+    "000":
+    {
+      "en": "General works",
+      "ja": "総記"
+    },
+    "002":
+    {
+      "en": "Knowledge.Learning",
+      "ja": "知識．学問．学術"
+    },
+    "007":
+    {
+      "en": "Information science",
+      "ja": "情報科学"
+    },
+    "010":
+    {
+      "en": "Libraries.Library and information sciences",
+      "ja": "図書館．図書館学"
+    },
+    "011":
+    {
+      "en": "Library policy and administration",
+      "ja": "図書館政策．図書館行財政"
+    },
+    "012":
+    {
+      "en": "Library buildings",
+      "ja": "図書館建築．図書館設備"
+    },
+    "013":
+    {
+      "en": "Library management",
+      "ja": "図書館管理"
+    },
+    "014":
+    {
+      "en": "Technical processes in libraries",
+      "ja": "資料の収集．資料の整理．資料の保管"
+    },
+    "015":
+    {
+      "en": "Library activities",
+      "ja": "図書館奉仕．図書館活動"
+    },
+    "016":
+    {
+      "en": "Specific kinds of institutions",
+      "ja": "各種の図書館"
+    },
+    "017":
+    {
+      "en": "School libraries",
+      "ja": "学校図書館"
+    },
+    "018":
+    {
+      "en": "Special libraries",
+      "ja": "専門図書館"
+    },
+    "019":
+    {
+      "en": "Reading of books.Book review",
+      "ja": "読書．読書法"
+    },
+    "020":
+    {
+      "en": "Books.Bibliography",
+      "ja": "図書．書誌学"
+    },
+    "021":
+    {
+      "en": "Authorship and editorial techniques",
+      "ja": "著作．編集"
+    },
+    "022":
+    {
+      "en": "Manuscripts and printed books",
+      "ja": "写本．刊本．造本"
+    },
+    "023":
+    {
+      "en": "Publishing",
+      "ja": "出版"
+    },
+    "024":
+    {
+      "en": "Bookselling",
+      "ja": "図書の販売"
+    },
+    "025":
+    {
+      "en": "General and national bibliographies",
+      "ja": "一般書誌．全国書誌"
+    },
+    "026":
+    {
+      "en": "Bibliographies of rare books",
+      "ja": "稀書目録．善本目録"
+    },
+    "027":
+    {
+      "en": "Special bibliographies",
+      "ja": "特種目録"
+    },
+    "028":
+    {
+      "en": "Catalogs of selected books.Catalogs of reference books",
+      "ja": "選定図書目録．参考図書目録"
+    },
+    "029":
+    {
+      "en": "Library catalogs.Union catalogs",
+      "ja": "蔵書目録．総合目録"
+    },
+    "030":
+    {
+      "en": "General encyclopedias",
+      "ja": "百科事典"
+    },
+    "031":
+    {
+      "en": "Nipponese",
+      "ja": "日本語"
+    },
+    "032":
+    {
+      "en": "Chinese",
+      "ja": "中国語"
+    },
+    "033":
+    {
+      "en": "English",
+      "ja": "英語"
+    },
+    "034":
+    {
+      "en": "German",
+      "ja": "ドイツ語"
+    },
+    "035":
+    {
+      "en": "French",
+      "ja": "フランス語"
+    },
+    "036":
+    {
+      "en": "Spanish",
+      "ja": "スペイン語"
+    },
+    "037":
+    {
+      "en": "Italian",
+      "ja": "イタリア語"
+    },
+    "038":
+    {
+      "en": "Russian",
+      "ja": "ロシア語"
+    },
+    "039":
+    {
+      "en": "General concordances",
+      "ja": "用語索引＜一般＞"
+    },
+    "040":
+    {
+      "en": "General collected essays",
+      "ja": "一般論文集．一般講演集"
+    },
+    "041":
+    {
+      "en": "Nipponese",
+      "ja": "日本語"
+    },
+    "042":
+    {
+      "ja": "中国語"
+    },
+    "043":
+    {
+      "ja": "英語"
+    },
+    "044":
+    {
+      "ja": "ドイツ語"
+    },
+    "045":
+    {
+      "ja": "フランス語"
+    },
+    "046":
+    {
+      "ja": "スペイン語"
+    },
+    "047":
+    {
+      "ja": "イタリア語"
+    },
+    "048":
+    {
+      "ja": "ロシア語"
+    },
+    "049":
+    {
+      "en": "General miscellanies",
+      "ja": "雑著"
+    },
+    "050":
+    {
+      "en": "General serial publications",
+      "ja": "逐次刊行物"
+    },
+    "051":
+    {
+      "en": "Nipponese serial publications",
+      "ja": "日本の雑誌"
+    },
+    "052":
+    {
+      "ja": "中国語"
+    },
+    "053":
+    {
+      "ja": "英語"
+    },
+    "054":
+    {
+      "ja": "ドイツ語"
+    },
+    "055":
+    {
+      "ja": "フランス語"
+    },
+    "056":
+    {
+      "ja": "スペイン語"
+    },
+    "057":
+    {
+      "ja": "イタリア語"
+    },
+    "058":
+    {
+      "ja": "ロシア語"
+    },
+    "059":
+    {
+      "en": "General yearbooks",
+      "ja": "一般年鑑"
+    },
+    "060":
+    {
+      "en": "General societies",
+      "ja": "団体：学会，協会，会議"
+    },
+    "061":
+    {
+      "en": "Academies",
+      "ja": "学術・研究機関"
+    },
+    "063":
+    {
+      "en": "Cultural exchange organizations",
+      "ja": "文化交流機関"
+    },
+    "065":
+    {
+      "en": "Service clubs and other societies",
+      "ja": "親睦団体．その他の団体"
+    },
+    "069":
+    {
+      "en": "Museums",
+      "ja": "博物館"
+    },
+    "070":
+    {
+      "en": "Journalism.Newspapers",
+      "ja": "ジャーナリズム．新聞"
+    },
+    "071":
+    {
+      "ja": "日本"
+    },
+    "072":
+    {
+      "ja": "アジア"
+    },
+    "073":
+    {
+      "ja": "ヨーロッパ"
+    },
+    "074":
+    {
+      "ja": "アフリカ"
+    },
+    "075":
+    {
+      "ja": "北アメリカ"
+    },
+    "076":
+    {
+      "ja": "南アメリカ"
+    },
+    "077":
+    {
+      "ja": "オセアニア．両極地方"
+    },
+    "080":
+    {
+      "en": "General collections",
+      "ja": "叢書．全集．選集"
+    },
+    "081":
+    {
+      "en": "Nipponese",
+      "ja": "日本語"
+    },
+    "082":
+    {
+      "en": "Chinese",
+      "ja": "中国語"
+    },
+    "083":
+    {
+      "ja": "英語"
+    },
+    "084":
+    {
+      "ja": "ドイツ語"
+    },
+    "085":
+    {
+      "ja": "フランス語"
+    },
+    "086":
+    {
+      "ja": "スペイン語"
+    },
+    "087":
+    {
+      "ja": "イタリア語"
+    },
+    "088":
+    {
+      "ja": "ロシア語"
+    },
+    "089":
+    {
+      "ja": "その他の諸言語"
+    },
+    "090":
+    {
+      "en": "Rare books.Local collections.Special collections",
+      "ja": "貴重書．郷土資料．その他の特別コレクション"
+    },
+    "100":
+    {
+      "en": "Philosophy",
+      "ja": "哲学"
+    },
+    "101":
+    {
+      "en": "Theory of philosophy",
+      "ja": "哲学理論"
+    },
+    "102":
+    {
+      "en": "General history of philosophy",
+      "ja": "哲学史"
+    },
+    "103":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "104":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "105":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "106":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "107":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．哲学教育"
+    },
+    "108":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "110":
+    {
+      "en": "Special treatises on philosophy",
+      "ja": "哲学各論"
+    },
+    "111":
+    {
+      "en": "Metaphysics.Ontology",
+      "ja": "形而上学．存在論"
+    },
+    "112":
+    {
+      "en": "Philosophy of nature.Cosmology",
+      "ja": "自然哲学．宇宙論"
+    },
+    "113":
+    {
+      "en": "View of life.World view",
+      "ja": "人生観．世界観"
+    },
+    "114":
+    {
+      "en": "Philosophic anthropology",
+      "ja": "人間学"
+    },
+    "115":
+    {
+      "en": "Epistemology",
+      "ja": "認識論"
+    },
+    "116":
+    {
+      "en": "Logics.Dialectics.Methodology",
+      "ja": "論理学．弁証法［弁証法的論理学］．方法論"
+    },
+    "117":
+    {
+      "en": "Philosophy of value",
+      "ja": "価値哲学"
+    },
+    "118":
+    {
+      "en": "Philosophy of culture and technics",
+      "ja": "文化哲学．技術哲学"
+    },
+    "119":
+    {
+      "ja": "美学"
+    },
+    "120":
+    {
+      "en": "Oriental thought",
+      "ja": "東洋思想"
+    },
+    "121":
+    {
+      "en": "Nipponese thought",
+      "ja": "日本思想"
+    },
+    "122":
+    {
+      "en": "Chinese thought",
+      "ja": "中国思想．中国哲学"
+    },
+    "123":
+    {
+      "en": "Chinese classics",
+      "ja": "経書"
+    },
+    "124":
+    {
+      "en": "Sages of Pre-Chin",
+      "ja": "先秦思想．諸子百家"
+    },
+    "125":
+    {
+      "en": "Medieval and modern thought",
+      "ja": "中世思想．近代思想"
+    },
+    "126":
+    {
+      "en": "Indian philosophy.Brahmanism",
+      "ja": "インド哲学．バラモン教"
+    },
+    "129":
+    {
+      "en": "Other Oriental and Arabic thought",
+      "ja": "その他のアジア・アラブ哲学"
+    },
+    "130":
+    {
+      "en": "Western philosophy",
+      "ja": "西洋哲学"
+    },
+    "131":
+    {
+      "en": "Ancient philosophy",
+      "ja": "古代哲学"
+    },
+    "132":
+    {
+      "en": "Medieval philosophy",
+      "ja": "中世哲学"
+    },
+    "133":
+    {
+      "en": "Modern philosophy",
+      "ja": "近代哲学"
+    },
+    "134":
+    {
+      "en": "German and Austrian philosophy",
+      "ja": "ドイツ・オーストリア哲学"
+    },
+    "135":
+    {
+      "en": "French and Dutch philosophy",
+      "ja": "フランス・オランダ哲学"
+    },
+    "136":
+    {
+      "en": "Spanish and Portuguese philosophy",
+      "ja": "スペイン・ポルトガル哲学"
+    },
+    "137":
+    {
+      "en": "Italian philosophy",
+      "ja": "イタリア哲学"
+    },
+    "138":
+    {
+      "en": "Russian philosophy",
+      "ja": "ロシア哲学"
+    },
+    "139":
+    {
+      "en": "Other philosophy",
+      "ja": "その他の哲学"
+    },
+    "140":
+    {
+      "en": "Psychology",
+      "ja": "心理学"
+    },
+    "141":
+    {
+      "en": "General psychology",
+      "ja": "普通心理学．心理各論"
+    },
+    "143":
+    {
+      "en": "Developmental psychology",
+      "ja": "発達心理学"
+    },
+    "145":
+    {
+      "en": "Abnormal psychology",
+      "ja": "異常心理学"
+    },
+    "146":
+    {
+      "en": "Clinical psychology.Psychoanalysis",
+      "ja": "臨床心理学．精神分析学"
+    },
+    "147":
+    {
+      "en": "Parapsychology",
+      "ja": "超心理学．心霊研究"
+    },
+    "148":
+    {
+      "en": "Divination",
+      "ja": "相法．易占"
+    },
+    "149":
+    {
+      "en": "Applied psychology",
+      "ja": "応用心理学"
+    },
+    "150":
+    {
+      "en": "Ethics.Morals",
+      "ja": "倫理学．道徳"
+    },
+    "151":
+    {
+      "en": "Systems and doctrines",
+      "ja": "倫理各論"
+    },
+    "152":
+    {
+      "en": "Family and sexual ethics",
+      "ja": "家庭倫理．性倫理"
+    },
+    "153":
+    {
+      "en": "Professional and occupational ethics",
+      "ja": "職業倫理"
+    },
+    "154":
+    {
+      "en": "Social ethics",
+      "ja": "社会倫理［社会道徳］"
+    },
+    "155":
+    {
+      "en": "National polity",
+      "ja": "国体論．詔勅"
+    },
+    "156":
+    {
+      "en": "Bushido",
+      "ja": "武士道"
+    },
+    "157":
+    {
+      "en": "Hotokukyo.Shingaku",
+      "ja": "報徳教．石門心学"
+    },
+    "158":
+    {
+      "en": "Other ethical topics",
+      "ja": "その他の特定主題"
+    },
+    "159":
+    {
+      "en": "Practical ethics",
+      "ja": "人生訓．教訓"
+    },
+    "160":
+    {
+      "en": "Religion",
+      "ja": "宗教"
+    },
+    "161":
+    {
+      "en": "Science of religion",
+      "ja": "宗教学．宗教思想"
+    },
+    "162":
+    {
+      "en": "History and conditions of religions",
+      "ja": "宗教史・事情"
+    },
+    "163":
+    {
+      "en": "Primitive religions",
+      "ja": "原始宗教．宗教民族学"
+    },
+    "164":
+    {
+      "en": "Myths.Mythology",
+      "ja": "神話．神話学"
+    },
+    "165":
+    {
+      "en": "Comparative religion",
+      "ja": "比較宗教"
+    },
+    "166":
+    {
+      "en": "Taoism",
+      "ja": "道教"
+    },
+    "167":
+    {
+      "en": "Islam",
+      "ja": "イスラム"
+    },
+    "168":
+    {
+      "en": "Hinduism.Jainaism",
+      "ja": "ヒンズー教．ジャイナ教"
+    },
+    "169":
+    {
+      "en": "Other religions",
+      "ja": "その他の宗教．新興宗教"
+    },
+    "170":
+    {
+      "en": "Shinto",
+      "ja": "神道"
+    },
+    "171":
+    {
+      "en": "Shinto theology",
+      "ja": "神道思想．神道説"
+    },
+    "172":
+    {
+      "en": "History and conditions of Shinto",
+      "ja": "神祇・神道史"
+    },
+    "173":
+    {
+      "en": "Shinto sacred classics",
+      "ja": "神典"
+    },
+    "174":
+    {
+      "en": "Priestly memoirs.Sermons",
+      "ja": "信仰録．説教集"
+    },
+    "175":
+    {
+      "en": "Shrines.Shinto priests",
+      "ja": "神社．神職"
+    },
+    "176":
+    {
+      "en": "Shinto festivals",
+      "ja": "祭祀"
+    },
+    "177":
+    {
+      "en": "Shinto missions",
+      "ja": "布教．伝道"
+    },
+    "178":
+    {
+      "en": "Sectarian Shinto",
+      "ja": "各教派．教派神道"
+    },
+    "180":
+    {
+      "en": "Buddhism",
+      "ja": "仏教"
+    },
+    "181":
+    {
+      "en": "Buddhist doctrines",
+      "ja": "仏教教理．仏教哲学"
+    },
+    "182":
+    {
+      "en": "History and conditions of Buddhism",
+      "ja": "仏教史"
+    },
+    "183":
+    {
+      "en": "Buddhist scriptures",
+      "ja": "経典"
+    },
+    "184":
+    {
+      "en": "Sermons.Preaching",
+      "ja": "法話・説教集"
+    },
+    "185":
+    {
+      "en": "Temples.Buddhist priests",
+      "ja": "寺院．僧職"
+    },
+    "186":
+    {
+      "en": "Buddhist services and customs",
+      "ja": "仏会"
+    },
+    "187":
+    {
+      "en": "Buddhist missions",
+      "ja": "布教．伝道"
+    },
+    "188":
+    {
+      "en": "Buddhist sects",
+      "ja": "各宗"
+    },
+    "190":
+    {
+      "en": "Christianity",
+      "ja": "キリスト教"
+    },
+    "191":
+    {
+      "en": "Christian theology",
+      "ja": "教義．キリスト教神学"
+    },
+    "192":
+    {
+      "en": "History and conditions of Christianity",
+      "ja": "キリスト教史．迫害史"
+    },
+    "193":
+    {
+      "en": "Bible",
+      "ja": "聖書"
+    },
+    "194":
+    {
+      "en": "Priestly memoirs.Sermons",
+      "ja": "信仰録．説教集"
+    },
+    "195":
+    {
+      "en": "Christian church.Holy orders",
+      "ja": "教会．聖職"
+    },
+    "196":
+    {
+      "en": "Ritual and liturgy",
+      "ja": "典礼．祭式．礼拝"
+    },
+    "197":
+    {
+      "en": "Missions",
+      "ja": "布教．伝道"
+    },
+    "198":
+    {
+      "en": "Denominations of Christian churches",
+      "ja": "各教派．教会史"
+    },
+    "199":
+    {
+      "en": "Judaism",
+      "ja": "ユダヤ教"
+    },
+    "200":
+    {
+      "en": "General history",
+      "ja": "歴史"
+    },
+    "201":
+    {
+      "en": "Historical science",
+      "ja": "歴史学"
+    },
+    "202":
+    {
+      "en": "Auxiliary sciences of history",
+      "ja": "歴史補助学"
+    },
+    "203":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "204":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "205":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "206":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "207":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．歴史教育"
+    },
+    "208":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "209":
+    {
+      "en": "World history",
+      "ja": "世界史．文化史"
+    },
+    "210":
+    {
+      "en": "General history of Nippon",
+      "ja": "日本史"
+    },
+    "211":
+    {
+      "en": "Hokkaido",
+      "ja": "北海道地方"
+    },
+    "212":
+    {
+      "en": "Tohoku",
+      "ja": "東北地方"
+    },
+    "213":
+    {
+      "en": "Kanto",
+      "ja": "関東地方"
+    },
+    "214":
+    {
+      "en": "Hokuriku",
+      "ja": "北陸地方"
+    },
+    "215":
+    {
+      "en": "Chubu",
+      "ja": "中部地方：東山・東海地方"
+    },
+    "216":
+    {
+      "en": "Kinki",
+      "ja": "近畿地方"
+    },
+    "217":
+    {
+      "en": "Chugoku",
+      "ja": "中国地方"
+    },
+    "218":
+    {
+      "en": "Shikoku",
+      "ja": "四国地方"
+    },
+    "219":
+    {
+      "en": "Kyushu",
+      "ja": "九州地方"
+    },
+    "220":
+    {
+      "en": "General history of Asia",
+      "ja": "アジア史．東洋史"
+    },
+    "221":
+    {
+      "en": "Korea",
+      "ja": "朝鮮"
+    },
+    "222":
+    {
+      "en": "China",
+      "ja": "中国"
+    },
+    "223":
+    {
+      "en": "Southeast Asia",
+      "ja": "東南アジア"
+    },
+    "224":
+    {
+      "en": "Indonesia",
+      "ja": "インドネシア"
+    },
+    "225":
+    {
+      "en": "India",
+      "ja": "インド"
+    },
+    "226":
+    {
+      "en": "Southwest Asia.Middle East",
+      "ja": "西南アジア．中東［近東］"
+    },
+    "227":
+    {
+      "en": "Southwest Asia.Middle East",
+      "ja": "西南アジア．中東［近東］"
+    },
+    "228":
+    {
+      "en": "Arab states",
+      "ja": "アラブ諸国"
+    },
+    "229":
+    {
+      "en": "Asiatic Russia",
+      "ja": "アジア・ロシア"
+    },
+    "230":
+    {
+      "en": "General history of Europe",
+      "ja": "ヨーロッパ史．西洋史"
+    },
+    "231":
+    {
+      "en": "Ancient Greece",
+      "ja": "古代ギリシア"
+    },
+    "232":
+    {
+      "en": "Ancient Rome",
+      "ja": "古代ローマ"
+    },
+    "233":
+    {
+      "en": "United Kingdom",
+      "ja": "イギリス．英国"
+    },
+    "234":
+    {
+      "en": "Germany.Central Europe",
+      "ja": "ドイツ．中欧"
+    },
+    "235":
+    {
+      "en": "France",
+      "ja": "フランス"
+    },
+    "236":
+    {
+      "en": "Spain",
+      "ja": "スペイン［イスパニア］"
+    },
+    "237":
+    {
+      "en": "Italy",
+      "ja": "イタリア"
+    },
+    "238":
+    {
+      "en": "Russia.USSR.CIS",
+      "ja": "ロシア［ソビエト連邦．独立国家共同体］"
+    },
+    "239":
+    {
+      "en": "Balkan States",
+      "ja": "バルカン諸国"
+    },
+    "240":
+    {
+      "en": "General history of Africa",
+      "ja": "アフリカ史"
+    },
+    "241":
+    {
+      "en": "North Africa",
+      "ja": "北アフリカ"
+    },
+    "242":
+    {
+      "en": "Egypt",
+      "ja": "エジプト"
+    },
+    "243":
+    {
+      "en": "Barbary States",
+      "ja": "バーバリ諸国"
+    },
+    "244":
+    {
+      "en": "West Africa",
+      "ja": "西アフリカ"
+    },
+    "245":
+    {
+      "en": "East Africa",
+      "ja": "東アフリカ"
+    },
+    "248":
+    {
+      "en": "South Africa",
+      "ja": "南アフリカ"
+    },
+    "249":
+    {
+      "en": "Islands of Indian Ocean",
+      "ja": "インド洋のアフリカ諸島"
+    },
+    "250":
+    {
+      "en": "General history of North America",
+      "ja": "北アメリカ史"
+    },
+    "251":
+    {
+      "en": "Canada",
+      "ja": "カナダ"
+    },
+    "253":
+    {
+      "en": "United States of America",
+      "ja": "アメリカ合衆国"
+    },
+    "255":
+    {
+      "en": "Latin America",
+      "ja": "ラテン・アメリカ［中南米］"
+    },
+    "256":
+    {
+      "en": "Mexico",
+      "ja": "メキシコ"
+    },
+    "257":
+    {
+      "en": "Central America",
+      "ja": "中央アメリカ［中米諸国］"
+    },
+    "259":
+    {
+      "en": "West Indies.Antilles",
+      "ja": "西インド諸島"
+    },
+    "260":
+    {
+      "en": "General history of South America",
+      "ja": "南アメリカ史"
+    },
+    "261":
+    {
+      "en": "Northern South America",
+      "ja": "北部諸国［カリブ沿海諸国］"
+    },
+    "262":
+    {
+      "en": "Brazil",
+      "ja": "ブラジル"
+    },
+    "263":
+    {
+      "en": "Paraguay",
+      "ja": "パラグアイ"
+    },
+    "264":
+    {
+      "en": "Uruguay",
+      "ja": "ウルグアイ"
+    },
+    "265":
+    {
+      "en": "Argentina",
+      "ja": "アルゼンチン"
+    },
+    "266":
+    {
+      "en": "Chile",
+      "ja": "チリ"
+    },
+    "267":
+    {
+      "en": "Bolivia",
+      "ja": "ボリビア"
+    },
+    "268":
+    {
+      "en": "Peru",
+      "ja": "ペルー"
+    },
+    "270":
+    {
+      "en": "General history of Oceania.General history of Polar regions",
+      "ja": "オセアニア史．両極地方史"
+    },
+    "271":
+    {
+      "en": "Australia",
+      "ja": "オーストラリア"
+    },
+    "272":
+    {
+      "en": "New Zealand",
+      "ja": "ニュージーランド"
+    },
+    "273":
+    {
+      "en": "Melanesia",
+      "ja": "メラネシア"
+    },
+    "274":
+    {
+      "en": "Micronesia",
+      "ja": "ミクロネシア"
+    },
+    "275":
+    {
+      "en": "Polynesia",
+      "ja": "ポリネシア"
+    },
+    "276":
+    {
+      "en": "Hawaii",
+      "ja": "ハワイ"
+    },
+    "277":
+    {
+      "en": "Polar regions",
+      "ja": "両極地方"
+    },
+    "278":
+    {
+      "en": "North pole.Arctic regions",
+      "ja": "北極．北極地方"
+    },
+    "279":
+    {
+      "en": "South pole.Antarctic regions",
+      "ja": "南極．南極地方"
+    },
+    "280":
+    {
+      "en": "General biography",
+      "ja": "伝記"
+    },
+    "281":
+    {
+      "en": "Nippon",
+      "ja": "日本"
+    },
+    "282":
+    {
+      "en": "Asia",
+      "ja": "アジア"
+    },
+    "283":
+    {
+      "en": "Europe",
+      "ja": "ヨーロッパ"
+    },
+    "284":
+    {
+      "en": "Africa",
+      "ja": "アフリカ"
+    },
+    "285":
+    {
+      "en": "North America",
+      "ja": "北アメリカ"
+    },
+    "286":
+    {
+      "en": "South America",
+      "ja": "南アメリカ"
+    },
+    "287":
+    {
+      "en": "Occeania.Polar regions",
+      "ja": "オセアニア．両極地方"
+    },
+    "288":
+    {
+      "en": "Genealogy.Family history",
+      "ja": "系譜．家史．皇室"
+    },
+    "289":
+    {
+      "en": "Individual biography",
+      "ja": "個人伝記"
+    },
+    "290":
+    {
+      "ja": "地理．地誌．紀行"
+    },
+    "291":
+    {
+      "en": "Nippon",
+      "ja": "日本"
+    },
+    "292":
+    {
+      "en": "Asia",
+      "ja": "アジア"
+    },
+    "293":
+    {
+      "en": "Europe",
+      "ja": "ヨーロッパ"
+    },
+    "294":
+    {
+      "en": "Africa",
+      "ja": "アフリカ"
+    },
+    "295":
+    {
+      "en": "North America",
+      "ja": "北アメリカ"
+    },
+    "296":
+    {
+      "en": "South America",
+      "ja": "南アメリカ"
+    },
+    "297":
+    {
+      "en": "Occeania.Polar regions",
+      "ja": "オセアニア．両極地方"
+    },
+    "299":
+    {
+      "en": "Oceans.Sea",
+      "ja": "海洋"
+    },
+    "300":
+    {
+      "en": "Social sciences",
+      "ja": "社会科学"
+    },
+    "301":
+    {
+      "en": "Theory and methodology",
+      "ja": "理論．方法論"
+    },
+    "302":
+    {
+      "en": "Social situation and conditions",
+      "ja": "政治・経済・社会・文化事情"
+    },
+    "303":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "304":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "305":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "306":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "307":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．社会科学教育"
+    },
+    "308":
+    {
+      "en": "Series.Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "309":
+    {
+      "en": "Social thought",
+      "ja": "社会思想"
+    },
+    "310":
+    {
+      "en": "Political science",
+      "ja": "政治"
+    },
+    "311":
+    {
+      "en": "Political theory and thought",
+      "ja": "政治学．政治思想"
+    },
+    "312":
+    {
+      "en": "Political history and conditions",
+      "ja": "政治史・事情"
+    },
+    "313":
+    {
+      "en": "Forms of states.Political systems",
+      "ja": "国家の形態．政治体制"
+    },
+    "314":
+    {
+      "en": "Legislature.Parliaments",
+      "ja": "議会"
+    },
+    "315":
+    {
+      "en": "Political parties",
+      "ja": "政党．政治結社"
+    },
+    "316":
+    {
+      "en": "State and individuals",
+      "ja": "国家と個人・宗教・民族"
+    },
+    "317":
+    {
+      "en": "Public administration",
+      "ja": "行政"
+    },
+    "318":
+    {
+      "en": "Local governments.Local administration",
+      "ja": "地方自治．地方行政"
+    },
+    "319":
+    {
+      "en": "International relations",
+      "ja": "外交．国際問題"
+    },
+    "320":
+    {
+      "en": "Law",
+      "ja": "法律"
+    },
+    "321":
+    {
+      "en": "Jurisprudence",
+      "ja": "法学"
+    },
+    "322":
+    {
+      "en": "Legal history",
+      "ja": "法制史"
+    },
+    "323":
+    {
+      "en": "Constitutional law",
+      "ja": "憲法"
+    },
+    "324":
+    {
+      "en": "Civil law",
+      "ja": "民法"
+    },
+    "325":
+    {
+      "en": "Commercial law",
+      "ja": "商法"
+    },
+    "326":
+    {
+      "en": "Criminal law",
+      "ja": "刑法．刑事法"
+    },
+    "327":
+    {
+      "en": "Judicial system and proceedings",
+      "ja": "司法．訴訟手続法"
+    },
+    "328":
+    {
+      "en": "Special law",
+      "ja": "諸法"
+    },
+    "329":
+    {
+      "en": "International law",
+      "ja": "国際法"
+    },
+    "330":
+    {
+      "en": "Economics",
+      "ja": "経済"
+    },
+    "331":
+    {
+      "en": "Economic theory and thought",
+      "ja": "経済学．経済思想"
+    },
+    "332":
+    {
+      "en": "Economic history and conditions",
+      "ja": "経済史・事情．経済体制"
+    },
+    "333":
+    {
+      "en": "Economic policy.International economy",
+      "ja": "経済政策．国際経済"
+    },
+    "334":
+    {
+      "en": "Population.Land.Resources",
+      "ja": "人口．土地．資源"
+    },
+    "335":
+    {
+      "en": "Enterprise.Management",
+      "ja": "企業．経営"
+    },
+    "336":
+    {
+      "en": "Business management",
+      "ja": "経営管理"
+    },
+    "337":
+    {
+      "en": "Money and currency",
+      "ja": "貨幣．通貨"
+    },
+    "338":
+    {
+      "en": "Financial economics.Banks and trusts",
+      "ja": "金融．銀行．信託"
+    },
+    "339":
+    {
+      "en": "Insurance",
+      "ja": "保険"
+    },
+    "340":
+    {
+      "en": "Public finance",
+      "ja": "財政"
+    },
+    "341":
+    {
+      "en": "Theory of public finance",
+      "ja": "財政学．財政思想"
+    },
+    "342":
+    {
+      "en": "Fiscal history and conditions",
+      "ja": "財政史・事情"
+    },
+    "343":
+    {
+      "en": "Fiscal policy and administration",
+      "ja": "財政政策．財務行政"
+    },
+    "344":
+    {
+      "en": "Budgets and settlements",
+      "ja": "予算．決算"
+    },
+    "345":
+    {
+      "en": "Taxations",
+      "ja": "租税"
+    },
+    "347":
+    {
+      "en": "Public debts",
+      "ja": "公債．国債"
+    },
+    "348":
+    {
+      "en": "Public monopolies.National property",
+      "ja": "専売．国有財産"
+    },
+    "349":
+    {
+      "en": "Local finance",
+      "ja": "地方財政"
+    },
+    "350":
+    {
+      "en": "Statistics",
+      "ja": "統計"
+    },
+    "351":
+    {
+      "ja": "日本"
+    },
+    "352":
+    {
+      "ja": "アジア"
+    },
+    "353":
+    {
+      "ja": "ヨーロッパ"
+    },
+    "354":
+    {
+      "ja": "アフリカ"
+    },
+    "355":
+    {
+      "ja": "北アメリカ"
+    },
+    "356":
+    {
+      "ja": "南アメリカ"
+    },
+    "357":
+    {
+      "ja": "オセアニア．両極地方"
+    },
+    "358":
+    {
+      "en": "Population statistics",
+      "ja": "人口統計．国勢調査"
+    },
+    "359":
+    {
+      "en": "Statistics of specific subjects",
+      "ja": "各種の統計書"
+    },
+    "360":
+    {
+      "en": "Society",
+      "ja": "社会"
+    },
+    "361":
+    {
+      "en": "Sociology",
+      "ja": "社会学"
+    },
+    "362":
+    {
+      "en": "Social history.Social system",
+      "ja": "社会史．社会体制"
+    },
+    "364":
+    {
+      "en": "Social security",
+      "ja": "社会保障"
+    },
+    "365":
+    {
+      "en": "Living and consumer’s problems",
+      "ja": "生活・消費者問題"
+    },
+    "366":
+    {
+      "en": "Labor economics.Labor problems",
+      "ja": "労働経済．労働問題"
+    },
+    "367":
+    {
+      "en": "Family.Man and woman.Aged people",
+      "ja": "家族問題．男性・女性問題．老人問題"
+    },
+    "368":
+    {
+      "en": "Social pathology",
+      "ja": "社会病理"
+    },
+    "369":
+    {
+      "en": "Social welfare",
+      "ja": "社会福祉"
+    },
+    "370":
+    {
+      "en": "Education",
+      "ja": "教育"
+    },
+    "371":
+    {
+      "en": "Theory of education",
+      "ja": "教育学．教育思想"
+    },
+    "372":
+    {
+      "en": "History and conditions of education",
+      "ja": "教育史・事情"
+    },
+    "373":
+    {
+      "en": "Educational policy and system",
+      "ja": "教育政策．教育制度．教育行財政"
+    },
+    "374":
+    {
+      "en": "School administration",
+      "ja": "学校経営・管理．学校保健"
+    },
+    "375":
+    {
+      "en": "Curriculums.Methods of instruction and study",
+      "ja": "教育課程．学習指導．教科別教育"
+    },
+    "376":
+    {
+      "en": "Pre―school.Elementary and secondary education",
+      "ja": "幼児・初等・中等教育"
+    },
+    "377":
+    {
+      "en": "Higher education",
+      "ja": "大学．高等・専門教育．学術行政"
+    },
+    "378":
+    {
+      "en": "Education for the handicapped children",
+      "ja": "障害児教育"
+    },
+    "379":
+    {
+      "en": "Social education",
+      "ja": "社会教育"
+    },
+    "380":
+    {
+      "en": "Customs,folklore and ethnology",
+      "ja": "風俗習慣．民俗学．民族学"
+    },
+    "382":
+    {
+      "en": "History and descriptions of customs,folklore and ethnology",
+      "ja": "風俗史．民俗誌．民族誌"
+    },
+    "383":
+    {
+      "en": "Costumes.Eating and drinking.Housing",
+      "ja": "衣食住の習俗"
+    },
+    "384":
+    {
+      "en": "Customs of social and domestic life",
+      "ja": "社会・家庭生活の習俗"
+    },
+    "385":
+    {
+      "en": "Customs of life cycle",
+      "ja": "通過儀礼．冠婚葬祭"
+    },
+    "386":
+    {
+      "en": "Annual events.Festivals",
+      "ja": "年中行事．祭礼"
+    },
+    "387":
+    {
+      "en": "Popular beliefs",
+      "ja": "民間信仰．迷信［俗信］"
+    },
+    "388":
+    {
+      "en": "Legends.Folk tales",
+      "ja": "伝説．民話［昔話］"
+    },
+    "389":
+    {
+      "en": "Ethnology.Cultural anthropology",
+      "ja": "民族学．文化人類学"
+    },
+    "390":
+    {
+      "en": "National defence.Military science",
+      "ja": "国防．軍事"
+    },
+    "391":
+    {
+      "en": "War.Strategy.Tactics",
+      "ja": "戦争．戦略．戦術"
+    },
+    "392":
+    {
+      "en": "History and conditions",
+      "ja": "国防史・事情．軍事史・事情"
+    },
+    "393":
+    {
+      "en": "Policy and administration of national defence",
+      "ja": "国防政策・行政・法令"
+    },
+    "394":
+    {
+      "en": "Military health services",
+      "ja": "軍事医学．兵食"
+    },
+    "395":
+    {
+      "en": "Military installations.War supplies",
+      "ja": "軍事施設．軍需品"
+    },
+    "396":
+    {
+      "en": "Armies",
+      "ja": "陸軍"
+    },
+    "397":
+    {
+      "en": "Navies",
+      "ja": "海軍"
+    },
+    "398":
+    {
+      "en": "Air forces and warfare",
+      "ja": "空軍"
+    },
+    "399":
+    {
+      "en": "Antiquated arts of war",
+      "ja": "古代兵法．軍学"
+    },
+    "400":
+    {
+      "en": "Natural science",
+      "ja": "自然科学"
+    },
+    "401":
+    {
+      "en": "Theory and philosophy",
+      "ja": "科学理論．科学哲学"
+    },
+    "402":
+    {
+      "en": "History and conditions",
+      "ja": "科学史・事情"
+    },
+    "403":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "404":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "405":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "406":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "407":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．科学教育"
+    },
+    "408":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "409":
+    {
+      "en": "Science and Technology Policy",
+      "ja": "科学技術政策．科学技術行政"
+    },
+    "410":
+    {
+      "en": "Mathematics",
+      "ja": "数学"
+    },
+    "411":
+    {
+      "en": "Algebra",
+      "ja": "代数学"
+    },
+    "412":
+    {
+      "en": "Theory of numbers",
+      "ja": "数論［整数論］"
+    },
+    "413":
+    {
+      "en": "Analysis",
+      "ja": "解析学"
+    },
+    "414":
+    {
+      "en": "Geometry",
+      "ja": "幾何学"
+    },
+    "415":
+    {
+      "en": "Topological mathematics",
+      "ja": "位相数学"
+    },
+    "417":
+    {
+      "en": "Probabilities.Mathematical statistics",
+      "ja": "確率論．数理統計学"
+    },
+    "418":
+    {
+      "en": "Numerical calculations",
+      "ja": "計算法"
+    },
+    "419":
+    {
+      "en": "Mathematics of Nippon and China",
+      "ja": "和算．中国算法"
+    },
+    "420":
+    {
+      "en": "Physics",
+      "ja": "物理学"
+    },
+    "421":
+    {
+      "en": "Theoretical physics",
+      "ja": "理論物理学"
+    },
+    "423":
+    {
+      "en": "Mechanics",
+      "ja": "力学"
+    },
+    "424":
+    {
+      "en": "Vibrations.Acoustics",
+      "ja": "振動学．音響学"
+    },
+    "425":
+    {
+      "en": "Optics",
+      "ja": "光学"
+    },
+    "426":
+    {
+      "en": "Heat.Thermotics",
+      "ja": "熱学"
+    },
+    "427":
+    {
+      "en": "Electricity and magnetism",
+      "ja": "電磁気学"
+    },
+    "428":
+    {
+      "en": "Physical properties of matter",
+      "ja": "物性物理学"
+    },
+    "429":
+    {
+      "en": "Atomic and nuclear physics",
+      "ja": "原子物理学"
+    },
+    "430":
+    {
+      "en": "Chemistry",
+      "ja": "化学"
+    },
+    "431":
+    {
+      "en": "Physical and theoretical chemistry",
+      "ja": "物理化学．理論化学"
+    },
+    "432":
+    {
+      "en": "Experimental chemistry",
+      "ja": "実験化学［化学実験法］"
+    },
+    "433":
+    {
+      "en": "Analytical chemistry",
+      "ja": "分析化学［化学分析］"
+    },
+    "434":
+    {
+      "en": "Synthetical chemistry",
+      "ja": "合成化学［化学合成］"
+    },
+    "435":
+    {
+      "en": "Inorganic chemistry",
+      "ja": "無機化学"
+    },
+    "436":
+    {
+      "en": "Metallic elements,their compounds",
+      "ja": "金属元素とその化合物"
+    },
+    "437":
+    {
+      "en": "Organic chemistry",
+      "ja": "有機化学"
+    },
+    "438":
+    {
+      "en": "Chemistry of cyclic compounds",
+      "ja": "環式化合物の化学"
+    },
+    "439":
+    {
+      "en": "Chemistry of natural products",
+      "ja": "天然物質の化学"
+    },
+    "440":
+    {
+      "en": "Astronomy.Space sciences",
+      "ja": "天文学．宇宙科学"
+    },
+    "441":
+    {
+      "en": "Theoretical astronomy",
+      "ja": "理論天文学．数理天文学"
+    },
+    "442":
+    {
+      "en": "Practical astronomy",
+      "ja": "実地天文学．天体観測法"
+    },
+    "443":
+    {
+      "en": "Fixed stars",
+      "ja": "恒星．恒星天文学"
+    },
+    "444":
+    {
+      "en": "Sun",
+      "ja": "太陽．太陽物理学"
+    },
+    "445":
+    {
+      "en": "Planets.Satellites",
+      "ja": "惑星．衛星"
+    },
+    "446":
+    {
+      "en": "Moon",
+      "ja": "月"
+    },
+    "447":
+    {
+      "en": "Comets.Meteors",
+      "ja": "彗星．流星"
+    },
+    "448":
+    {
+      "en": "Earth.Astronomical geography",
+      "ja": "地球．天文地理学"
+    },
+    "449":
+    {
+      "en": "Horology.Calendars",
+      "ja": "時法．暦学"
+    },
+    "450":
+    {
+      "en": "Earth sciences",
+      "ja": "地球科学．地学"
+    },
+    "451":
+    {
+      "en": "Meteorology",
+      "ja": "気象学"
+    },
+    "452":
+    {
+      "en": "Oceanography",
+      "ja": "海洋学"
+    },
+    "453":
+    {
+      "en": "Seismology",
+      "ja": "地震学"
+    },
+    "454":
+    {
+      "en": "Geomorphology",
+      "ja": "地形学"
+    },
+    "455":
+    {
+      "en": "Geology",
+      "ja": "地質学"
+    },
+    "456":
+    {
+      "en": "Historical geology.Stratigraphy",
+      "ja": "地史学．層位学"
+    },
+    "457":
+    {
+      "en": "Paleontology",
+      "ja": "古生物学．化石"
+    },
+    "458":
+    {
+      "en": "Petrology",
+      "ja": "岩石学"
+    },
+    "459":
+    {
+      "en": "Mineralogy",
+      "ja": "鉱物学"
+    },
+    "460":
+    {
+      "en": "Biology",
+      "ja": "生物科学．一般生物学"
+    },
+    "461":
+    {
+      "en": "Theoretical biology",
+      "ja": "理論生物学．生命論"
+    },
+    "462":
+    {
+      "en": "Biogeography",
+      "ja": "生物地理．生物誌"
+    },
+    "463":
+    {
+      "en": "Cytology",
+      "ja": "細胞学"
+    },
+    "464":
+    {
+      "en": "Biochemistry",
+      "ja": "生化学"
+    },
+    "465":
+    {
+      "en": "Microbes.Microbiology",
+      "ja": "微生物学"
+    },
+    "467":
+    {
+      "en": "Genetics.Evolution",
+      "ja": "遺伝学"
+    },
+    "468":
+    {
+      "en": "General ecology",
+      "ja": "生態学"
+    },
+    "469":
+    {
+      "en": "Anthropology",
+      "ja": "人類学"
+    },
+    "470":
+    {
+      "en": "Botany",
+      "ja": "植物学"
+    },
+    "471":
+    {
+      "en": "General botany",
+      "ja": "一般植物学"
+    },
+    "472":
+    {
+      "en": "Phytogeography.Flora",
+      "ja": "植物地理．植物誌"
+    },
+    "473":
+    {
+      "en": "Thallophyta",
+      "ja": "葉状植物"
+    },
+    "474":
+    {
+      "en": "Algae and fungi",
+      "ja": "藻類．菌類"
+    },
+    "475":
+    {
+      "en": "Bryophyta",
+      "ja": "コケ植物［蘚苔類］"
+    },
+    "476":
+    {
+      "en": "Pteridophyta",
+      "ja": "シダ植物"
+    },
+    "477":
+    {
+      "en": "Spermatophyta",
+      "ja": "種子植物"
+    },
+    "478":
+    {
+      "en": "Gymnospermae",
+      "ja": "裸子植物"
+    },
+    "479":
+    {
+      "en": "Angiospermae",
+      "ja": "被子植物"
+    },
+    "480":
+    {
+      "en": "Zoology",
+      "ja": "動物学"
+    },
+    "481":
+    {
+      "en": "General zoology",
+      "ja": "一般動物学"
+    },
+    "482":
+    {
+      "en": "Zoogeography.Fauna",
+      "ja": "動物地理．動物誌"
+    },
+    "483":
+    {
+      "en": "Invertebrata",
+      "ja": "無脊椎動物"
+    },
+    "484":
+    {
+      "en": "Mollusca",
+      "ja": "軟体動物．貝類学"
+    },
+    "485":
+    {
+      "en": "Arthropoda",
+      "ja": "節足動物"
+    },
+    "486":
+    {
+      "en": "Insecta.Entomology",
+      "ja": "昆虫類"
+    },
+    "487":
+    {
+      "en": "Vertebrata",
+      "ja": "脊椎動物"
+    },
+    "488":
+    {
+      "en": "Aves.Ornithology",
+      "ja": "鳥類"
+    },
+    "489":
+    {
+      "en": "Mammalia",
+      "ja": "哺乳類"
+    },
+    "490":
+    {
+      "en": "Medical sciences",
+      "ja": "医学"
+    },
+    "491":
+    {
+      "en": "Fundamental medicine",
+      "ja": "基礎医学"
+    },
+    "492":
+    {
+      "en": "Clinical medicine",
+      "ja": "臨床医学．診断・治療"
+    },
+    "493":
+    {
+      "en": "Internal medicine",
+      "ja": "内科学"
+    },
+    "494":
+    {
+      "en": "Surgery",
+      "ja": "外科学"
+    },
+    "495":
+    {
+      "en": "Gynecology.Obstetrics",
+      "ja": "婦人科学．産科学"
+    },
+    "496":
+    {
+      "en": "Ophthalmology.Otorhinolaryngology",
+      "ja": "眼科学．耳鼻咽喉科学"
+    },
+    "497":
+    {
+      "en": "Dentistry",
+      "ja": "歯科学"
+    },
+    "498":
+    {
+      "en": "Hygienics.Public health.Preventive medicine",
+      "ja": "衛生学．公衆衛生．予防医学"
+    },
+    "499":
+    {
+      "en": "Pharmaceutics",
+      "ja": "薬学"
+    },
+    "500":
+    {
+      "en": "Technology.Engineering",
+      "ja": "技術．工学"
+    },
+    "501":
+    {
+      "en": "Basic engineering",
+      "ja": "工業基礎学"
+    },
+    "502":
+    {
+      "en": "History of technology",
+      "ja": "技術史．工学史"
+    },
+    "503":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "504":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "505":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "506":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "507":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．技術教育"
+    },
+    "508":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "509":
+    {
+      "en": "Industries.Manufacturing industry",
+      "ja": "工業．工業経済"
+    },
+    "510":
+    {
+      "en": "Construction.Civil engineering",
+      "ja": "建設工学．土木工学"
+    },
+    "511":
+    {
+      "en": "Mechanics and materials",
+      "ja": "土木力学．建設材料"
+    },
+    "512":
+    {
+      "en": "Surveying",
+      "ja": "測量"
+    },
+    "513":
+    {
+      "en": "Designs and executions",
+      "ja": "土木設計・施工法"
+    },
+    "514":
+    {
+      "en": "Engineering of roads and highways",
+      "ja": "道路工学"
+    },
+    "515":
+    {
+      "en": "Bridge engineering",
+      "ja": "橋梁工学"
+    },
+    "516":
+    {
+      "en": "Railroad engineering",
+      "ja": "鉄道工学"
+    },
+    "517":
+    {
+      "en": "Hydraulic engineering",
+      "ja": "河海工学．河川工学"
+    },
+    "518":
+    {
+      "en": "Sanitary and municipal engineering",
+      "ja": "衛生工学．都市工学"
+    },
+    "519":
+    {
+      "en": "Pollution.Environmental engineering",
+      "ja": "公害．環境工学"
+    },
+    "520":
+    {
+      "en": "Architecture.Building",
+      "ja": "建築学"
+    },
+    "521":
+    {
+      "en": "Nippon architecture",
+      "ja": "日本の建築"
+    },
+    "522":
+    {
+      "en": "Oriental architecture",
+      "ja": "東洋の建築．アジアの建築"
+    },
+    "523":
+    {
+      "en": "Occidental architecture.Others",
+      "ja": "西洋の建築．その他の様式の建築"
+    },
+    "524":
+    {
+      "en": "Construction",
+      "ja": "建築構造"
+    },
+    "525":
+    {
+      "en": "Planning.Design.Practices",
+      "ja": "建築計画・施工"
+    },
+    "526":
+    {
+      "en": "Specific buildings",
+      "ja": "各種の建築"
+    },
+    "527":
+    {
+      "en": "Residential buildings",
+      "ja": "住宅建築"
+    },
+    "528":
+    {
+      "en": "Building utilities",
+      "ja": "建築設備．設備工学"
+    },
+    "529":
+    {
+      "en": "Architectural design and decoration",
+      "ja": "建築意匠・装飾"
+    },
+    "530":
+    {
+      "en": "Mechanical engineering",
+      "ja": "機械工学"
+    },
+    "531":
+    {
+      "en": "Mechanics,materials and design",
+      "ja": "機械力学・材料・設計"
+    },
+    "532":
+    {
+      "en": "Machine―shop practice.Machine tools",
+      "ja": "機械工作．工作機械"
+    },
+    "533":
+    {
+      "en": "Heat engines",
+      "ja": "熱機関．熱工学"
+    },
+    "534":
+    {
+      "en": "Hydraulic and pneumatic machinery",
+      "ja": "流体機械．流体工学"
+    },
+    "535":
+    {
+      "en": "Precision and optical instruments",
+      "ja": "精密機器．光学機器"
+    },
+    "536":
+    {
+      "en": "Transportation engineering",
+      "ja": "運輸工学．車輌．運搬機械"
+    },
+    "537":
+    {
+      "en": "Automobile engineering",
+      "ja": "自動車工学"
+    },
+    "538":
+    {
+      "en": "Aerospace engineering",
+      "ja": "航空宇宙工学"
+    },
+    "539":
+    {
+      "en": "Nuclear engineering",
+      "ja": "原子力工学"
+    },
+    "540":
+    {
+      "en": "Electrical engineering",
+      "ja": "電気工学"
+    },
+    "541":
+    {
+      "en": "Electoric circuits,measurements and materials",
+      "ja": "電気回路・計測・材料"
+    },
+    "542":
+    {
+      "en": "Electrical machinery",
+      "ja": "電気機器"
+    },
+    "543":
+    {
+      "en": "Generation of electric power",
+      "ja": "発電"
+    },
+    "544":
+    {
+      "en": "Transmission.Transformation.Distribution",
+      "ja": "送電．変電．配電"
+    },
+    "545":
+    {
+      "en": "Electric lighting and heating",
+      "ja": "電灯．照明．電熱"
+    },
+    "546":
+    {
+      "en": "Electric railroads",
+      "ja": "電気鉄道"
+    },
+    "547":
+    {
+      "en": "Communication engineering",
+      "ja": "通信工学．電気通信"
+    },
+    "548":
+    {
+      "en": "Information engineering",
+      "ja": "情報工学"
+    },
+    "549":
+    {
+      "en": "Electronic engineering",
+      "ja": "電子工学"
+    },
+    "550":
+    {
+      "en": "Maritime engineering",
+      "ja": "海洋工学．船舶工学"
+    },
+    "551":
+    {
+      "en": "Theories of shipbuilding",
+      "ja": "理論造船学"
+    },
+    "552":
+    {
+      "en": "Hull construction.Materials of hull",
+      "ja": "船体構造・材料・施工"
+    },
+    "553":
+    {
+      "en": "Equipment and outfit of ships",
+      "ja": "船体艤装．船舶設備"
+    },
+    "554":
+    {
+      "en": "Marine engineering",
+      "ja": "舶用機関［造機］"
+    },
+    "555":
+    {
+      "en": "Refitment of ships.Maintenance",
+      "ja": "船舶修理．保守"
+    },
+    "556":
+    {
+      "en": "Specific ships and boats",
+      "ja": "各種の船舶・艦艇"
+    },
+    "557":
+    {
+      "en": "Navigation",
+      "ja": "航海．航海学"
+    },
+    "558":
+    {
+      "en": "Sea development",
+      "ja": "海洋開発"
+    },
+    "559":
+    {
+      "en": "Weapons.Military engineering",
+      "ja": "兵器．軍事工学"
+    },
+    "560":
+    {
+      "en": "Metal and mining engineering",
+      "ja": "金属工学．鉱山工学"
+    },
+    "561":
+    {
+      "en": "Exploitation.Ore dressing",
+      "ja": "採鉱．選鉱"
+    },
+    "562":
+    {
+      "en": "Mining of specific metals",
+      "ja": "各種の金属鉱床・採掘"
+    },
+    "563":
+    {
+      "en": "Metallurgy and alloys.Metallography",
+      "ja": "冶金．合金"
+    },
+    "564":
+    {
+      "en": "Ferrous metals",
+      "ja": "鉄鋼"
+    },
+    "565":
+    {
+      "en": "Nonferrous metals",
+      "ja": "非鉄金属"
+    },
+    "566":
+    {
+      "en": "Metallurgical technology",
+      "ja": "金属加工．製造冶金"
+    },
+    "567":
+    {
+      "en": "Coal mining",
+      "ja": "石炭"
+    },
+    "568":
+    {
+      "en": "Petroleum mining",
+      "ja": "石油"
+    },
+    "569":
+    {
+      "en": "Non―metalic mining",
+      "ja": "非金属鉱物．土石採取業"
+    },
+    "570":
+    {
+      "en": "Chemical technology",
+      "ja": "化学工業"
+    },
+    "571":
+    {
+      "en": "Chemical engineering",
+      "ja": "化学工学．化学機器"
+    },
+    "572":
+    {
+      "en": "Industrial electrochemistry",
+      "ja": "電気化学工業"
+    },
+    "573":
+    {
+      "en": "Ceramic technology",
+      "ja": "セラミックス．窯業．珪酸塩化学工業"
+    },
+    "574":
+    {
+      "en": "Industrial chemicals",
+      "ja": "化学薬品"
+    },
+    "575":
+    {
+      "en": "Fuels and explosives",
+      "ja": "燃料．爆発物"
+    },
+    "576":
+    {
+      "en": "Oils and fats",
+      "ja": "油脂類"
+    },
+    "577":
+    {
+      "en": "Dyes",
+      "ja": "染料"
+    },
+    "578":
+    {
+      "en": "Polymers.Plastics.Cellulose",
+      "ja": "高分子化学工業"
+    },
+    "579":
+    {
+      "en": "Other chemical technologies",
+      "ja": "その他の化学工業"
+    },
+    "580":
+    {
+      "en": "Manufactures",
+      "ja": "製造工業"
+    },
+    "581":
+    {
+      "en": "Metal goods",
+      "ja": "金属製品"
+    },
+    "582":
+    {
+      "en": "Business machines.Household appliances.Musical instrument",
+      "ja": "事務機器．家庭機器．楽器"
+    },
+    "583":
+    {
+      "en": "Woodworking",
+      "ja": "木工業．木製品"
+    },
+    "584":
+    {
+      "en": "Leather and fur goods",
+      "ja": "皮革工業．皮革製品"
+    },
+    "585":
+    {
+      "en": "Pulp and paper industries",
+      "ja": "パルプ・製紙工業"
+    },
+    "586":
+    {
+      "en": "Textile industry",
+      "ja": "繊維工学"
+    },
+    "587":
+    {
+      "en": "Dyeing",
+      "ja": "染色加工．染色業"
+    },
+    "588":
+    {
+      "en": "Food technology",
+      "ja": "食品工業"
+    },
+    "589":
+    {
+      "en": "Other miscellaneous manufactures",
+      "ja": "その他の雑工業"
+    },
+    "590":
+    {
+      "en": "Domestic arts and sciences",
+      "ja": "家政学．生活科学"
+    },
+    "591":
+    {
+      "en": "Domestic economy and management",
+      "ja": "家庭経済・経営"
+    },
+    "592":
+    {
+      "en": "Sciences and technology in household",
+      "ja": "家庭理工学"
+    },
+    "593":
+    {
+      "en": "Clothing.Sewing",
+      "ja": "衣服．裁縫"
+    },
+    "594":
+    {
+      "en": "Handicrafts",
+      "ja": "手芸"
+    },
+    "595":
+    {
+      "en": "Beauty culture",
+      "ja": "理容．美容"
+    },
+    "596":
+    {
+      "en": "Food.Cookery",
+      "ja": "食品．料理"
+    },
+    "597":
+    {
+      "en": "Household utilities",
+      "ja": "住居．家具調度"
+    },
+    "598":
+    {
+      "en": "Domestic health",
+      "ja": "家庭衛生"
+    },
+    "599":
+    {
+      "en": "Care of children",
+      "ja": "育児"
+    },
+    "600":
+    {
+      "en": "Industry and commerce",
+      "ja": "産業"
+    },
+    "601":
+    {
+      "en": "Industrial policy and planning",
+      "ja": "産業政策・行政．総合開発"
+    },
+    "602":
+    {
+      "en": "History and conditions",
+      "ja": "産業史・事情．物産誌"
+    },
+    "603":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "604":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "605":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "606":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "607":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．産業教育"
+    },
+    "608":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "609":
+    {
+      "en": "Weights and measures",
+      "ja": "度量衡．計量法"
+    },
+    "610":
+    {
+      "en": "Agriculture",
+      "ja": "農業"
+    },
+    "611":
+    {
+      "en": "Agricultural economics",
+      "ja": "農業経済"
+    },
+    "612":
+    {
+      "en": "Agricultural history and conditions",
+      "ja": "農業史・事情"
+    },
+    "613":
+    {
+      "en": "Basic sciences on agriculture",
+      "ja": "農業基礎学"
+    },
+    "614":
+    {
+      "en": "Agricultural engineering",
+      "ja": "農業工学"
+    },
+    "615":
+    {
+      "en": "Methods of cultivation.Crop science",
+      "ja": "作物栽培．作物学"
+    },
+    "616":
+    {
+      "en": "Edible crops",
+      "ja": "食用作物"
+    },
+    "617":
+    {
+      "en": "Industrial crops",
+      "ja": "工芸作物"
+    },
+    "618":
+    {
+      "en": "Fiber crops",
+      "ja": "繊維作物"
+    },
+    "619":
+    {
+      "en": "Agricultural technology",
+      "ja": "農産物製造・加工"
+    },
+    "620":
+    {
+      "en": "Horticulture",
+      "ja": "園芸"
+    },
+    "621":
+    {
+      "en": "Gardening economy and management",
+      "ja": "園芸経済・行政・経営"
+    },
+    "622":
+    {
+      "en": "Horticultural history and conditions",
+      "ja": "園芸史・事情"
+    },
+    "623":
+    {
+      "en": "Basic sciences on gardening",
+      "ja": "園芸植物学．病虫害"
+    },
+    "624":
+    {
+      "en": "Green houses and tools",
+      "ja": "温室．温床．園芸用具"
+    },
+    "625":
+    {
+      "en": "Fruit culture.Pomiculture",
+      "ja": "果樹園芸"
+    },
+    "626":
+    {
+      "en": "Vegetable culture",
+      "ja": "蔬菜園芸"
+    },
+    "627":
+    {
+      "en": "Floriculture",
+      "ja": "花卉園芸［草花］"
+    },
+    "628":
+    {
+      "en": "Utilization of garden products",
+      "ja": "園芸利用"
+    },
+    "629":
+    {
+      "en": "Landscape gardening",
+      "ja": "造園"
+    },
+    "630":
+    {
+      "en": "Sericulture.Silk industry",
+      "ja": "蚕糸業"
+    },
+    "631":
+    {
+      "en": "Sericultural economy and management",
+      "ja": "蚕糸経済・行政・経営"
+    },
+    "632":
+    {
+      "en": "Sericultural history and conditions",
+      "ja": "蚕糸業史・事情"
+    },
+    "633":
+    {
+      "en": "Natural history of silkworms",
+      "ja": "蚕学．蚕業基礎学"
+    },
+    "634":
+    {
+      "en": "Silkworm eggs",
+      "ja": "蚕種"
+    },
+    "635":
+    {
+      "en": "Rearing of silkworms",
+      "ja": "飼育法"
+    },
+    "636":
+    {
+      "en": "Mulberry culture",
+      "ja": "くわ．栽桑"
+    },
+    "637":
+    {
+      "en": "Sericultural rooms and implements",
+      "ja": "蚕室．蚕具"
+    },
+    "638":
+    {
+      "en": "Cocoon",
+      "ja": "まゆ"
+    },
+    "639":
+    {
+      "en": "Raw silk production",
+      "ja": "製糸．生糸．蚕糸利用"
+    },
+    "640":
+    {
+      "en": "Animal husbandry",
+      "ja": "畜産業"
+    },
+    "641":
+    {
+      "en": "Animal economy and management",
+      "ja": "畜産経済・行政・経営"
+    },
+    "642":
+    {
+      "en": "History and conditions",
+      "ja": "畜産史・事情"
+    },
+    "643":
+    {
+      "en": "Stock breeding.Forage",
+      "ja": "家畜の繁殖．家畜飼料"
+    },
+    "644":
+    {
+      "en": "Cotes and implements",
+      "ja": "家畜の管理．畜舎．用具"
+    },
+    "645":
+    {
+      "en": "Domestic animals",
+      "ja": "家畜・畜産動物各論"
+    },
+    "646":
+    {
+      "en": "Aviculture.Poultry",
+      "ja": "家禽各論．飼鳥"
+    },
+    "647":
+    {
+      "en": "Apiculture.Beekeeping",
+      "ja": "みつばち．昆虫"
+    },
+    "648":
+    {
+      "en": "Animal industry",
+      "ja": "畜産製造．畜産物"
+    },
+    "649":
+    {
+      "en": "Veterinary medicine",
+      "ja": "獣医学．比較医学"
+    },
+    "650":
+    {
+      "en": "Forestry",
+      "ja": "林業"
+    },
+    "651":
+    {
+      "en": "Forest economics",
+      "ja": "林業経済・行政・経営"
+    },
+    "652":
+    {
+      "en": "History and conditions",
+      "ja": "森林史．林業史・事情"
+    },
+    "653":
+    {
+      "en": "Forest ecology.Silviculture",
+      "ja": "森林立地．造林"
+    },
+    "654":
+    {
+      "en": "Forest protection",
+      "ja": "森林保護"
+    },
+    "655":
+    {
+      "en": "Forest administration",
+      "ja": "森林施業"
+    },
+    "656":
+    {
+      "en": "Forest engineering",
+      "ja": "森林工学"
+    },
+    "657":
+    {
+      "en": "Forest utilization",
+      "ja": "森林利用．林産物．木材学"
+    },
+    "658":
+    {
+      "en": "Forest technology",
+      "ja": "林産製造"
+    },
+    "659":
+    {
+      "en": "Hunting and shooting",
+      "ja": "狩猟"
+    },
+    "660":
+    {
+      "en": "Fishing industry.Fisheries",
+      "ja": "水産業"
+    },
+    "661":
+    {
+      "en": "Fishing economics and management",
+      "ja": "水産経済・行政・経営"
+    },
+    "662":
+    {
+      "en": "History and conditions",
+      "ja": "水産業および漁業史・事情"
+    },
+    "663":
+    {
+      "en": "Basic sciences on fishery",
+      "ja": "水産基礎学"
+    },
+    "664":
+    {
+      "en": "Fishing",
+      "ja": "漁労．漁業各論"
+    },
+    "665":
+    {
+      "en": "Fishing boats and implements",
+      "ja": "漁船．漁具"
+    },
+    "666":
+    {
+      "en": "Aquaculture",
+      "ja": "水産増殖．養殖業"
+    },
+    "667":
+    {
+      "en": "Fish technology",
+      "ja": "水産製造．水産食品"
+    },
+    "668":
+    {
+      "en": "Utilization of aquatic products",
+      "ja": "水産物利用．水産利用工業"
+    },
+    "669":
+    {
+      "en": "Salt manufacture",
+      "ja": "製塩．塩業"
+    },
+    "670":
+    {
+      "en": "Commerce",
+      "ja": "商業"
+    },
+    "671":
+    {
+      "en": "Commercial policy",
+      "ja": "商業政策・行政"
+    },
+    "672":
+    {
+      "en": "History and conditions",
+      "ja": "商業史・事情"
+    },
+    "673":
+    {
+      "en": "Mercantile business",
+      "ja": "商業経営．商店"
+    },
+    "674":
+    {
+      "en": "Advertising.Propaganda.Public relations",
+      "ja": "広告．宣伝"
+    },
+    "675":
+    {
+      "en": "Marketing",
+      "ja": "マーケティング"
+    },
+    "676":
+    {
+      "en": "Exchanges",
+      "ja": "取引所"
+    },
+    "678":
+    {
+      "en": "Foreign trade",
+      "ja": "貿易"
+    },
+    "680":
+    {
+      "en": "Transportation services",
+      "ja": "運輸．交通"
+    },
+    "681":
+    {
+      "en": "Traffic policy and management",
+      "ja": "交通政策・行政・経営"
+    },
+    "682":
+    {
+      "en": "History and conditions",
+      "ja": "交通史・事情"
+    },
+    "683":
+    {
+      "en": "Maritime transport.Shipping",
+      "ja": "海運"
+    },
+    "684":
+    {
+      "en": "Inland water ways.Canal transportation",
+      "ja": "内水・運河交通"
+    },
+    "685":
+    {
+      "en": "Land transportation",
+      "ja": "陸運．自動車運送"
+    },
+    "686":
+    {
+      "en": "Railways",
+      "ja": "鉄道"
+    },
+    "687":
+    {
+      "en": "Air transportation",
+      "ja": "航空運送"
+    },
+    "688":
+    {
+      "en": "Warehouses",
+      "ja": "倉庫業"
+    },
+    "689":
+    {
+      "en": "Tourist industry",
+      "ja": "観光事業"
+    },
+    "690":
+    {
+      "en": "Communication services",
+      "ja": "通信事業"
+    },
+    "691":
+    {
+      "en": "Policy,administration and laws",
+      "ja": "通信政策・行政・法令"
+    },
+    "692":
+    {
+      "en": "History and conditions",
+      "ja": "通信事業史・事情"
+    },
+    "693":
+    {
+      "en": "Postal services",
+      "ja": "郵便．郵政事業"
+    },
+    "694":
+    {
+      "en": "Telecommunication",
+      "ja": "電気通信事業"
+    },
+    "699":
+    {
+      "en": "Broadcasting",
+      "ja": "放送事業：テレビ，ラジオ"
+    },
+    "700":
+    {
+      "en": "The arts.Fine arts",
+      "ja": "芸術．美術"
+    },
+    "701":
+    {
+      "en": "Theory of arts.Aesthetics",
+      "ja": "芸術理論．美学"
+    },
+    "702":
+    {
+      "en": "History of arts",
+      "ja": "芸術史．美術史"
+    },
+    "703":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "704":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "705":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "706":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "707":
+    {
+      "en": "Study and teaching.Art education",
+      "ja": "研究法．指導法．芸術教育"
+    },
+    "708":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "709":
+    {
+      "en": "Art and state.Cultural assets",
+      "ja": "芸術政策．文化財"
+    },
+    "710":
+    {
+      "en": "Sculpture.Plastic arts",
+      "ja": "彫刻"
+    },
+    "711":
+    {
+      "en": "Materials and techniques",
+      "ja": "彫塑材料・技法"
+    },
+    "712":
+    {
+      "en": "History of sculpture",
+      "ja": "彫刻史．各国の彫刻"
+    },
+    "713":
+    {
+      "en": "Wood carving",
+      "ja": "木彫"
+    },
+    "714":
+    {
+      "en": "Stone carving",
+      "ja": "石彫"
+    },
+    "715":
+    {
+      "en": "Metal sculpture and casting",
+      "ja": "金属彫刻．鋳造"
+    },
+    "717":
+    {
+      "en": "Ceramic sculpture",
+      "ja": "粘土彫刻．塑造"
+    },
+    "718":
+    {
+      "en": "Buddhist image",
+      "ja": "仏像"
+    },
+    "719":
+    {
+      "en": "Objet",
+      "ja": "オブジェ"
+    },
+    "720":
+    {
+      "en": "Painting.Pictorial arts",
+      "ja": "絵画"
+    },
+    "721":
+    {
+      "en": "Nipponese painting",
+      "ja": "日本画"
+    },
+    "722":
+    {
+      "en": "Oriental painting",
+      "ja": "東洋画"
+    },
+    "723":
+    {
+      "en": "Western painting",
+      "ja": "洋画"
+    },
+    "724":
+    {
+      "en": "Materials and techniques",
+      "ja": "絵画材料・技法"
+    },
+    "725":
+    {
+      "en": "Dessin.Drawing",
+      "ja": "素描．描画"
+    },
+    "726":
+    {
+      "en": "Caricatures.Illustration",
+      "ja": "漫画．挿絵．童画"
+    },
+    "727":
+    {
+      "en": "Graphic designs",
+      "ja": "グラフィック デザイン．図案"
+    },
+    "728":
+    {
+      "en": "Shodo.Calligraphy",
+      "ja": "書．書道"
+    },
+    "730":
+    {
+      "en": "Engraving",
+      "ja": "版画"
+    },
+    "731":
+    {
+      "en": "Materials and techniques",
+      "ja": "版画材料・技法"
+    },
+    "732":
+    {
+      "en": "History of engraving",
+      "ja": "版画史．各国の版画"
+    },
+    "733":
+    {
+      "en": "Wood engraving",
+      "ja": "木版画"
+    },
+    "734":
+    {
+      "en": "Lithography",
+      "ja": "石版画"
+    },
+    "735":
+    {
+      "en": "Copperplate and steel engraving",
+      "ja": "銅版画．鋼版画"
+    },
+    "736":
+    {
+      "en": "Soft―ground engraving",
+      "ja": "リノリウム版画．ゴム版画"
+    },
+    "737":
+    {
+      "en": "Photo―engraving.Mimeograph",
+      "ja": "写真版画．孔版画"
+    },
+    "739":
+    {
+      "en": "Seal engraving",
+      "ja": "印章．篆刻．印譜"
+    },
+    "740":
+    {
+      "en": "Photography and photographs",
+      "ja": "写真"
+    },
+    "742":
+    {
+      "en": "Camera and photographic materials",
+      "ja": "写真器械・材料"
+    },
+    "743":
+    {
+      "en": "Photographing",
+      "ja": "撮影技術"
+    },
+    "744":
+    {
+      "en": "Developing and printing",
+      "ja": "現像．印画"
+    },
+    "745":
+    {
+      "en": "Photoduplication.Photocopying",
+      "ja": "複写技術"
+    },
+    "746":
+    {
+      "en": "Specific field of photography",
+      "ja": "特殊写真"
+    },
+    "747":
+    {
+      "en": "Applications of photography",
+      "ja": "写真の応用"
+    },
+    "748":
+    {
+      "en": "Collections of photographs",
+      "ja": "写真集"
+    },
+    "749":
+    {
+      "en": "Printing.Graphic arts",
+      "ja": "印刷"
+    },
+    "750":
+    {
+      "en": "Industrial arts",
+      "ja": "工芸"
+    },
+    "751":
+    {
+      "en": "Ceramic arts",
+      "ja": "陶磁工芸"
+    },
+    "752":
+    {
+      "en": "Lacquer ware",
+      "ja": "漆工芸"
+    },
+    "753":
+    {
+      "en": "Textile arts",
+      "ja": "染織工芸"
+    },
+    "754":
+    {
+      "en": "Art wood work and bamboo―work",
+      "ja": "木竹工芸"
+    },
+    "755":
+    {
+      "en": "Jewelry arts.Ivory and horn carving",
+      "ja": "宝石・牙角・皮革工芸"
+    },
+    "756":
+    {
+      "en": "Art metalwork",
+      "ja": "金工芸"
+    },
+    "757":
+    {
+      "en": "Design.Decorative arts",
+      "ja": "デザイン．装飾美術"
+    },
+    "758":
+    {
+      "en": "Artistic furniture",
+      "ja": "美術家具"
+    },
+    "759":
+    {
+      "en": "Dolls.Toys",
+      "ja": "人形．玩具"
+    },
+    "760":
+    {
+      "en": "Music",
+      "ja": "音楽"
+    },
+    "761":
+    {
+      "en": "Musicology",
+      "ja": "音楽の一般理論．音楽学"
+    },
+    "762":
+    {
+      "en": "History of music",
+      "ja": "音楽史．各国の音楽"
+    },
+    "763":
+    {
+      "en": "Musical instruments.Instrumental music",
+      "ja": "楽器．器楽"
+    },
+    "764":
+    {
+      "en": "Instrumental ensembles",
+      "ja": "器楽合奏"
+    },
+    "765":
+    {
+      "en": "Religious music.Sacred music",
+      "ja": "宗教音楽．聖楽"
+    },
+    "766":
+    {
+      "en": "Dramatic music",
+      "ja": "劇音楽"
+    },
+    "767":
+    {
+      "en": "Vocal music",
+      "ja": "声楽"
+    },
+    "768":
+    {
+      "en": "Nipponese music",
+      "ja": "邦楽"
+    },
+    "769":
+    {
+      "en": "Theatrical dancing.Ballet",
+      "ja": "舞踊．バレエ"
+    },
+    "770":
+    {
+      "en": "Theater",
+      "ja": "演劇"
+    },
+    "771":
+    {
+      "en": "Stage.Direction.Acting",
+      "ja": "劇場．演出．演技"
+    },
+    "772":
+    {
+      "en": "History of theater",
+      "ja": "演劇史．各国の演劇"
+    },
+    "773":
+    {
+      "en": "Noh play and Noh comedy",
+      "ja": "能楽．狂言"
+    },
+    "774":
+    {
+      "en": "Kabuki play",
+      "ja": "歌舞伎"
+    },
+    "775":
+    {
+      "en": "Other theaters.Stage",
+      "ja": "各種の演劇"
+    },
+    "777":
+    {
+      "en": "Puppetry",
+      "ja": "人形劇"
+    },
+    "778":
+    {
+      "en": "Motion pictures",
+      "ja": "映画"
+    },
+    "779":
+    {
+      "en": "Public entertainments",
+      "ja": "大衆演芸"
+    },
+    "780":
+    {
+      "en": "Sports and physical training",
+      "ja": "スポーツ．体育"
+    },
+    "781":
+    {
+      "en": "Gymnastics.Plays",
+      "ja": "体操．遊戯"
+    },
+    "782":
+    {
+      "en": "Track and field athletics",
+      "ja": "陸上競技"
+    },
+    "783":
+    {
+      "en": "Ball games",
+      "ja": "球技"
+    },
+    "784":
+    {
+      "en": "Winter sports",
+      "ja": "冬季競技"
+    },
+    "785":
+    {
+      "en": "Aquatic sports",
+      "ja": "水上競技"
+    },
+    "786":
+    {
+      "en": "Outdoor recreations",
+      "ja": "戸外レクリエーション"
+    },
+    "787":
+    {
+      "en": "Angling and hunting sports",
+      "ja": "釣魚．遊猟"
+    },
+    "788":
+    {
+      "en": "Combat sports.Racing",
+      "ja": "相撲．拳闘．競馬"
+    },
+    "789":
+    {
+      "en": "Military arts",
+      "ja": "武術"
+    },
+    "790":
+    {
+      "en": "Accomplishments and amusements",
+      "ja": "諸芸．娯楽"
+    },
+    "791":
+    {
+      "en": "Tea ceremony",
+      "ja": "茶道"
+    },
+    "792":
+    {
+      "en": "Burning incense",
+      "ja": "香道"
+    },
+    "793":
+    {
+      "en": "Art of flower arrangement",
+      "ja": "花道"
+    },
+    "794":
+    {
+      "en": "Billiards",
+      "ja": "撞球"
+    },
+    "795":
+    {
+      "en": "Game of go",
+      "ja": "囲碁"
+    },
+    "796":
+    {
+      "en": "Game of shogi",
+      "ja": "将棋"
+    },
+    "797":
+    {
+      "en": "Games of chance",
+      "ja": "射倖ゲーム"
+    },
+    "798":
+    {
+      "en": "Indoor games",
+      "ja": "室内娯楽"
+    },
+    "799":
+    {
+      "en": "Dancing",
+      "ja": "ダンス"
+    },
+    "800":
+    {
+      "en": "Language",
+      "ja": "言語"
+    },
+    "801":
+    {
+      "en": "Linguistics.Philology",
+      "ja": "言語学"
+    },
+    "802":
+    {
+      "en": "History and conditions",
+      "ja": "言語史・事情．言語政策"
+    },
+    "803":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "804":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "805":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "806":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "807":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．言語教育"
+    },
+    "808":
+    {
+      "en": "Collected works.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "809":
+    {
+      "en": "Speaking.Shorthand.Typewriting",
+      "ja": "言語生活"
+    },
+    "810":
+    {
+      "en": "Nipponese",
+      "ja": "日本語"
+    },
+    "811":
+    {
+      "en": "Phonetics.Phonology.Writing",
+      "ja": "音声．音韻．文字"
+    },
+    "812":
+    {
+      "en": "Etymology.Semantics",
+      "ja": "語源．意味"
+    },
+    "813":
+    {
+      "en": "Dictionaries",
+      "ja": "辞典"
+    },
+    "814":
+    {
+      "en": "Vocabularies",
+      "ja": "語彙"
+    },
+    "815":
+    {
+      "en": "Grammar",
+      "ja": "文法．語法"
+    },
+    "816":
+    {
+      "en": "Sentences.Styles.Compositions",
+      "ja": "文章．文体．作文"
+    },
+    "817":
+    {
+      "en": "Readers.Interpretations.Conversations",
+      "ja": "読本．解釈．会話"
+    },
+    "818":
+    {
+      "en": "Dialects",
+      "ja": "方言．訛語"
+    },
+    "820":
+    {
+      "en": "Chinese",
+      "ja": "中国語"
+    },
+    "821":
+    {
+      "en": "Phonetics.Phonology.Writing",
+      "ja": "音声．音韻．文字"
+    },
+    "822":
+    {
+      "en": "Etymology.Semantics",
+      "ja": "語源．意味"
+    },
+    "823":
+    {
+      "en": "Dictionaries",
+      "ja": "辞典"
+    },
+    "824":
+    {
+      "en": "Vocabularies",
+      "ja": "語彙"
+    },
+    "825":
+    {
+      "en": "Grammar",
+      "ja": "文法．語法"
+    },
+    "826":
+    {
+      "en": "Sentences.Styles.Compositions",
+      "ja": "文章．文体．作文"
+    },
+    "827":
+    {
+      "en": "Readers.Interpretations.Conversations",
+      "ja": "読本．解釈．会話"
+    },
+    "828":
+    {
+      "en": "Dialects",
+      "ja": "方言．訛語"
+    },
+    "829":
+    {
+      "en": "Other Oriental languages",
+      "ja": "その他の東洋の諸言語"
+    },
+    "830":
+    {
+      "en": "English",
+      "ja": "英語"
+    },
+    "831":
+    {
+      "en": "Phonetics.Phonology.Writing",
+      "ja": "音声．音韻．文字"
+    },
+    "832":
+    {
+      "en": "Etymology.Semantics",
+      "ja": "語源．意味"
+    },
+    "833":
+    {
+      "en": "Dictionaries",
+      "ja": "辞典"
+    },
+    "834":
+    {
+      "en": "Vocabularies",
+      "ja": "語彙"
+    },
+    "835":
+    {
+      "en": "Grammar",
+      "ja": "文法．語法"
+    },
+    "836":
+    {
+      "en": "Sentences.Styles.Compositions",
+      "ja": "文章．文体．作文"
+    },
+    "837":
+    {
+      "en": "Readers.Interpretations.Conversations",
+      "ja": "読本．解釈．会話"
+    },
+    "838":
+    {
+      "en": "Dialects",
+      "ja": "方言．訛語"
+    },
+    "840":
+    {
+      "en": "German",
+      "ja": "ドイツ語"
+    },
+    "841":
+    {
+      "ja": "ドイツ語＠音声．音韻．文字"
+    },
+    "842":
+    {
+      "ja": "ドイツ語＠語源．語義．意味"
+    },
+    "843":
+    {
+      "ja": "ドイツ語＠辞典"
+    },
+    "844":
+    {
+      "ja": "ドイツ語＠語彙"
+    },
+    "845":
+    {
+      "ja": "ドイツ語＠文法．語法"
+    },
+    "846":
+    {
+      "ja": "ドイツ語＠文章．文体．作文"
+    },
+    "847":
+    {
+      "ja": "ドイツ語＠読本．解釈．会話"
+    },
+    "848":
+    {
+      "ja": "ドイツ語＠方言．訛語"
+    },
+    "849":
+    {
+      "en": "Other Germanic languages",
+      "ja": "その他のゲルマン諸語"
+    },
+    "850":
+    {
+      "en": "French",
+      "ja": "フランス語"
+    },
+    "851":
+    {
+      "ja": "フランス語＠音声．音韻．文字"
+    },
+    "852":
+    {
+      "ja": "フランス語＠語源．語義．意味"
+    },
+    "853":
+    {
+      "ja": "フランス語＠辞典"
+    },
+    "854":
+    {
+      "ja": "フランス語＠語彙"
+    },
+    "855":
+    {
+      "ja": "フランス語＠文法．語法"
+    },
+    "856":
+    {
+      "ja": "フランス語＠文章．文体．作文"
+    },
+    "857":
+    {
+      "ja": "フランス語＠読本．解釈．会話"
+    },
+    "858":
+    {
+      "ja": "フランス語＠方言．訛語"
+    },
+    "859":
+    {
+      "en": "Provencal",
+      "ja": "プロヴァンス語"
+    },
+    "860":
+    {
+      "en": "Spanish",
+      "ja": "スペイン語"
+    },
+    "861":
+    {
+      "ja": "スペイン語＠音声．音韻．文字"
+    },
+    "862":
+    {
+      "ja": "スペイン語＠語源．語義．意味"
+    },
+    "863":
+    {
+      "ja": "スペイン語＠辞典"
+    },
+    "864":
+    {
+      "ja": "スペイン語＠語彙"
+    },
+    "865":
+    {
+      "ja": "スペイン語＠文法．語法"
+    },
+    "866":
+    {
+      "ja": "スペイン語＠文章．文体．作文"
+    },
+    "867":
+    {
+      "ja": "スペイン語＠読本．解釈．会話"
+    },
+    "868":
+    {
+      "ja": "スペイン語＠方言．訛語"
+    },
+    "869":
+    {
+      "en": "Portuguese",
+      "ja": "ポルトガル語"
+    },
+    "870":
+    {
+      "en": "Italian",
+      "ja": "イタリア語"
+    },
+    "871":
+    {
+      "ja": "イタリア語＠音声．音韻．文字"
+    },
+    "872":
+    {
+      "ja": "イタリア語＠語源．語義．意味"
+    },
+    "873":
+    {
+      "ja": "イタリア語＠辞典"
+    },
+    "874":
+    {
+      "ja": "イタリア語＠語彙"
+    },
+    "875":
+    {
+      "ja": "イタリア語＠文法．語法"
+    },
+    "876":
+    {
+      "ja": "イタリア語＠文章．文体．作文"
+    },
+    "877":
+    {
+      "ja": "イタリア語＠読本．解釈．会話"
+    },
+    "878":
+    {
+      "ja": "イタリア語＠方言．訛語"
+    },
+    "879":
+    {
+      "en": "Other Romanic languages",
+      "ja": "その他のロマンス諸語"
+    },
+    "880":
+    {
+      "en": "Russian",
+      "ja": "ロシア語"
+    },
+    "881":
+    {
+      "ja": "ロシア語＠音声．音韻．文字"
+    },
+    "882":
+    {
+      "ja": "ロシア語＠語源．語義．意味"
+    },
+    "883":
+    {
+      "ja": "ロシア語＠辞典"
+    },
+    "884":
+    {
+      "ja": "ロシア語＠語彙"
+    },
+    "885":
+    {
+      "ja": "ロシア語＠文法．語法"
+    },
+    "886":
+    {
+      "ja": "ロシア語＠文章．文体．作文"
+    },
+    "887":
+    {
+      "ja": "ロシア語＠読本．解釈．会話"
+    },
+    "888":
+    {
+      "ja": "ロシア語＠方言．訛語"
+    },
+    "889":
+    {
+      "en": "Other Slavic languages",
+      "ja": "その他のスラヴ諸語"
+    },
+    "890":
+    {
+      "en": "Other languages",
+      "ja": "その他の諸言語"
+    },
+    "891":
+    {
+      "en": "Greek",
+      "ja": "ギリシア語"
+    },
+    "892":
+    {
+      "en": "Latin",
+      "ja": "ラテン語"
+    },
+    "893":
+    {
+      "en": "Other European languages",
+      "ja": "その他のヨーロッパの諸言語"
+    },
+    "894":
+    {
+      "en": "African languages",
+      "ja": "アフリカの諸言語"
+    },
+    "895":
+    {
+      "en": "American Indian languages",
+      "ja": "アメリカの諸言語"
+    },
+    "897":
+    {
+      "en": "Australian languages",
+      "ja": "オーストラリアの諸言語"
+    },
+    "899":
+    {
+      "en": "Universal languages",
+      "ja": "国際語［人工語］"
+    },
+    "900":
+    {
+      "en": "Literature",
+      "ja": "文学"
+    },
+    "901":
+    {
+      "en": "Theory and techniques",
+      "ja": "文学理論・作法"
+    },
+    "902":
+    {
+      "en": "History and criticism",
+      "ja": "文学史．文学思想史"
+    },
+    "903":
+    {
+      "en": "Reference books",
+      "ja": "参考図書［レファレンス ブック］"
+    },
+    "904":
+    {
+      "en": "Essays and lectures",
+      "ja": "論文集．評論集．講演集"
+    },
+    "905":
+    {
+      "en": "Serial publications",
+      "ja": "逐次刊行物"
+    },
+    "906":
+    {
+      "en": "Organizations",
+      "ja": "団体：学会，協会，会議"
+    },
+    "907":
+    {
+      "en": "Study and teaching",
+      "ja": "研究法．指導法．文学教育"
+    },
+    "908":
+    {
+      "en": "Series.Collections",
+      "ja": "叢書．全集．選集"
+    },
+    "909":
+    {
+      "en": "Study of juvenile literature",
+      "ja": "児童文学研究"
+    },
+    "910":
+    {
+      "en": "Nipponese literature",
+      "ja": "日本文学"
+    },
+    "911":
+    {
+      "en": "Poetry",
+      "ja": "詩歌"
+    },
+    "912":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "913":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "914":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "915":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "916":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "917":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "918":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "919":
+    {
+      "en": "Chinese poetry and prose",
+      "ja": "漢詩文．日本漢文学"
+    },
+    "920":
+    {
+      "en": "Chinese literature",
+      "ja": "中国文学"
+    },
+    "921":
+    {
+      "en": "Poetry",
+      "ja": "詩歌．韻文．詩文"
+    },
+    "922":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "923":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "924":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "925":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "926":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "927":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "928":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "929":
+    {
+      "en": "Other Oriental literatures",
+      "ja": "その他の東洋文学"
+    },
+    "930":
+    {
+      "en": "English and American literature",
+      "ja": "英米文学"
+    },
+    "931":
+    {
+      "en": "Poetry",
+      "ja": "詩"
+    },
+    "932":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "933":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "934":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "935":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "936":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "937":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "938":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "939":
+    {
+      "en": "American literature",
+      "ja": "アメリカ文学"
+    },
+    "940":
+    {
+      "en": "German literature",
+      "ja": "ドイツ文学"
+    },
+    "941":
+    {
+      "en": "Poetry",
+      "ja": "詩"
+    },
+    "942":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "943":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "944":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "945":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "946":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "947":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "948":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "949":
+    {
+      "en": "Other Germanic literatures",
+      "ja": "その他のゲルマン文学"
+    },
+    "950":
+    {
+      "en": "French literature",
+      "ja": "フランス文学"
+    },
+    "951":
+    {
+      "en": "Poetry",
+      "ja": "詩"
+    },
+    "952":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "953":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "954":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "955":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "956":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "957":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "958":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "959":
+    {
+      "en": "Provencal literature",
+      "ja": "プロヴァンス文学"
+    },
+    "960":
+    {
+      "en": "Spanish literature",
+      "ja": "スペイン文学"
+    },
+    "961":
+    {
+      "en": "Poetry",
+      "ja": "詩"
+    },
+    "962":
+    {
+      "en": "Drama",
+      "ja": "戯曲"
+    },
+    "963":
+    {
+      "en": "Fiction.Romance.Novel",
+      "ja": "小説．物語"
+    },
+    "964":
+    {
+      "en": "Essays.Prose",
+      "ja": "評論．エッセイ．随筆"
+    },
+    "965":
+    {
+      "en": "Diaries.Letters.Travels",
+      "ja": "日記．書簡．紀行"
+    },
+    "966":
+    {
+      "en": "Reportage",
+      "ja": "記録．手記．ルポルタージュ"
+    },
+    "967":
+    {
+      "en": "Aphorism",
+      "ja": "箴言．アフォリズム．寸言"
+    },
+    "968":
+    {
+      "en": "Collections",
+      "ja": "作品集：全集，選集"
+    },
+    "969":
+    {
+      "en": "Portuguese literature",
+      "ja": "ポルトガル文学"
+    },
+    "970":
+    {
+      "en": "Italian literature",
+      "ja": "イタリア文学"
+    },
+    "971":
+    {
+      "ja": "イタリア文学＠詩歌"
+    },
+    "972":
+    {
+      "ja": "イタリア文学＠戯曲"
+    },
+    "973":
+    {
+      "ja": "イタリア文学＠小説"
+    },
+    "974":
+    {
+      "ja": "イタリア文学＠評論．エッセイ．随筆"
+    },
+    "975":
+    {
+      "ja": "イタリア文学＠日記．書簡．紀行"
+    },
+    "976":
+    {
+      "ja": "イタリア文学＠記録．手記．ルポルタージュ"
+    },
+    "977":
+    {
+      "ja": "イタリア文学＠アフォリズム．警句．寸言"
+    },
+    "978":
+    {
+      "ja": "イタリア文学＠作品集：全集，選集"
+    },
+    "979":
+    {
+      "en": "Other Romanic literatures",
+      "ja": "その他のロマンス文学"
+    },
+    "980":
+    {
+      "en": "Russian literature",
+      "ja": "ロシア・ソビエト文学"
+    },
+    "981":
+    {
+      "ja": "ロシア・ソビエト文学＠詩歌"
+    },
+    "982":
+    {
+      "ja": "ロシア・ソビエト文学＠戯曲"
+    },
+    "983":
+    {
+      "ja": "ロシア・ソビエト文学＠小説"
+    },
+    "984":
+    {
+      "ja": "ロシア・ソビエト文学＠評論．エッセイ．随筆"
+    },
+    "985":
+    {
+      "ja": "ロシア・ソビエト文学＠日記．書簡．紀行"
+    },
+    "986":
+    {
+      "ja": "ロシア・ソビエト文学＠記録．手記．ルポルタージュ"
+    },
+    "987":
+    {
+      "ja": "ロシア・ソビエト文学＠アフォリズム．警句．寸言"
+    },
+    "988":
+    {
+      "ja": "ロシア・ソビエト文学＠作品集：全集，選集"
+    },
+    "989":
+    {
+      "en": "Other Slavic literatures",
+      "ja": "その他のスラヴ文学"
+    },
+    "990":
+    {
+      "en": "Literatures of other languages",
+      "ja": "その他の諸文学"
+    },
+    "991":
+    {
+      "en": "Greek literature",
+      "ja": "ギリシア文学"
+    },
+    "992":
+    {
+      "en": "Latin literature",
+      "ja": "ラテン文学"
+    },
+    "993":
+    {
+      "en": "Other European literatures",
+      "ja": "その他のヨーロッパ文学"
+    },
+    "994":
+    {
+      "en": "African literatures",
+      "ja": "アフリカ文学"
+    },
+    "995":
+    {
+      "en": "Literatures of American native languages",
+      "ja": "アメリカ先住民語の文学"
+    },
+    "997":
+    {
+      "en": "Literatures of Australian native languages",
+      "ja": "オーストラリア先住民語の文学"
+    },
+    "999":
+    {
+      "en": "Literatures of universal languages",
+      "ja": "国際語による文学"
+    }
+  },
+  "source":
+  {
+    "file": "ndc9.ttl",
+    "licence": "CC BY",
+    "scheme_iri": "http://jla.or.jp/data/ndc9",
+    "sha256": "747b0f9874969bae29a6a6ae0f463e4cc41497444a72795b920517af00b928a8",
+    "title": "日本十進分類法新訂9版 Linked Data (ndc9), 日本図書館協会",
+    "url": "https://www.jla.or.jp/wp/wp-content/uploads/2025/06/ndc9.zip"
+  }
+}

@@ -82,6 +82,7 @@
                           [slug {"rights" (get rights-of slug)
                                  "markdown" (get-in outputs [:markdown "markdown"])
                                  "plaintext" (get-in outputs [:plaintext "plaintext"])
+                                 "plaintext-projection" (get-in outputs [:plaintext "plaintext-projection"])
                                  "tei" (get-in outputs [:render "tei"])
                                  "tei-validation"
                                  (get-in outputs [:validate "tei-validation"])

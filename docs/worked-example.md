@@ -1,18 +1,18 @@
 # A worked example: 蜘蛛の糸
 
-This walkthrough follows Akutagawa Ryūnosuke's 蜘蛛の糸 (1918, identifier `000092_000879`) from its Aozora Bunko source file through the published TEI and plaintext representations, concluding with Python loading examples.
+This page follows Akutagawa Ryūnosuke's 蜘蛛の糸 (1918, identifier
+`000092_000879`) from its Aozora Bunko source file to the published TEI and
+plaintext, and ends with Python code that reads them.
 
-Excerpts are generated directly by the conversion pipeline from the Aozora
-Bunko file at
+The excerpts are the pipeline's own output for the Aozora Bunko file
 [`cards/000879/files/92_ruby_164.zip`](https://www.aozora.gr.jp/cards/000879/files/92_ruby_164.zip).
-The same source run through the same pipeline produces the same bytes.
+Running the same file through the same pipeline produces the same bytes.
 
 ## The source
 
 Aozora Bunko distributes the text as a Shift_JIS file inside a ZIP, with its
-own annotation notation carried inline. Four lines from across the file, which
-between them cover most of what the converter has to do (the middle two continue
-beyond what is shown here):
+own notation written inline. Four lines from the file show most of what the
+converter has to handle (the middle two are cut short here):
 
 ```
 ［＃８字下げ］一［＃「一」は中見出し］
@@ -22,40 +22,40 @@ beyond what is shown here):
 ［＃地から１字上げ］（大正七年四月十六日）
 ```
 
-- `《…》` marks ruby, indicating a reading printed above or beside the preceding characters.
-- `※［＃「…」、第3水準1-87-71］` is a **gaiji**: a character not in the source
-  file's encoding, described in prose and located in JIS X 0213 by its level
-  (第3水準) and its plane-row-cell number (plane 1, row 87, cell 71). Here it is
-  犍, the first character of the thief's name 犍陀多.
-- `［＃８字下げ］…［＃「一」は中見出し］` is layout plus a structural claim: indent
-  eight characters, and the run 一 is a middle-level heading.
-- `［＃地から１字上げ］` sets the line flush to the end of the line, one character
-  in from the edge.
+- `《…》` is ruby: a reading printed above or beside the preceding characters.
+- `※［＃「…」、第3水準1-87-71］` is a **gaiji**, a character the file's encoding
+  cannot hold. The marker gives a description in words along with its JIS X 0213
+  coordinates: level 3 (第3水準), plane 1, row 87, cell 71. Here it is 犍, the
+  first character of the thief's name 犍陀多.
+- `［＃８字下げ］…［＃「一」は中見出し］` encodes two instructions: indent eight
+  characters, and mark 一 as a section heading.
+- `［＃地から１字上げ］` indicates alignment to the bottom margin (in vertical
+  text) or end of the line, one character from the edge.
 
-At the end of the file is the colophon, which identifies the printed edition the
-transcription was made from, and the people who typed and proofread it. The
-TEI retains it as back matter.
+At the end of the file, a colophon records the printed edition used for typing,
+as well as the transcribers and proofreaders. In the TEI edition, this
+information is preserved in back matter (`<back>`).
 
 ## The pipeline
 
 ![The pipeline](assets/pipeline.svg)
 
-The first three steps are the Rust converter: it lexes Aozora Bunko notation
-into an annotated syntax tree (AAT), then maps that to a parser intermediate
-representation recording byte spans in the decoded source for every node.
-The Clojure kernel combines the parser IR with catalog metadata to produce TEI,
-and projects the three remaining artifacts from the TEI representation.
+In the first three stages, the Rust component parses the Aozora Bunko
+notation into an annotated syntax tree (AAT), converting it into a parser
+intermediate representation (IR) where each node carries its byte span in the
+decoded source. The Clojure kernel then integrates the parser IR with catalog
+metadata to produce the TEI document, from which the remaining three files are
+derived.
 
-You can run it yourself from a checkout of the
-[Soranoha repository on GitHub](https://github.com/borh/soranoha); see
-[the development guide](development.md) for the development shell.
+To run it yourself, clone the
+[Soranoha repository on GitHub](https://github.com/borh/soranoha) and follow
+[the development guide](development.md).
 
 ## The header
 
-The `teiHeader` for this work is 46 lines. In the excerpts below, lines are
-wrapped for readability; in the published XML, elements such as `<author>`,
-`<taxonomy>`, and `<ruby>` appear on single lines so no whitespace is introduced
-into mixed content.
+The `teiHeader` for this work is 46 lines. The excerpts below are wrapped for
+reading. In the published XML, elements such as `<author>`, `<taxonomy>` and
+`<ruby>` are written on one line each, so no whitespace enters mixed content.
 
 ### titleStmt: work title and authorship
 
@@ -71,16 +71,17 @@ into mixed content.
 </titleStmt>
 ```
 
-The title's kana reading is a separate `<title type="reading">`. The author record includes three `<persName>` forms covering kanji, kana,
-and romaji. Each entry specifies its script so applications can sort or display
-the appropriate representation. All three originate from Aozora Bunko's catalog and preserve
-its recorded spelling without normalisation. For example, the given name is recorded as
-竜之介 here, whereas the printed edition cited in the next block uses 龍之介.
+The kana reading of the title is a separate `<title type="reading">`. The
+author has three `<persName>` forms, in kanji, kana and romaji, each tagged
+with its script so that software can pick the one to sort or display. All
+three come from Aozora Bunko's catalog with its spelling unchanged: the given
+name is 竜之介 here, while the printed edition cited in the next block reads
+龍之介.
 
-The `type` of the person `<idno>` names the authority that issued the
-identifier, as it does for the publication identifiers in `publicationStmt`.
-`aozora-person-id` is Aozora Bunko's six-digit 人物ID. A person without one
-receives a locally assigned id under `soranoha-person-id`.
+The issuing authority is recorded in the `@type` attribute on `<idno>`, as in
+`publicationStmt`. `aozora-person-id` is Aozora Bunko's six-digit person ID
+(人物ID). An author without one receives a local identifier under
+`soranoha-person-id`.
 
 ### publicationStmt: publication details and terms
 
@@ -98,22 +99,22 @@ receives a locally assigned id under `soranoha-person-id`.
 </publicationStmt>
 ```
 
-The record contains three identifiers, with the `type` attribute specifying the issuing
-authority. Soranoha issues the publication identifier (`000092_000879`), which
-appears in every URL for the work; Aozora Bunko issues the work id and the card
-URL. A `.xml` file detached from this site carries the publication identifier
-and remains citable.
+Three identifiers appear here, each with an issuing authority identified by its
+`type`. Soranoha assigns the publication identifier (`000092_000879`), which
+appears in every URL and file name for the work; Aozora Bunko assigns the work id
+and card URL. Because the publication identifier remains inside the TEI file,
+any saved copy can still be reliably cited.
 
-The date is Aozora Bunko's last-modified date for the catalog entry, not a date of
-composition or of Soranoha's own processing.
+The date is the last-modified date of Aozora Bunko's catalog entry. It is not
+the date of composition or of Soranoha's processing.
 
-Each `<licence>` element states one rights layer. The first states the
-standing of the underlying work, here out of copyright and not Soranoha's to
-license; the second dedicates Soranoha's encoding under CC0. A file detached
-from this site carries both. See [rights](rights.md).
+Each `<licence>` covers one rights layer. The first declares the standing of the
+underlying work, here out of copyright; the second dedicates Soranoha's
+encoding under CC0. Both declarations are preserved in the file wherever it is
+copied. See [rights](rights.md).
 
-`<publisher>` names the publishing entity, `Soranoha`; the corpus title is in
-`titleStmt`. `@ref` gives the publisher's persistent identifier.
+`<publisher>` is the publishing entity, `Soranoha`, with its persistent
+identifier in `@ref`. The corpus title is in `titleStmt`.
 
 ### sourceDesc: printed edition and source byte hashes
 
@@ -126,24 +127,22 @@ from this site carries both. See [rights](rights.md).
 </sourceDesc>
 ```
 
-Four separate statements of source, at four levels:
+Four statements about the source, at four levels:
 
-- the **printed edition** the volunteer transcribed from, including which
-  printing was used for input;
-- **original publication**, identifying where the text first appeared (here, the July
-  1918 issue of 「赤い鳥」), marked `type="first-publication"` to distinguish it
-  from the transcribed edition;
-- `source-content-hash`, the digest of the bundle's canonical member listing
-  rather than of the ZIP file: the sha256 of
+- the **printed edition** the volunteer typed from, and which printing;
+- the **first publication**, where the text first appeared (the July 1918
+  issue of 「赤い鳥」), marked `type="first-publication"` to keep it apart from
+  the edition typed from;
+- `source-content-hash`, the sha256 of the bundle's member listing,
   `{"construction":"abc-source-bundle-v1","members":[{"member_hash":…,"path":…}],"primary_text_member":…}`
-  in RFC 8785 form. Repackaging the same members leaves it unchanged; a
-  reissued member changes it;
-- `primary-text-hash`, the sha256 of the text member as distributed, which is
-  Shift_JIS bytes rather than the decoded text.
+  in RFC 8785 form, rather than of the ZIP file. Repackaging the same members
+  leaves it unchanged; a reissued member changes it;
+- `primary-text-hash`, the sha256 of the text member as distributed, that is,
+  of the Shift_JIS bytes, not the decoded text.
 
-The identifier `000092_000879` denotes the work and is stable across releases;
-these hashes identify *which text under that identifier*. If you need a
-result to be exactly reproducible, cite both.
+The work is designated by the identifier `000092_000879`, which remains constant
+across releases. The hashes verify which specific text under that identifier was
+used. For exact reproducibility in scholarly citations, record both.
 
 ### encodingDesc: taxonomies and gaiji declarations
 
@@ -151,7 +150,20 @@ result to be exactly reproducible, cite both.
 <encodingDesc>
   <styleDefDecl scheme="css"/>
   <classDecl>
-    <taxonomy xml:id="ndc"><bibl>日本十進分類法 (Nippon Decimal Classification), as recorded by <title>青空文庫</title> in its 分類番号 field.</bibl></taxonomy>
+    <taxonomy xml:id="ndc">
+      <bibl>分類番号 as recorded by <title>青空文庫</title>, read as a class of 日本十進分類法 新訂9版. Category labels are from <title>NDC9 Linked Data</title> (日本図書館協会, CC BY); a category's IRI is <ref target="http://jla.or.jp/data/ndc9">http://jla.or.jp/data/ndc9</ref> followed by # and its n.</bibl>
+      <category xml:id="ndc913" n="913">
+        <catDesc xml:lang="ja">小説．物語</catDesc>
+        <catDesc xml:lang="en">Fiction.Romance.Novel</catDesc>
+      </category>
+    </taxonomy>
+    <taxonomy xml:id="aozora-shelf">
+      <bibl>分類番号 as recorded by <title>青空文庫</title>: the prefix K (児童図書記号) is placed before the NDC code for children's books.</bibl>
+      <category xml:id="shelf-k" n="K">
+        <catDesc xml:lang="ja">児童書</catDesc>
+        <catDesc xml:lang="en">Children's material</catDesc>
+      </category>
+    </taxonomy>
     <taxonomy xml:id="aozora-orthography"><bibl><title>青空文庫</title> 文字遣い種別: the orthographic style Aozora Bunko records for the transcription.</bibl></taxonomy>
   </classDecl>
   <refsDecl xml:id="source-spans">
@@ -166,28 +178,29 @@ result to be exactly reproducible, cite both.
 </encodingDesc>
 ```
 
-Every gaiji in the text has one `<char>` declaration here, and the body
-references it. The declaration carries both halves of the fact:
+Each gaiji in the text has one `<char>` declaration here, referred to from the
+body. Both aspects of the character are recorded in the declaration:
 
-- `<mapping type="unicode">` is the character the converter resolved it to.
-  It is a claim, made from the JIS X 0213 code point in the marker.
-- `rawMarker` preserves the source notation verbatim (`特のへん＋廴＋聿`, "the left
-  radical of 特, plus 廴, plus 聿"). Retaining this text allows users to verify
-  or adjust the character mapping without re-inspecting the upstream source file.
+- `<mapping type="unicode">` is the character the converter chose from the
+  JIS X 0213 code point in the marker. It is a claim, open to checking.
+- `rawMarker` is the source notation as written (`特のへん＋廴＋聿`, "the left
+  radical of 特, plus 廴, plus 聿"). With it you can check or change the
+  mapping without going back to the source file.
 
-The `xml:id` carries the marker's JIS X 0213 coordinates with everything
-outside `[A-Za-z0-9_.-]` folded to hyphens, so `第3水準1-87-71` becomes
-`3-1-87-71`: the leading 3 is the level, and `1-87-71` is the plane, row and
-cell. The same character therefore resolves to the same declaration
-everywhere.
+The `xml:id` is the marker's JIS X 0213 coordinates with every character
+outside `[A-Za-z0-9_.-]` replaced by a hyphen, so `第3水準1-87-71` becomes
+`3-1-87-71`: 3 is the level (水準), with `1-87-71` representing the plane, row,
+and cell. In this way, occurrences of the same character always resolve to the
+same declaration.
 
-`<styleDefDecl scheme="css"/>` declares that `@style` attributes in the
-body contain CSS properties. These record source layout details that lack
-native TEI attributes, such as character-width indents, measures, and text alignment.
+The declaration `<styleDefDecl scheme="css"/>` establishes that `@style`
+attributes in the body contain CSS properties, recording source layout that
+lacks native TEI attributes (such as character-width indents, line measures, and
+text alignment).
 
-`<refsDecl>` states the unit in which the `@source` references that most
-elements carry are measured, and points at the vocabulary for the rest. The offsets section
-below works through one of them.
+The `@source` references on body elements are measured in the byte unit declared
+in `<refsDecl>`, which also cites the vocabulary used for the remainder. The
+section on source offsets below works through one.
 
 ### profileDesc: language and classification
 
@@ -196,25 +209,34 @@ below works through one of them.
   <langUsage><language ident="ja">日本語</language></langUsage>
   <textClass>
     <classCode scheme="#ndc">K913</classCode>
+    <catRef scheme="#ndc" target="#ndc913"/>
+    <catRef scheme="#aozora-shelf" target="#shelf-k"/>
     <classCode scheme="#aozora-orthography">新字新仮名</classCode>
   </textClass>
 </profileDesc>
 ```
 
-`K913` is Aozora Bunko's own NDC-style class. The `K` prefix marks children's
-material and is not an NDC main class, which is why works like this one appear
-under その他 rather than under 9 文学 in the site's NDC index.
+In the classification code `K913` recorded by Aozora Bunko, `913` is the Nippon
+Decimal Classification (NDC, 9th ed.) category for Japanese fiction (小説．物語),
+and `K` is the children's literature symbol (児童図書記号). Two `<catRef>`
+elements connect the work to the categories declared in `<classDecl>`, recording
+both its subject classification and its children's literature designation in the
+TEI header. In the Soranoha browse index, the work appears under 913 with a
+children's literature label (`児童書`), listed under its subject alongside adult
+literature as well as in the dedicated children's literature index. Where a code
+is not listed in NDC9 (such as `998`), only a `<classCode>` is recorded, without
+a `<catRef>`.
 
-`新字新仮名` records the transcription's orthography (modern kanji, modern kana).
-Across the 17,655 catalog works with a text file, the corpus divides into
-新字新仮名 (10791), 新字旧仮名 (4569), 旧字旧仮名 (2183), 旧字新仮名 (93) and
-その他 (19). The same title can appear in multiple orthographies as separate
-works with separate identifiers: 568 title-and-subtitle pairs (covering 1343
-works, such as 銭形平次捕物控 001 金色の処女 under `054695` in 旧字旧仮名 and
-`056372` in 新字新仮名) are recorded under more than one orthography.
+The transcription's orthography is recorded as `新字新仮名` (modern kanji, modern
+kana). Across the 17,655 catalog works with a text file, 10,791 are 新字新仮名,
+4,569 新字旧仮名, 2,183 旧字旧仮名, 93 旧字新仮名 and 19 その他. A single title
+can appear under multiple orthographies as separate works with distinct
+identifiers (568 title-and-subtitle pairs, covering 1,343 works, do so in the
+corpus). For example, Nomura Kodō's *Zenigata Heiji Torimonohikae 001 Kin-iro no shojo*
+(銭形平次捕物控 001 金色の処女) is `054695` in 旧字旧仮名 and `056372` in 新字新仮名.
 
-Both `scheme` attributes reference taxonomies declared in `encodingDesc`, and
-both classifications originate from Aozora Bunko.
+Taxonomies declared in `encodingDesc` are referenced by `scheme` attributes, with
+both classifications taken from Aozora Bunko's catalog.
 
 ## The body
 
@@ -226,12 +248,13 @@ both classifications originate from Aozora Bunko.
 </ruby>
 ```
 
-`<rb>` is the base text, `<rt>` the reading, as in HTML `<ruby>`.
-`@rend` records which side of the line the source placed it on. Plaintext
-projections extract `<rb>` and drop `<rt>`.
+Base text is placed in `<rb>` and the reading in `<rt>`, as in HTML `<ruby>`.
+`@rend` indicates which side of the line the source placed the reading on. In
+the plaintext projection, base text (`<rb>`) is retained while readings (`<rt>`)
+are omitted.
 
-A ruby base can itself contain child markup, as when the thief's name combines a gaiji
-with standard characters:
+A ruby base can contain markup of its own, as when the thief's name combines a
+gaiji with ordinary characters:
 
 ```xml
 <ruby type="furigana" rend="right" source="#source-1856-1942">
@@ -240,8 +263,8 @@ with standard characters:
 </ruby>
 ```
 
-Descend through all children of `<rb>` (such as nested `<g>` and `<seg>`
-elements) when extracting base text.
+To get the base text, take all text under `<rb>`, including nested `<g>` and
+`<seg>`.
 
 ### Gaiji in the body
 
@@ -249,9 +272,8 @@ elements) when extracting base text.
 <g ref="#gaiji-3-1-87-71" source="#source-2071-2133">犍</g>
 ```
 
-The element's content is the mapped character, so a plain text extraction
-yields 犍. `@ref` points at the declaration in the
-header when you want the original marker instead.
+The element's content is the mapped character (犍), and `@ref` references the
+header declaration containing the original marker.
 
 ### Headings and layout
 
@@ -263,10 +285,10 @@ header when you want the original marker instead.
 </div>
 ```
 
-The outer `<div type="layout">` is the source's ８字下げ instruction,
-expressed as geometry. The inner `<head n="2">` is the structural heading the
-source's 中見出し markup states. Each is recorded from its own source
-annotation, and neither is inferred from the other.
+The outer `<div type="layout">` is the source's ８字下げ instruction as
+geometry. The inner `<head n="2">` is the heading the source's 中見出し marker
+declares. Each comes from its own source annotation; neither is inferred from
+the other.
 
 The dateline at the end is layout only:
 
@@ -278,8 +300,8 @@ The dateline at the end is layout only:
 
 ### Source offsets
 
-Almost every element carries `@source`, pointing at a `<note type="source-span">`
-in `<back>`:
+Almost every element carries a `@source` attribute referencing a
+`<note type="source-span">` in `<back>`:
 
 ```xml
 <seg source="#source-694-733">ある日の事でございます。</seg>
@@ -289,19 +311,20 @@ in `<back>`:
 <note type="source-span" xml:id="source-694-733" n="20"/>
 ```
 
-The note is empty; its identifier is the extent: `source-694-733` gives
-the start and end byte offsets into the decoded UTF-8 source text, and `n` is
-the line the extent begins on. Which text those offsets index is stated once
-for the whole document, by the `primary-text-hash` in `sourceDesc`:
+The note carries no text content; the byte extent is expressed directly in its
+identifier. In `source-694-733`, the start and end byte offsets in the decoded
+UTF-8 source text are given as 694 and 733, with the source line number recorded
+in `@n`. The source text indexed by these offsets is identified for the whole
+document by `primary-text-hash` in `sourceDesc`:
 
 ```xml
 <idno type="primary-text-hash">sha256:3c686946ec0a7f31f9de7a9a7231d93fe97c7323a5172c268a48f180fdb7bcac</idno>
 ```
 
-That hash covers the member as distributed, and the offsets index its UTF-8
-decoding, so the two are one step apart: decode with the encoding given in
-`<note type="source-decoding">` at the end of `<back>`, re-encode to UTF-8,
-then slice:
+The hash is of the member as distributed; the offsets index its UTF-8
+decoding. To go from one to the other, decode with the encoding given in
+`<note type="source-decoding">` at the end of `<back>`, re-encode as UTF-8,
+and slice:
 
 ```python
 import hashlib
@@ -313,14 +336,13 @@ source = raw.decode("cp932")                # windows-31j, from source-decoding
 assert source.encode("utf-8")[694:733].decode("utf-8") == "　ある日の事でございます。"
 ```
 
-That is 39 bytes for 13 characters, the first of which is the leading
-ideographic space: the span covers the source's indent character together with the text,
-because the paragraph's `text-indent` was derived from it. Offsets index the
-source, not the output.
+That is 39 bytes for 13 characters. The first is the ideographic space used
+for indentation in the source; it is included in the span because the paragraph's
+`text-indent` was derived from it. Offsets index the source, not the output.
 
-Annotations computed over the text, such as token spans, alignments, or named
-entities, can reference these source byte offsets and be checked against the
-source without pipeline tooling.
+Annotations made over the text, such as token spans, alignments or named
+entities, can use these byte offsets and be checked against the source without
+any Soranoha tooling.
 
 ### What is at the end
 
@@ -338,14 +360,14 @@ source without pipeline tooling.
 ```
 
 The colophon and the transcribers' note are the source's own back matter, kept
-as it was written. The `source-span` notes are the offset table, and
-`source-decoding` states the encoding the source was read as, which is what
-makes the offsets reproducible.
+as written. The `source-span` notes form the offset table. `source-decoding`
+records the character encoding used when reading the source, ensuring that byte
+offsets can be reproduced accurately.
 
-`parser-completion` is always present: its `@n` attribute is `true` when no
-parser diagnostic of error severity was raised. `interpretation-problem` and
-`parser-diagnostic` notes appear when the converter encounters ambiguities or
-uninterpreted syntax, recording those diagnostics in the TEI file.
+`parser-completion` is always present; its `@n` is `true` when the parser
+raised no error. Where ambiguous or uninterpreted syntax was encountered during
+conversion, findings are recorded in `interpretation-problem` and
+`parser-diagnostic` notes.
 
 ## The plaintext
 
@@ -354,20 +376,19 @@ uninterpreted syntax, recording those diagnostics in the TEI file.
 　ある日の事でございます。御釈迦様は極楽の蓮池のふちを、独りでぶらぶら御歩きになっていらっしゃいました。…
 ```
 
-Reading text only: ruby readings gone, gaiji present as their mapped
-characters, headings on their own lines, the source's own indent characters
-preserved. Editorial notes, apparatus and the offset table are not in it.
+Reading text only: ruby readings are removed, gaiji appear as their mapped
+characters, headings are on their own lines, and source indentation is
+preserved. Editorial notes, apparatus and the offset table are excluded.
 
-Plaintext is generated from the TEI representation under a single documented
-policy: when the encoding contains alternatives, the generator selects one lemma
-from an apparatus and one branch of an editorial choice. The site reading view
-uses the same policy, so the plaintext and the reading view present identical
-text.
+The plaintext is derived from the TEI under one documented policy. Where the
+TEI contains alternatives, one lemma is selected from an apparatus and one
+branch from an editorial choice according to that policy. The site's reading
+view applies the same policy, presenting identical text.
 
 ## The other two projections
 
-`markdown` is CommonMark with the ruby kept as inline HTML, so a reader that
-does not parse XML still gets the readings:
+`markdown` is CommonMark with the ruby kept as inline HTML, so a reader with
+no XML parser still gets the readings:
 
 ```markdown
 ## 一
@@ -375,16 +396,16 @@ does not parse XML still gets the readings:
 ある日の事でございます。<ruby><rb>御釈迦様</rb><rt>おしゃかさま</rt></ruby>は極楽の<ruby><rb>蓮池</rb><rt>はすいけ</rt></ruby>のふちを、…
 ```
 
-Where the source used an emphasis mark, the Markdown projection emits a `<span>`
-containing the original `@rend` attribute and corresponding CSS styling. For
-example, 白ゴマ傍点 is represented as `text-emphasis-style: open sesame`.
+Where the source contains an emphasis mark, the Markdown projection formats it
+as a `<span>` carrying the original `@rend` and matching CSS; 白ゴマ傍点, for
+example, is rendered with `text-emphasis-style: open sesame`.
 
-`tei-validation` is a JSON report identifying the profile the file was checked
-against by hash, the status of each of the three layers (well-formedness,
-Relax NG, Schematron), and every rule finding with its identifier and
-severity. A pass is evidence about the XML, not about the accuracy of the
-transcription; [TEI validation](../soranoha/docs/tei-validation.md)
-states what each layer establishes.
+`tei-validation` is a JSON report detailing the hash of the profile used for
+verification, the status of each validation layer (well-formedness, Relax NG, and
+Schematron), and all rule findings accompanied by their identifier and severity.
+A pass indicates that the XML conforms to the profile, rather than verifying the
+accuracy of the underlying transcription. The scope of verification performed at
+each layer is detailed in [TEI validation](../soranoha/docs/tei-validation.md).
 
 ## Loading it in Python
 
@@ -418,9 +439,9 @@ print(author.findtext(f"{TEI}surname")
 print(edition.findtext(f"{TEI}publisher"))                # ちくま文庫、筑摩書房
 ```
 
-Select the parts you need rather than taking all the text under `<persName>`:
-the Aozora Bunko person id is an `<idno>` inside it, so `text(author)` would give
-you `芥川竜之介000879`.
+Pick the parts you need rather than taking all text under `<persName>`: the
+Aozora Bunko person id is an `<idno>` inside it, so `text(author)` would give
+`芥川竜之介000879`.
 
 **Every ruby pair in the work:**
 
@@ -433,8 +454,8 @@ print(rubies[:3])             # [('御釈迦様', 'おしゃかさま'), ('蓮�
 print(rubies[18])             # ('犍陀多', 'かんだた')  (gaiji inside the base)
 ```
 
-Ruby readings and editorial markup are available only from the TEI; the
-plaintext omits them.
+Ruby readings and editorial markup are preserved in the TEI; the plaintext
+retains base reading text only.
 
 **Every gaiji, with the marker the source used:**
 
@@ -465,16 +486,16 @@ for seg in body.iter(f"{TEI}seg"):
         break
 ```
 
-The `@source` fragment directly encodes the byte extent. The `source-span`
-notes in `<back>` are reference targets, and carry the source line in
-`@n`; the offsets are in their identifiers. On the body elements shown here
-`@source` holds one reference, but a `<note>` that closes a span carries two,
-space-separated, so split on whitespace first if you widen the loop past
-`<seg>`.
+The byte extent is given directly in the `@source` fragment. The corresponding
+`source-span` notes in `<back>` record the source line number in `@n`, with
+offsets preserved in their identifiers. On the body elements shown here, a
+single reference appears in `@source`; however, where a span is closed by a
+`<note>`, two whitespace-separated references are supplied. If widening the loop
+beyond `<seg>`, split on whitespace first.
 
-**And if all you want is the text**, take the `plaintext` artifact rather than
-re-deriving it. It is published beside the TEI, generated under the documented
-reading policy, and hashed into the same signed manifest:
+**If all you want is the text**, download the `plaintext` file instead of
+deriving it. It is published beside the TEI, made under the documented reading
+policy, and hashed into the same signed manifest:
 
 ```python
 import urllib.request
@@ -485,7 +506,10 @@ body = urllib.request.urlopen(url).read().decode("utf-8")
 
 ## Where to go next
 
-- [Start here](start-here.md) covers corpus scope and bulk access.
-- [Glossary](user-glossary.md) defines admission, manifests, cryptographic chains, and work-edition-document distinctions.
-- [TEI extension vocabulary](../soranoha/docs/tei-vocabulary.md) specifies `snh:` attributes and validation rule identifiers.
-- [TEI validation](../soranoha/docs/tei-validation.md) explains validation profiles and schema coverage.
+- [Start here](start-here.md): corpus scope and bulk downloads.
+- [Glossary](user-glossary.md): admission, manifests, the release chain, and
+  the difference between work, edition and document.
+- [TEI extension vocabulary](../soranoha/docs/tei-vocabulary.md): the `snh:`
+  attributes and the validation rule identifiers.
+- [TEI validation](../soranoha/docs/tei-validation.md): the two validation
+  layers and the report.

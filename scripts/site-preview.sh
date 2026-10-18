@@ -6,6 +6,8 @@ set -euo pipefail
 works="${1:-8}"
 port="${2:-8787}"
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=soranoha-runtime-env.sh
+. "$repo/scripts/soranoha-runtime-env.sh"
 corpus="${CORPUS_CHECKOUT:-}"
 work_dir="${SORANOHA_PREVIEW_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/soranoha/preview}"
 

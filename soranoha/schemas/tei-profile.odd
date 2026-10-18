@@ -134,6 +134,7 @@
           <item><label>snh-figure-accessibility</label> warning: a figure carries no nonempty description or caption, so the image it names has no alternative text.</item>
           <item><label>snh-source-span-reference</label> error: elements claiming source spans must point to valid span identifiers.</item>
           <item><label>snh-source-span-target-exists</label> error: each fragment id in `@source` must resolve to an `@xml:id` defined in this document.</item>
+          <item><label>snh-catref-target-exists</label> error: each fragment id in `catRef/@target` must resolve to a `category/@xml:id` defined in this document.</item>
           <item><label>snh-transcription-vs-annotation</label> warning: linguistic enrichment must not be mixed into transcription unless declared.</item>
           <item><label>snh-vocab-version-declared</label> error: TEI roots using Soranoha extension elements or attributes must declare `snh:vocab-version`; the permitted values are those declared for the attribute in this profile.</item>
           <item><label>snh-preservation-record-shape</label> error: `snh:preservation-record` values must be deterministic sidecar record ids of the form `r000000`.</item>
@@ -1051,6 +1052,17 @@
             <sch:rule context="*[@source]">
               <sch:assert test="every $s in tokenize(normalize-space(@source), '\s+') satisfies exists(id(substring-after($s, '#'))[@xml:id = substring-after($s, '#')])">
                 Soranoha TEI source span fragments must resolve to an existing @xml:id in this document.
+              </sch:assert>
+            </sch:rule>
+          </constraint>
+        </constraintSpec>
+
+        <constraintSpec ident="snh-catref-target-exists" scheme="schematron">
+          <desc>Require each `catRef/@target` fragment id to resolve to a `category/@xml:id` in this document, so a classification never points at a class the header does not declare.</desc>
+          <constraint>
+            <sch:rule context="tei:catRef[@target]">
+              <sch:assert test="every $t in tokenize(normalize-space(@target), '\s+') satisfies exists(//tei:category[@xml:id = substring-after($t, '#')])">
+                Soranoha TEI catRef targets must resolve to a category declared in this document.
               </sch:assert>
             </sch:rule>
           </constraint>

@@ -41,7 +41,7 @@
 (def ^:private collator (person "000001" "校" nil "Kousei" nil "校訂者"))
 
 (def ^:private catalog
-  {"schema" "snh-catalog/1"
+  {"schema" "snh-catalog/2"
    "works" [(work "000092_000879" "kumono_ito" "蜘蛛の糸" "NDC 913" akutagawa)
             (work "000035_001567" "hashire_merosu" "走れメロス" "NDC 913" dazai collator)
             (work "000001_000001" "ronbun" "論文, 「一」" "NDC 002" akutagawa)]})
@@ -153,6 +153,9 @@
       (is (contains? paths "bulk/ndc/soranoha-ndc-9-tei.zip"))
       (is (contains? paths "bulk/ndc/soranoha-ndc-other-tei.zip")))
 
+    (testing "and one for children's material across the classes"
+      (is (contains? paths "bulk/ndc/soranoha-ndc-K-plaintext.zip")))
+
     (testing "and one per three-digit subclass present in the release"
       (is (contains? paths "bulk/ndc/soranoha-ndc-913-tei.zip"))
       (is (contains? paths "bulk/ndc/soranoha-ndc-002-plaintext.zip"))
@@ -197,7 +200,7 @@
     ;; cannot disagree about what the works of a person are.
     (let [repeated (work "000092_000879" "kumono_ito" "蜘蛛の糸" "NDC 913"
                          akutagawa akutagawa (assoc akutagawa "relation_to_work" "校訂者"))
-          selections (bundle/selections {"schema" "snh-catalog/1" "works" [repeated]})
+          selections (bundle/selections {"schema" "snh-catalog/2" "works" [repeated]})
           author (first (filter #(string/includes? (:path %) "000879") selections))]
       (is (= 1 (count (:works author))))
       (is (= ["000092_000879"] (mapv #(get % "slug") (:works author)))))))

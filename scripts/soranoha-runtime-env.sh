@@ -33,6 +33,8 @@ _soranoha_vars=(
   SORANOHA_REPORT_DIR
   AB_TEI_EAJ_WORKSET
   AB_TEI_P5_ROOT
+  CORPUS_CHECKOUT
+  SORANOHA_PREVIEW_DIR
 )
 
 _soranoha_explicit_file="$(mktemp)"

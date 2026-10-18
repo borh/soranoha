@@ -49,6 +49,7 @@
         (map (fn [[slug work]]
                [slug {:markdown (get work "markdown")
                       :plaintext (get work "plaintext")
+                      :plaintext-projection (get work "plaintext-projection")
                       :tei (get work "tei")
                       :tei-validation (get work "tei-validation")
                       :metadata-record (get work "metadata-record")

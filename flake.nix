@@ -29,6 +29,14 @@
       url = "git+ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git?rev=795f89df7bf0a995727f58ad998101458d5d91c2&shallow=1";
       flake = false;
     };
+
+    # The Japan Library Association's NDC9 Linked Data (CC BY), the source of
+    # the class labels the TEI header declares. A zip rather than a tarball,
+    # so it is fetched as a file and unpacked by the check that reads it.
+    ndc9-ld = {
+      url = "file+https://www.jla.or.jp/wp/wp-content/uploads/2025/06/ndc9.zip";
+      flake = false;
+    };
   };
 
   outputs =
@@ -38,6 +46,7 @@
       ab-validator,
       clj-nix,
       tei-p5,
+      ndc9-ld,
       ...
     }:
     let
@@ -202,6 +211,7 @@
       monorepoScripts =
         pkgs:
         let
+          kernel = self.apps.${pkgs.stdenv.hostPlatform.system}.soranoha-kernel.program;
           runtimePath = lib.makeBinPath [
             pkgs.bash
             pkgs.coreutils
@@ -220,15 +230,15 @@
         in
         {
           tei-version-coherence = mkWrappedScript "soranoha-tei-version-coherence" ''exec bash scripts/monorepo-tei-version-coherence.sh "$@"'';
-          flake-input-policy = mkWrappedScript "soranoha-flake-input-policy" ''exec python scripts/monorepo-flake-input-policy.py "$@"'';
+          flake-input-policy = mkWrappedScript "soranoha-flake-input-policy" ''exec ${kernel} flake-input-policy --repo "$PWD" "$@"'';
           validate = mkWrappedScript "soranoha-validate" ''
             workspace_root="$PWD"
             bash tests/monorepo-active-path-hygiene-smoke.sh
             bash tests/root-flake-output-contract-smoke.sh
             bash scripts/monorepo-tei-version-coherence.sh
-            python scripts/monorepo-flake-input-policy.py
-            python scripts/monorepo-schema-hash-coherence.py
-            python scripts/catalog-figures-check.py --quotes-only
+            ${kernel} flake-input-policy --repo "$workspace_root"
+            ${kernel} schema-hash-coherence --repo "$workspace_root"
+            ${kernel} catalog-figures --repo "$workspace_root" --quotes-only
             nix flake check --no-build "$@"
             (
               cd "$workspace_root/ab-validator"
@@ -297,6 +307,10 @@
           ...
         }:
         let
+          # The repository gates written in Clojure run through the kernel app,
+          # which starts from its store copy of soranoha/ and takes the
+          # repository root as `--repo`.
+          kernel = self.apps.${pkgs.stdenv.hostPlatform.system}.soranoha-kernel.program;
           # A check that runs a script from the repository root. bash,
           # coreutils and python are on every check's path; `extraTools`
           # adds what one script needs beyond them.
@@ -332,6 +346,14 @@
               }
               ''
                 echo "$image" > "$out"
+              '';
+          ndc9-sections-drift =
+            pkgs.runCommand "soranoha-ndc9-sections-drift" { nativeBuildInputs = [ pkgs.unzip ]; }
+              ''
+                unzip -q ${ndc9-ld} -d "$PWD/source"
+                ${self.apps.${pkgs.stdenv.hostPlatform.system}.soranoha-kernel.program} ndc9-sections \
+                  --ttl "$PWD/source/ndc9.ttl" --table ${./soranoha/resources/ndc/ndc9-sections.json} --check
+                touch "$out"
               '';
           tei-profile-drift = pkgs.runCommand "soranoha-tei-profile-drift" { } ''
             diff -u ${./soranoha/schemas/tei-profile.rng} ${profile.artifacts}/tei-profile.rng
@@ -407,13 +429,13 @@
                 AB_TEI_P5_ROOT="${tei.reference}" bash scripts/monorepo-tei-version-coherence.sh "$src"
               '';
           monorepo-flake-input-policy = mkMonorepoCheck "soranoha-monorepo-flake-input-policy" [ ] ''
-            python scripts/monorepo-flake-input-policy.py "$src"
+            ${kernel} flake-input-policy --repo "$src"
           '';
           monorepo-schema-hash-coherence = mkMonorepoCheck "soranoha-monorepo-schema-hash-coherence" [ ] ''
-            python scripts/monorepo-schema-hash-coherence.py "$src"
+            ${kernel} schema-hash-coherence --repo "$src"
           '';
           monorepo-figure-quotes = mkMonorepoCheck "soranoha-monorepo-figure-quotes" [ ] ''
-            python scripts/catalog-figures-check.py --quotes-only
+            ${kernel} catalog-figures --repo "$src" --quotes-only
           '';
           monorepo-runtime-config = mkMonorepoCheck "soranoha-monorepo-runtime-config" [ ] ''
             bash tests/runtime-config-smoke.sh

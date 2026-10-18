@@ -331,7 +331,30 @@
     (testing "both classifications point at a declared taxonomy"
       (is (has? "<taxonomy xml:id=\"aozora-orthography\">"))
       (is (has? "<classCode scheme=\"#ndc\">913</classCode>"))
-      (is (has? "<classCode scheme=\"#aozora-orthography\">新字新仮名</classCode>")))))
+      (is (has? "<classCode scheme=\"#aozora-orthography\">新字新仮名</classCode>")))
+
+    (testing "the NDC code is readable: the class it refers to is declared with its labels"
+      (is (has? "<category xml:id=\"ndc913\" n=\"913\"><catDesc xml:lang=\"ja\">小説．物語</catDesc><catDesc xml:lang=\"en\">Fiction.Romance.Novel</catDesc></category>"))
+      (is (has? "<catRef scheme=\"#ndc\" target=\"#ndc913\"/>"))
+      (is (not (has? "aozora-shelf")) "no K, so no children's-material taxonomy"))))
+
+(deftest the-ndc-code-is-kept-verbatim-and-read-into-declared-classes
+  (testing "a K before the number is the children's-material mark, declared apart from the class"
+    (let [tei (:tei (render-work-fields {"ndc" "NDC K913"}))]
+      (is (string/includes? tei "<classCode scheme=\"#ndc\">K913</classCode>"))
+      (is (string/includes? tei "<catRef scheme=\"#ndc\" target=\"#ndc913\"/>"))
+      (is (string/includes? tei "<catRef scheme=\"#aozora-shelf\" target=\"#shelf-k\"/>"))
+      (is (string/includes? tei "<category xml:id=\"shelf-k\" n=\"K\"><catDesc xml:lang=\"ja\">児童書</catDesc>"))))
+  (testing "several codes declare several classes and one catRef names them all"
+    (let [tei (:tei (render-work-fields {"ndc" "NDC 913 914"}))]
+      (is (string/includes? tei "<category xml:id=\"ndc913\""))
+      (is (string/includes? tei "<category xml:id=\"ndc914\""))
+      (is (string/includes? tei "<catRef scheme=\"#ndc\" target=\"#ndc913 #ndc914\"/>"))))
+  (testing "a code the NDC9 table does not have stays a bare classCode"
+    (let [tei (:tei (render-work-fields {"ndc" "NDC 998"}))]
+      (is (string/includes? tei "<classCode scheme=\"#ndc\">998</classCode>"))
+      (is (not (string/includes? tei "<catRef scheme=\"#ndc\"")))
+      (is (not (string/includes? tei "<category"))))))
 
 (deftest a-fully-described-header-validates-against-the-publication-profile
   (let [dir (fs/create-temp-dir {:prefix "tei-header-profile"})

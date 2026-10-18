@@ -14964,6 +14964,18 @@ Sample values include: 1] homeoteleuton; 2] homeoarchy; 3] paleographicConfusion
       </sch:rule>
    </pattern>
    <pattern xmlns="http://purl.oclc.org/dsdl/schematron"
+            id="snh-catref-target-exists">
+      <sch:rule xmlns="http://www.tei-c.org/ns/1.0"
+                xmlns:rng="http://relaxng.org/ns/structure/1.0"
+                xmlns:sch="http://purl.oclc.org/dsdl/schematron"
+                xmlns:snh="https://w3id.org/soranoha/ns/tei"
+                context="tei:catRef[@target]">
+         <sch:assert test="every $t in tokenize(normalize-space(@target), '\s+') satisfies exists(//tei:category[@xml:id = substring-after($t, '#')])">
+                Soranoha TEI catRef targets must resolve to a category declared in this document.
+              </sch:assert>
+      </sch:rule>
+   </pattern>
+   <pattern xmlns="http://purl.oclc.org/dsdl/schematron"
             id="snh-transcription-vs-annotation">
       <sch:rule xmlns="http://www.tei-c.org/ns/1.0"
                 xmlns:rng="http://relaxng.org/ns/structure/1.0"

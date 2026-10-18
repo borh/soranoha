@@ -138,6 +138,18 @@
         "type": "github"
       }
     },
+    "ndc9-ld": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-0N1b2pG6kYYaum70viEWJG6Ieccw/GvXYWQ+ZPyNVkM=",
+        "type": "file",
+        "url": "https://www.jla.or.jp/wp/wp-content/uploads/2025/06/ndc9.zip"
+      },
+      "original": {
+        "type": "file",
+        "url": "https://www.jla.or.jp/wp/wp-content/uploads/2025/06/ndc9.zip"
+      }
+    },
     "nix-fetcher-data": {
       "inputs": {
         "flake-parts": "flake-parts",
@@ -193,6 +205,7 @@
         "ab-validator": "ab-validator",
         "aozorabunko-src": "aozorabunko-src",
         "clj-nix": "clj-nix",
+        "ndc9-ld": "ndc9-ld",
         "nixpkgs": "nixpkgs",
         "tei-p5": "tei-p5"
       }

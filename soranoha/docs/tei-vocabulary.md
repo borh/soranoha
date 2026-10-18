@@ -4,12 +4,9 @@ Namespace IRI: `https://w3id.org/soranoha/ns/tei`
 Conventional prefix: `snh:`
 Current vocabulary version: `3`
 
-Published TEI documents bind this namespace IRI on the root element.
-
-Soranoha publishes TEI P5. Where the source markup carries information TEI has
-no exact representation for, that information uses this namespace.
-Every published TEI root binds the
-namespace and declares the vocabulary version:
+Soranoha publishes TEI P5. Where the Aozora Bunko source carries information
+TEI cannot represent exactly, that information goes in this namespace. Every
+published TEI root binds the namespace and declares the vocabulary version:
 
 ```xml
 <TEI xmlns="http://www.tei-c.org/ns/1.0"
@@ -17,38 +14,34 @@ namespace and declares the vocabulary version:
      snh:vocab-version="3">
 ```
 
-These extensions are derived audit projections. They record what the parser
-established about the Aozora Bunko source; they do not replace the source records
-from which they were derived, and a consumer may ignore them without losing the
-transcription.
+The extensions record what the parser found in the source. They do not replace
+the source records they come from, and a consumer that ignores them still has
+the whole transcription.
 
 ## Versioning
 
-The namespace IRI identifies the extension and never changes. The vocabulary's
-major version is not implied by that IRI, so `snh:vocab-version`
-carries it separately. A breaking vocabulary change increments this version, whereas an
-additive attribute may keep the same major version when compatibility is
-documented.
+The namespace IRI never changes. `snh:vocab-version` carries the major
+version, which the IRI does not. A breaking change increments it; an additive
+attribute may keep it when compatibility is documented.
 
-The profile hashes recorded in a work's `tei-validation.json` (`odd_hash`,
-`rng_hash`, `schematron_hash`) serve a different purpose. They change on any
-profile edit, additive ones included, so they identify which profile validated
-a document but do not indicate whether an existing `snh:*` reader is still
-correct. That is what the vocabulary version is for.
+The profile hashes in a work's `tei-validation.json` (`odd_hash`, `rng_hash`,
+`schematron_hash`) change on any profile edit, additive ones included. They
+identify which profile validated a document; they do not tell an `snh:*`
+reader whether it is still correct. The vocabulary version does.
 
-Version `1` contains attributes only. Custom elements in this namespace
-are not part of it. Version `2` adds `snh:gaiji-reference` within `tei:char`;
-each element represents one reference clause in source order, with its exact
-spelling in `original`. Version `3` adds `snh:formatting-instruction` within
-`tei:note`, retaining ordered operations, selectors, and effects. Its operand
-source references identify annotation bytes, not resolved body targets.
-The ODD defines the permitted semantic fields.
+Version `1` has attributes only and no custom elements. Version `2` adds
+`snh:gaiji-reference` inside `tei:char`: one element per reference clause, in
+source order, with its exact spelling in `original`. Version `3` adds
+`snh:formatting-instruction` inside `tei:note`, which keeps the ordered
+operations, selectors and effects; its operand source references point at the
+annotation bytes, not at the resolved body targets. Permitted semantic fields
+are defined in the ODD.
 
 ## Attributes
 
 All are optional and may appear on any element, subject to the constraints
-below. Only the first three are emitted by the current pipeline; the rest are
-declared for projections that are specified but not yet produced.
+below. Only the first three are produced by the current pipeline; the remainder
+are declared for projections that are specified but not yet produced.
 
 | Attribute | Value | Meaning |
 |---|---|---|
@@ -64,39 +57,40 @@ declared for projections that are specified but not yet produced.
 | `snh:figure-class` | string | Aozora Bunko figure class. |
 
 Permitted values of `snh:vocab-version` are declared in
-[the ODD](../schemas/tei-profile.odd) and enforced by the generated Relax NG schema.
-The initial version is `1`.
+[the ODD](../schemas/tei-profile.odd) and enforced through the generated
+Relax NG schema.
 
 ## Source spans
 
-Most elements in a published body carry `@source`, pointing at a `note` of
-type `source-span` in the back matter. Those notes are the offset table: they
-state which run of the source text an element came from.
+In a published body, most elements carry `@source`, referencing a `note` of type
+`source-span` in the back matter. Together these notes form the offset table,
+identifying the span of source text corresponding to each element.
 
-A note is empty, because everything about the extent is in its reference:
+The note is empty; the extent is in its attributes:
 
 ```xml
 <note type="source-span" xml:id="source-694-733" n="20"/>
 ```
 
-- `xml:id` has the form `source-START-END`. `START` and `END` are offsets in
-  UTF-8 bytes into the decoded primary text, which `sourceDesc` identifies by
-  its `idno` of type `primary-text-hash`, after the emendations declared in
-  `editorialDecl/correction` are applied. Decode the source archive's text
-  member, apply each emendation by replacing its `sic` text with its `corr`
-  text at its own extent, encode the result as UTF-8, and slice.
-- `n` is the line the extent begins on. It is absent when the source did not
-  record one, rather than carrying a placeholder.
+- `xml:id` has the form `source-START-END`. `START` and `END` are UTF-8 byte
+  offsets into the decoded primary text, which `sourceDesc` identifies by its
+  `idno` of type `primary-text-hash`, after the emendations declared in
+  `editorialDecl/correction` are applied. To take the slice: decode the
+  archive's text member, apply each emendation by replacing its `sic` text
+  with its `corr` text at its own extent, encode the result as UTF-8, and cut
+  from `START` to `END`.
+- `n` is the line the extent begins on. It is absent when the source recorded
+  no line.
 
-The header declares this unit in a `refsDecl` pointing back at this document.
+The header declares this unit in a `refsDecl` that points back at this document.
 
-Notes with `xml:id` prefixed by `parser-source` belong to parser diagnostics
-rather than body elements; they carry their byte extent as JSON in element content.
+Notes whose `xml:id` starts with `parser-source` are parser diagnostics, not
+body elements; their byte extent is JSON in the element content.
 
 ## Emendations
 
-A work whose source contains a transcription defect that the parser corrects
-before parsing declares each correction in the header:
+When the parser corrects a transcription defect in the source before parsing,
+the header declares each correction:
 
 ```xml
 <editorialDecl>
@@ -114,16 +108,15 @@ before parsing declares each correction in the header:
   measured as described under [Source spans](#source-spans).
 - Declarations follow the order in which the parser applied them. A work with
   no emendation has no `editorialDecl`.
-- An emendation records a correction that Aozora Bunko's own publication
-  establishes, in the published XHTML or in a later edition of the work. A
-  defect without such a witness is retained as transcribed.
+- An emendation is made only where Aozora Bunko's own publication, the XHTML
+  or a later edition of the work, has the corrected text. A defect without
+  that witness is kept as transcribed.
 
 ## Schematron rule identifiers
 
-Constraint violations are published in each work's `tei-validation.json` as
-`findings[].rule_id`. The identifiers are stable names, not sequence numbers.
-Every identifier below comes from the Schematron layer; a Relax NG failure is
-reported with the constant `rule_id` `relax-ng` instead.
+Each work's `tei-validation.json` lists violations as `findings[].rule_id`.
+The identifiers are stable names. All of those below are Schematron rules; a
+Relax NG failure has the constant `rule_id` `relax-ng`.
 
 | Rule ID | Severity | Requires |
 |---|---|---|
@@ -137,35 +130,35 @@ reported with the constant `rule_id` `relax-ng` instead.
 | `snh-gaiji-reference` | error | Gaiji retains its original marker and either a resolved replacement or unresolved status. |
 | `snh-gaiji-chardecl-resolution` | error | A gaiji `@ref` fragment resolves to a `charDecl/char` in the same document. |
 | `snh-char-resolution-form` | error | A `charDecl/char` declares at least one of `mapping`, `unicodeProp`, `localProp`, `desc`. |
-| `snh-figure-accessibility` | warning | A figure carries a nonempty description or caption, so the image it refers to has alternative text. Most Aozora Bunko illustration markers supply a filename and pixel dimensions and no description, so this rule reports the source's own form rather than anything the conversion dropped. |
+| `snh-figure-accessibility` | warning | A figure carries a nonempty description or caption, so the image it refers to has alternative text. Most Aozora Bunko illustration markers give a filename and pixel dimensions and no description, so this warning reports the source as it is, not something the conversion dropped. |
 | `snh-source-span-reference` | error | Elements claiming source spans point to valid span identifiers. |
 | `snh-source-span-target-exists` | error | Each fragment id in `@source` resolves to an `@xml:id` in the same document. |
-| `snh-transcription-vs-annotation` | warning | No element of TEI's analysis module appears inside `tei:text` unless the header declares it. Stand-off anchors and a `standOff` sibling are outside the rule, which is what the supported enrichment path writes. |
+| `snh-catref-target-exists` | error | Each fragment id in `catRef/@target` resolves to a `category/@xml:id` in the same document. |
+| `snh-transcription-vs-annotation` | warning | No element of TEI's analysis module appears inside `tei:text` unless the header declares it. Stand-off anchors and a `standOff` sibling, which is what enrichment writes, are outside the rule. |
 | `snh-vocab-version-declared` | error | A root carrying `snh:*` elements or attributes declares `snh:vocab-version`; `snh:gaiji-reference` requires `2` or `3`; `snh:formatting-instruction` requires `3`. |
 | `snh-preservation-record-shape` | error | `snh:preservation-record` values have the form `r000000`. |
 | `snh-layout-params-shape` | error | `snh:layout-params` uses the `key=value` grammar above. |
 
 ## Rights in the header
 
-Every published work states its own terms in
-`fileDesc/publicationStmt/availability`, with one `licence` element per rights
-layer (one for the standing of the underlying work, which is public domain or a
-Creative Commons Attribution licence, and one for Soranoha's CC0 grant over the
-encoding, which also carries a `ptr` to the full statement). The encoding grant
-is rendered from the one publication policy the release manifest hashes and the
-work's standing from the same value the manifest records in `works[].rights`,
-so a detached TEI file and the signed release record cannot state different
-terms.
-`snh-publication-licence` makes their absence a validation failure. See
-[rights and licensing](../../docs/rights.md).
+Every published work carries its terms in
+`fileDesc/publicationStmt/availability`: one `licence` element for the
+underlying work, which is public domain or under a Creative Commons
+Attribution licence, and one for Soranoha's CC0 grant over the encoding, with
+a `ptr` to the full statement. The encoding grant comes from the publication
+policy the release manifest hashes, and the work's standing from the value in
+the manifest's `works[].rights`, so a detached TEI file and the signed release
+record always agree. Validation fails under `snh-publication-licence` when
+they are missing. See [rights and licensing](../../docs/rights.md).
 
-A schema pass does not establish source fidelity or publication rights. See
-[TEI validation](tei-validation.md) for how the two validation layers run, and
-[source accountability](source-accountability.md) for the separate fidelity
-evidence.
+Passing schema validation does not establish source fidelity or determine
+publication rights. [TEI validation](tei-validation.md) explains the two
+validation layers, and [source accountability](source-accountability.md) covers
+source fidelity.
 
 ## Provenance of this document
 
-The vocabulary is defined by [`soranoha/schemas/tei-profile.odd`](../schemas/tei-profile.odd),
-from which the Relax NG and Schematron are generated. Where this page and the
-ODD disagree, the ODD is authoritative.
+The vocabulary is defined in
+[`soranoha/schemas/tei-profile.odd`](../schemas/tei-profile.odd); the Relax NG
+and Schematron are generated from it. Where this page and the ODD disagree, the
+ODD is authoritative.

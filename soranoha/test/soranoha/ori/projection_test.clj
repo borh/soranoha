@@ -80,3 +80,16 @@
     (is (= (str "前" view/unresolved-glyph "後") (projection/markdown reading)))
     (is (not (string/includes? (projection/markdown reading) "�"))
         "U+FFFD is what a decoder writes when bytes were malformed")))
+
+(deftest the-body-character-count-is-the-non-whitespace-code-points-of-the-plaintext
+  ;; 字下げ (U+3000), line breaks and a no-break space are layout and do not
+  ;; count; a character outside the BMP is one character, not two UTF-16
+  ;; units; U+FFFC stands for an unresolved glyph and counts as the character
+  ;; it stands for.
+  (is (= 8 (projection/body-character-count "\u3000蜘蛛の糸\n\u00a0a𠮷\ufffc b\t")))
+  (is (= 0 (projection/body-character-count "")))
+  (is (= 0 (projection/body-character-count "\n\u3000\n")))
+  (is (= 6 (projection/body-character-count
+            (projection/plaintext
+             (view/from-tei (tei "<p style=\"text-indent: 1em\">前<ruby><rb>犍</rb><rt>かん</rt></ruby>正<lb/>後</p><p>次々</p>")))))
+      "the restored indentation and the breaks are not counted, the ruby base is"))

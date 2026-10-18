@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:snh:schema:catalog:1",
-  "title": "snh-catalog/1",
+  "$id": "urn:snh:schema:catalog:2",
+  "title": "snh-catalog/2",
   "description": "Release-level bibliographic catalog: one entry per published work, carrying the descriptive metadata a reader needs to find and cite a work without fetching its TEI. This schema governs structure only; ordering and uniqueness are semantic rules checked at boundary decode, and agreement with the manifest's works is a cross-object rule checked by the chain verifier. Closed schema: no members beyond those listed. Facts only: no rendered filename, citation string or DOI appears here, because a derived value stored beside its own inputs can disagree with them.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "works"],
   "properties": {
-    "schema": { "const": "snh-catalog/1" },
+    "schema": { "const": "snh-catalog/2" },
     "works": {
       "type": "array",
       "items": {
@@ -26,6 +26,7 @@
           "ndc",
           "card_url",
           "archive_stem",
+          "body_character_count",
           "contributors",
           "source_editions"
         ],
@@ -42,6 +43,11 @@
           "ndc": { "$ref": "#/$defs/nullableString" },
           "card_url": { "type": "string", "minLength": 1 },
           "archive_stem": { "type": "string", "pattern": "^[!-~]+$" },
+          "body_character_count": {
+            "description": "Number of Unicode code points in the work's published plaintext projection that are not White_Space characters. Line breaks, indentation and ideographic spaces are layout and are not counted; an unresolved glyph placeholder (U+FFFC) is one character of the text and is counted. Recorded by the plaintext stage from the projection it writes, and read by the assembler from that stage's report.",
+            "type": "integer",
+            "minimum": 0
+          },
           "trailing_bytes_after_archive": {
             "description": "Bytes following the end of this work's Aozora Bunko archive. Absent for an archive that has none, which is almost all of them. Present when standard zip readers refuse the archive on account of them while the members themselves are intact.",
             "type": "integer",

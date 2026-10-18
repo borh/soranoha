@@ -62,7 +62,7 @@
   does not depend on it: the identifier component is never truncated."
   64)
 
-(defn- ascii-component
+(defn ascii-component
   "One filename component: Latin letters, digits and apostrophes, with word
   boundaries as underscores.
 

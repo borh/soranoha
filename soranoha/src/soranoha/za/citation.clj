@@ -344,7 +344,7 @@
   and enough to get back to the record: `identifier` and `release` together
   identify the bytes, and `url` resolves to the page that serves them."
   ["identifier" "title" "subtitle" "title_reading" "author"
-   "orthographic_style" "ndc" "first_published"
+   "orthographic_style" "ndc" "first_published" "body_character_count"
    "source_edition_title" "source_edition_publisher" "source_edition_year"
    "filename" "source_content_hash" "url" "release" "doi"])
 
@@ -353,12 +353,12 @@
   this row describes, which the caller has and the catalog does not."
   [{:keys [head-hex doi]} work filename]
   (let [{:strs [slug title subtitle title_reading orthographic_style ndc
-                first_published source_content_hash]} work
+                first_published body_character_count source_content_hash]} work
         edition (primary-edition work)]
     [slug title subtitle title_reading (naming/byline work)
      ;; A spreadsheet cell holding 414 lines is a row that spans 414 of
      ;; them, so the statements are run together here.
-     orthographic_style ndc (some-> first_published statements)
+     orthographic_style ndc (some-> first_published statements) body_character_count
      (get edition "title") (get edition "publisher") (edition-year work)
      filename (str "sha256:" source_content_hash) (work-url work)
      head-hex doi]))

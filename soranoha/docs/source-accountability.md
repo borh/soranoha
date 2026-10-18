@@ -2,39 +2,37 @@
 
 Aozora Bunko marks up its texts with its own notation: `《》` for ruby,
 `※［＃...］` for characters that could not be typed, `［＃...］` for layout and
-emphasis. Source accountability answers one question: how much of that
-notation did the conversion account for? It does not cover rights, which
-[assessment evaluation](assessment-evaluation.md) does, or whether the TEI is
-valid, which [TEI validation](tei-validation.md) does.
+emphasis. Source accountability evaluates how much of that notation was
+accounted for in conversion. Rights are covered by
+[assessment evaluation](assessment-evaluation.md) and schema validity by
+[TEI validation](tei-validation.md).
 
 ## Two reports
 
-The build writes two reports for every work, beside the exported TEI:
+Two reports are generated for each work alongside the exported TEI:
 
 - `source-accountability.json` lists every piece of notation in the source
-  text. A scanner that does not use the parser finds them by matching the text
-  against a table of Aozora syntax. For each one it records the exact spelling,
-  the byte span in the decoded UTF-8 text, the region of the file it sits in,
-  and the syntax families it matched. Markers the table does not recognise, and
-  text the decoder could not decode, are listed as well.
-- `interpretation-coverage.json` compares that list with what the parser
-  claims to have interpreted. A claim counts only when it covers the same byte
-  span as a scanned occurrence and a compatible family. For each family the
-  report counts occurrences as `interpreter_claimed`, `unaccounted` or
-  `outside_claim_vocabulary`, and it lists in full every occurrence with an
-  unaccounted or unclassified part.
+  text. An independent scanner matches the text against a catalog of Aozora
+  syntax, recording for each marker its exact spelling, its byte span in the
+  decoded UTF-8 text, its section of the file, and its syntax family.
+  Unrecognised markers and text that could not be decoded are listed as well.
+- In `interpretation-coverage.json`, that list is compared with the parser's
+  claims. A claim counts only when it covers the same byte span as a scanned
+  occurrence and a compatible family. For each family, occurrences are counted
+  as `interpreter_claimed`, `unaccounted` or `outside_claim_vocabulary`, and
+  every occurrence with an unaccounted or unclassified part is listed in full.
 
 Because the scanner does not use the parser, a change to the parser cannot
-alter the list its claims are compared with.
+alter the list the parser's claims are compared with.
 
 ## What the reports do not show
 
-The counts show that a marker was recognised, not that it was converted
+The counts confirm that a marker was recognised, not that it was converted
 correctly. Correctness is checked by conformance tests on specific examples and
-by schema validation. An empty list of unaccounted occurrences therefore does
-not mean the conversion is complete. Where the parser reports a problem over a
-span, a claim over the same span does not cancel it; the problem stays in the
-published TEI as an `interpretation-problem` note.
+by schema validation. So an empty list of unaccounted occurrences does not mean
+the conversion is complete, and a claim over a span does not cancel a problem
+the parser reported over the same span; the problem stays in the published TEI
+as an `interpretation-problem` note.
 
 Both reports stay with the build. They are not published with the work; of
 the build's reports, only `tei-validation.json` is.
@@ -62,9 +60,9 @@ XML is indented for inspection while mixed content preserves lexical whitespace.
 - **Emphasis and between-operand marks**: Exclusion selectors such as
   `［＃「自律・自由・人格・性格」の「・」を除く部分に傍点］` mark every non-excluded
   span while leaving excluded runs as unmarked body text; unmappable exclusions
-  remain unread. Junction markers such as `［＃「自」と「然」の間に白三角傍点］`
-  emit a supplied mark anchored between adjacent operands rather than emphasis
-  over a span.
+  remain unread. For junction markers such as
+  `［＃「自」と「然」の間に白三角傍点］`, a supplied mark is anchored between
+  adjacent operands rather than formatted as emphasis over a span.
 - **Block geometry and alignment**: Indentation, continuation indentation, line
   width (`jizume`), and foot offset (`chitsuki`) are retained independently.
   Paragraph-leading indentation uses CSS `text-indent`; heading and source-note

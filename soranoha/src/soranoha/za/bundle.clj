@@ -129,6 +129,10 @@
                             {:path (naming/ndc-bundle-path key artifact-type)
                              :works (vec (get by-ndc key))})
                           browse/ndc-classes)
+                     ;; children's material across all classes, as the K
+                     ;; page lists it
+                     [{:path (naming/ndc-bundle-path "K" artifact-type)
+                       :works (vec (filter browse/childrens? works))}]
                      ;; the three-digit subclasses, present ones only, as
                      ;; the class pages link them
                      (map (fn [[key members]]

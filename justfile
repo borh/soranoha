@@ -1,4 +1,8 @@
 nix_eval := "nix --option eval-cache false"
+# The repository gates written in Clojure run through the kernel, which the
+# wrapper starts from its store copy of soranoha/, so each takes the
+# repository root explicitly.
+kernel := nix_eval + " run .#soranoha-kernel --"
 # Built tools are linked under the state root so a Nix garbage collection
 # during a pass cannot remove them.
 nix_root := ". scripts/soranoha-runtime-env.sh; roots=\"$SORANOHA_STATE_ROOT/nix-roots\"; mkdir -p \"$roots\"; root() { " + nix_eval + " build \"$1\" --print-out-paths --out-link \"$roots/$2\"; }"
@@ -109,13 +113,13 @@ tei-version-coherence:
 	@bash scripts/monorepo-tei-version-coherence.sh
 
 flake-input-policy:
-	@python scripts/monorepo-flake-input-policy.py
+	@{{kernel}} flake-input-policy --repo "$PWD"
 
 # Recorded schema hashes are assertions about which schema a record or an
 # importer was written against. Recompute them, so a schema edit fails here
 # rather than at the first import of real data.
 schema-hash-coherence:
-	@python scripts/monorepo-schema-hash-coherence.py
+	@{{kernel}} schema-hash-coherence --repo "$PWD"
 
 runtime-config:
 	@bash -lc 'source scripts/soranoha-runtime-env.sh; soranoha_runtime_summary'
@@ -136,7 +140,7 @@ comment-hygiene:
 	@bash scripts/comment-hygiene-check.sh
 
 docs-links:
-	@python scripts/docs-link-check.py
+	@{{kernel}} docs-links --repo "$PWD"
 
 # The two JIS X 0213 gaiji tables must match the generator's output from the
 # licensed source table, so a hand edit cannot separate either from its terms.
@@ -148,12 +152,12 @@ gaiji-table-drift:
 # checks do not have. Set CORPUS_CHECKOUT, or pass --aozora-root. `--stems`
 # adds the figures that need a pass over every work archive.
 catalog-figures *args:
-	@python scripts/catalog-figures-check.py {{args}}
+	@{{kernel}} catalog-figures --repo "$PWD" {{args}}
 
 # The part of that check that needs no corpus, which the bundled gates run:
 # every file recorded as quoting a figure still quotes the same number.
 figure-quotes:
-	@python scripts/catalog-figures-check.py --quotes-only
+	@{{kernel}} catalog-figures --repo "$PWD" --quotes-only
 
 # Build a browsable preview of the public serving tree and serve it on
 # 127.0.0.1:PORT. Not a release: the chain is local and temporary, signed with
@@ -204,10 +208,10 @@ validate-eval-cache-smoke:
 check-no-build: runtime-config-smoke active-path-hygiene root-flake-output-contract tei-version-coherence flake-input-policy schema-hash-coherence figure-quotes python-quality comment-hygiene docs-links gaiji-table-drift nix-format-check validate-eval-cache-smoke root-flake-check-no-build
 	@(cd ab-validator && AB_WORKSPACE_ROOT="$(pwd)/.." {{nix_eval}} flake check --no-build)
 
-# Publication tests and generated TEI profile must match their checked-in sources.
+# Publication tests, the generated TEI profile and the NDC9 class table must match their checked-in sources.
 evidence-gate: soranoha-tests typecheck
 	@system="$({{nix_eval}} eval --impure --raw --expr builtins.currentSystem)"; \
-	{{nix_eval}} build ".#checks.$system.tei-profile-drift" \
+	{{nix_eval}} build ".#checks.$system.tei-profile-drift" ".#checks.$system.ndc9-sections-drift" \
 		"./ab-validator#checks.$system.tei-eaj-python-tests" --print-build-logs
 
 # Soranoha kernel + snh conformance suite plus clj-kondo/cljfmt, hermetic

@@ -103,7 +103,7 @@
                   "governance_event" nil
                   "corpus" (corpus prev-rev nil)
                   "rights" rights}]])
-    :catalog {"schema" "snh-catalog/1" "works" works}
+    :catalog {"schema" "snh-catalog/2" "works" works}
     :events {event-hex {"schema" "snh-governance-event/1"
                         "kind" "withdrawal"
                         "entries" [{"slug" "000092_000879"
@@ -155,7 +155,8 @@
 
     (testing "the work page carries the facts a citation needs"
       (let [work-page (page pages "works/000092_000879/index.html")]
-        (doseq [fact ["蜘蛛の糸" "くものいと" "芥川 龍之介" "新字新仮名" "NDC 913"
+        (doseq [fact ["蜘蛛の糸" "くものいと" "芥川 龍之介" "新字新仮名"
+                      "NDC 913 小説．物語 <span class=\"en\" lang=\"en\">/ Fiction.Romance.Novel</span>"
                       "芥川龍之介全集　第三巻" "筑摩書房" "1971"
                       "https://www.aozora.gr.jp/cards/000879/card92.html"
                       "000092_000879" head-hex]]
@@ -236,28 +237,50 @@
       (is (string/includes? read-page (str "/works/" slug "/tei")))
       (is (string/includes? read-page "/citation")))))
 
-(deftest an-unclassified-or-k-coded-work-still-has-a-class-page-test
+(deftest an-unclassified-work-has-a-class-page-and-a-k-coded-work-is-filed-by-its-digits-test
   (let [pages (pages (inputs [(work "000001_000001" "無分類" "むぶんるい" :ndc nil)
-                              (work "000002_000002" "児童書" "じどうしょ" :ndc "NDC K913")]))]
+                              (work "000002_000002" "こどもの本" "こどものほん" :ndc "NDC K913")
+                              (work "000003_000003" "小説" "しょうせつ" :ndc "NDC 913")]))]
     (is (string/includes? (page pages "ndc/other.html") "無分類"))
-    (is (string/includes? (page pages "ndc/other.html") "児童書")
-        "Aozora's K-prefixed children's codes are not a main class and are not invented into one")))
+    (is (not (string/includes? (page pages "ndc/other.html") "こどもの本"))
+        "K913 is 913 shelved for children, not an unclassified work")
+    (testing "the class and subclass pages hold it, mark it, and count it"
+      (doseq [path ["ndc/9.html" "ndc/913.html"]]
+        (is (string/includes? (page pages path) "こどもの本") path)
+        (is (string/includes? (page pages path) "class=\"k\"") path)
+        (is (string/includes? (page pages path) "うち児童書1作品") path)))
+    (testing "the children's page lists every K-coded work with its own archives"
+      (let [k-page (page pages "ndc/K.html")]
+        (is (string/includes? k-page "こどもの本"))
+        (is (not (string/includes? k-page "小説")))
+        (is (string/includes? k-page (naming/ndc-bundle-path "K" "tei")))
+        (is (string/includes? (page pages "ndc/index.html") "href=\"/ndc/K\""))))
+    (testing "a row without the K carries no marker"
+      (is (not (re-find #"小説</a><span class=\"k\"" (page pages "ndc/913.html")))))))
 
 (deftest a-class-page-links-the-three-digit-subclasses-it-holds-test
-  (let [pages (pages (inputs [(work "000001_000001" "戯曲" "ぎきょく" :ndc "NDC 912")
-                              (work "000002_000002" "小説" "しょうせつ" :ndc "NDC 913")
-                              (work "000003_000003" "児童書" "じどうしょ" :ndc "NDC K913")]))
+  (let [pages (pages (inputs [(work "000001_000001" "父帰る" "ちちかえる" :ndc "NDC 912")
+                              (work "000002_000002" "鼻" "はな" :ndc "NDC 913")
+                              (work "000003_000003" "児童書" "じどうしょ" :ndc "NDC K913")
+                              (work "000004_000004" "不明" "ふめい" :ndc "NDC 998")]))
         class-page (page pages "ndc/9.html")]
-    (is (string/includes? class-page "href=\"/ndc/912\""))
+    (is (string/includes? class-page "href=\"/ndc/912\">NDC 912</a> 戯曲 <span class=\"en\" lang=\"en\">/ Drama</span>")
+        "the subclass list carries the NDC9 label")
     (is (string/includes? class-page "href=\"/ndc/913\""))
-    (testing "a subclass page lists its works and links its archives"
+    (testing "a subclass page is headed by its label, lists its works and links its archives"
       (let [subclass-page (page pages "ndc/912.html")]
-        (is (string/includes? subclass-page "戯曲"))
-        (is (not (string/includes? subclass-page "小説")))
+        (is (string/includes? subclass-page "<title>NDC 912 戯曲 / NDC 912 Drama — Soranoha</title>"))
+        (is (string/includes? subclass-page "<h1>NDC 912 戯曲 <span class=\"en\" lang=\"en\">/ Drama</span></h1>"))
+        (is (string/includes? subclass-page "父帰る"))
+        (is (not (string/includes? subclass-page "鼻")))
         (is (string/includes? subclass-page (naming/ndc-bundle-path "912" "tei")))))
-    (testing "and a K-coded work has no subclass page"
+    (testing "a code the NDC9 table does not list keeps a bare heading"
+      (is (string/includes? (page pages "ndc/998.html") "<title>NDC 998 — Soranoha</title>"))
+      (is (string/includes? (page pages "ndc/998.html") "<h1>NDC 998</h1>"))
+      (is (string/includes? (page pages "works/000004_000004/index.html") "<dd>NDC 998</dd>")))
+    (testing "and the K is not a subclass of its own"
       (is (nil? (get pages "ndc/K91.html")))
-      (is (not (string/includes? (page pages "ndc/other.html") "href=\"/ndc/K91"))))))
+      (is (string/includes? (page pages "ndc/913.html") "class=\"k\"")))))
 
 (deftest a-work-with-no-recorded-reading-is-still-listed-test
   (let [pages (pages (inputs [(work "000003_000003" "読みなし" nil)]))]
@@ -278,11 +301,15 @@
       (is (string/includes? (page pages "titles/a.html") "&lt;script&gt;"))))
 
   (testing "and reaches the search index as JSON string content"
-    (let [pages (pages (inputs [(work "000005_000005" "引用\"符" "あ")]))
+    (let [pages (pages (inputs [(work "000005_000005" "引用\"符" "あ")
+                                (work "000006_000006" "こどもの本" "こどものほん" :ndc "NDC K913")]))
           index (json/read-json (page pages "search-index.json"))]
-      (is (= [["000005_000005" "引用\"符" "あ" "芥川 龍之介" "Akutagawa Ryunosuke"]]
+      (is (= [["000005_000005" "引用\"符" "あ" "芥川 龍之介" "Akutagawa Ryunosuke" 0]
+              ["000006_000006" "こどもの本" "こどものほん" "芥川 龍之介" "Akutagawa Ryunosuke" 1]]
              (get index "works"))
-          "with the romanized author name, so a reader can type it instead of the kanji")
+          "with the romanized author name, so a reader can type it instead of the kanji, and the children's flag")
+      (is (string/includes? (page pages "search.js") "hits[i][5]")
+          "the script marks a children's hit")
       (is (= head-hex (get index "release"))))))
 
 (deftest a-class-page-groups-its-works-under-their-authors-test
@@ -357,7 +384,7 @@
         rendered (pages {:head-hex head-hex
                          :tei tei-for
                          :manifest-seq (fn [] chain)
-                         :catalog {"schema" "snh-catalog/1" "works" [kept]}
+                         :catalog {"schema" "snh-catalog/2" "works" [kept]}
                          :events (into {}
                                        (map (fn [slug]
                                               [(verify/id->hex (event-of slug))
@@ -610,4 +637,4 @@
       (is (string/includes? (page all-pages "works/000092_000879/index.html")
                             "<title>蜘蛛の糸 — Soranoha</title>"))
       (is (string/includes? (page all-pages "works/000092_000879/read.html")
-                            "<title>蜘蛛の糸（本文） / Read: 蜘蛛の糸 — Soranoha</title>")))))
+                            "<title>蜘蛛の糸（本文） / 蜘蛛の糸 (Text) — Soranoha</title>")))))

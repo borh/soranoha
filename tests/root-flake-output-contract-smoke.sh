@@ -67,6 +67,7 @@ expected = {
         "monorepo-tei-p5-reference",
         "monorepo-tei-version-coherence",
         "monorepo-workflow-run-lib",
+        "ndc9-sections-drift",
         "soranoha-tests",
         "soranoha-typecheck",
         "tei-profile-drift",

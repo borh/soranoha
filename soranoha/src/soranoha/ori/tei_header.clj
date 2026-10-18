@@ -24,7 +24,7 @@
         [:sourceDesc [:bibl ...]+]]
       [:encodingDesc
         [:styleDefDecl {:scheme \"css\"}]
-        [:classDecl [:taxonomy {:xml/id \"...\"} [:bibl ...]]+]
+        [:classDecl [:taxonomy {:xml/id \"...\"} [:bibl ...] [:category {:xml/id \"...\" :n \"...\"} [:catDesc ...]+]*]+]
         [:charDecl [:char {:xml/id \"...\"} ...]?]
         [:editorialDecl
           [:correction {:method \"markup\"}
@@ -32,13 +32,14 @@
               [:choice [:sic \"...\"] [:corr \"...\"]]]+]]?]
       [:profileDesc
         [:langUsage [:language {:ident \"ja\"} \"...\"]]
-        [:textClass [:classCode {:scheme \"#...\"} \"...\"]+]]]
+        [:textClass [:classCode {:scheme \"#...\"} \"...\"]+ [:catRef {:scheme \"#...\" :target \"#...\"}]*]]]
 
   Tag keywords with no namespace are TEI elements. :xml/lang and
   :xml/id route to the XML namespace; :snh/* names use the Soranoha
   namespace. Strings are text content."
   (:require [clojure.data.xml :as xml]
             [clojure.string :as string]
+            [soranoha.core.ndc :as ndc]
             [soranoha.core.rights :as rights]))
 
 (def ^:private tei-ns "http://www.tei-c.org/ns/1.0")
@@ -271,9 +272,28 @@
     (into [:charDecl]
           (map declaration->char declarations))))
 
-(def ^:private class-decl
+(defn- ndc-codes
+  "The work's NDC codes in catalog order, each as `[k? digits]`: `K913` is
+  `[true \"913\"]`, the K being the mark for children's material that Aozora
+  Bunko writes before the number."
+  [work]
+  (for [code (rest (string/split (or (get work "ndc") "") #"\s+"))]
+    (let [k? (string/starts-with? code "K")]
+      [k? (if k? (subs code 1) code)])))
+
+(defn- ndc-category
+  "The declared category for one three-digit code, or nil for a code not
+  listed in the table, which then remains a bare `classCode`."
+  [digits]
+  (when-let [{:strs [ja en]} (ndc/labels digits)]
+    (cond-> [:category {:xml/id (str "ndc" digits) :n digits}
+             [:catDesc {:xml/lang "ja"} ja]]
+      en (conj [:catDesc {:xml/lang "en"} en]))))
+
+(defn- class-decl
   "The taxonomies the text classification points at, declared rather than
-  given as a bare string, so a reader can tell who classified the work.
+  given as a bare string, so a reader can tell who classified the work and
+  what the code means.
 
   Aozora Bunko assigns both the NDC code and the orthographic style. Declaring the
   taxonomies is what carries that provenance to a reader, and it matters most
@@ -281,15 +301,32 @@
   into 新字新仮名, 新字旧仮名, 旧字旧仮名, 旧字新仮名 and その他. A
   historical-kana study that mixes those without distinction is invalid, and the value
   varies within one series: 銭形平次捕物控 001 to 004 are 旧字旧仮名 while 005
-  is 新字新仮名."
-  [:classDecl
-   [:taxonomy {:xml/id "ndc"}
-    [:bibl "日本十進分類法 (Nippon Decimal Classification), as recorded by "
-     [:title "青空文庫"] " in its 分類番号 field."]]
-   [:taxonomy {:xml/id "aozora-orthography"}
-    [:bibl [:title "青空文庫"]
-     " 文字遣い種別: the orthographic style Aozora Bunko records for the "
-     "transcription."]]])
+  is 新字新仮名.
+
+  The NDC taxonomy declares only the classes this work's codes refer to, and
+  the children's-material taxonomy appears only for a K-prefixed code."
+  [work]
+  (let [codes (ndc-codes work)]
+    (cond-> [:classDecl
+             (into [:taxonomy {:xml/id "ndc"}
+                    [:bibl "分類番号 as recorded by " [:title "青空文庫"]
+                     ", read as a class of 日本十進分類法 新訂9版. Category labels are from "
+                     [:title "NDC9 Linked Data"] " (日本図書館協会, CC BY); a category's IRI is "
+                     [:ref {:target ndc/scheme-iri} ndc/scheme-iri]
+                     " followed by # and its n."]]
+                   (keep ndc-category (distinct (map second codes))))]
+      (some first codes)
+      (conj [:taxonomy {:xml/id "aozora-shelf"}
+             [:bibl "分類番号 as recorded by " [:title "青空文庫"]
+              ": the prefix K (児童図書記号) is placed before the NDC code for children's books."]
+             [:category {:xml/id "shelf-k" :n "K"}
+              [:catDesc {:xml/lang "ja"} "児童書"]
+              [:catDesc {:xml/lang "en"} "Children's material"]]])
+      true
+      (conj [:taxonomy {:xml/id "aozora-orthography"}
+             [:bibl [:title "青空文庫"]
+              " 文字遣い種別: the orthographic style Aozora Bunko records for the "
+              "transcription."]]))))
 
 (def ^:private source-refs-decl
   "Where a `source-span` reference's two numbers are measured from.
@@ -322,23 +359,31 @@
                    [:choice [:sic transcribed] [:corr emended]]]))
            emendations)]))
 
-(defn- encoding-desc [declarations emendations]
-  (cond-> [:encodingDesc [:styleDefDecl {:scheme "css"}] class-decl source-refs-decl]
+(defn- encoding-desc [work declarations emendations]
+  (cond-> [:encodingDesc [:styleDefDecl {:scheme "css"}] (class-decl work) source-refs-decl]
     (seq declarations) (conj (char-decl declarations))
     (seq emendations) (conj (editorial-decl emendations))))
 
 (defn- text-class
-  "NDC class and orthographic style, each pointing at its declared taxonomy."
+  "NDC code and orthographic style, each referencing its declared taxonomy.
+  The code is retained as recorded in the catalog, with `catRef` elements
+  referencing declared classes."
   [work]
   ;; `ndc` is already nil unless it matched the catalog's documented form.
   ;; `orthographic_style` is not run through the same nullable guard upstream,
   ;; so a row that carries the column empty would otherwise publish an empty
   ;; classification, which asserts a classification and supplies none.
   (let [ndc (get work "ndc")
+        codes (ndc-codes work)
+        classes (->> (distinct (map second codes))
+                     (filter ndc/labels)
+                     (map #(str "#ndc" %)))
         orthography (not-empty (some-> (get work "orthographic_style") string/trim))]
     (when (or ndc orthography)
       (cond-> [:textClass]
         ndc (conj [:classCode {:scheme "#ndc"} (string/replace ndc #"^NDC " "")])
+        (seq classes) (conj [:catRef {:scheme "#ndc" :target (string/join " " classes)}])
+        (some first codes) (conj [:catRef {:scheme "#aozora-shelf" :target "#shelf-k"}])
         orthography (conj [:classCode {:scheme "#aozora-orthography"} orthography])))))
 
 (defn- profile-desc [work]
@@ -371,7 +416,7 @@
   [:teiHeader
    (file-desc work contributors slug source-content-hash primary-text-hash rights
               witness-declarations)
-   (encoding-desc char-declarations emendations)
+   (encoding-desc work char-declarations emendations)
    (profile-desc work)])
 
 (defn- tei-qname [tag]

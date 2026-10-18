@@ -54,16 +54,16 @@ the CSV SHA-256 is
 `c0ace54c7ac037e5aebd045922c7879b9f7dc01f85b8f7483c8d4ecc29569ef4`.
 These counts describe catalog records, not an admitted publication population.
 
-The figures are re-derived when this pin changes. `scripts/catalog-figures-check.py`
-recomputes every count this project quotes from the catalog in a checkout, and
-fails with both numbers when one has changed. It cannot be gated automatically,
-because it is bound to the pin above rather than to a schedule: a publisher's
-checkout is at live upstream, so the digest check fails on it by construction.
-Its result can change, and be correct, only when the pin changes. Run it then,
-against a checkout at the new snapshot:
+The figures are re-derived when this pin changes. Running `just catalog-figures`
+recomputes every count quoted from the catalog across this project; when a count
+has changed, both numbers are reported so the discrepancy can be resolved. It
+cannot be gated automatically, because it is bound to the pin above rather than
+to a schedule: a publisher's checkout is at live upstream, so the digest check
+fails on it by construction. Its result can change, and be correct, only when the
+pin changes. Run it then, against a checkout at the new snapshot:
 
 ```sh
-python scripts/catalog-figures-check.py --aozora-root "$CHECKOUT" --stems
+just catalog-figures --aozora-root "$CHECKOUT" --stems
 ```
 
 and correct each failing figure where it is quoted before committing the new

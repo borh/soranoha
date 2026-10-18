@@ -1,70 +1,70 @@
 # Glossary
 
-Terminology used throughout Soranoha for corpus artifacts, release records,
-and encoding concepts.
+Terms used across Soranoha's files, release records and encoding.
 
 ## admission
 
 The decision to include a work in a release. A work is admitted when its
-rights standing has been established against a recorded basis and that basis
-still holds at the moment of publication.
+rights standing has been established on a recorded basis and that basis still
+holds when the release is published.
 
-Admission is independent of validation: a work can pass validation without
-being admitted, and publication does not guarantee encoding quality.
-Each release manifest records the admission evidence relied upon.
+Admission and validation are separate: a work can pass validation without
+being admitted, and an admitted work is not guaranteed to be encoded well. The
+evidence supporting admission is recorded in each release manifest.
 
 ## assessment
 
-The evaluation that produces an admission basis: what is claimed about a
-work's rights standing, on what evidence, effective from when, and in which
-jurisdiction (Japan).
+The evaluation that produces a work's admission basis: what is claimed about
+its rights standing, on what evidence, from what date, and in which
+jurisdiction (always Japan).
 
-Assessment records **facts with premises**, not permanent verdicts. A fact
-records what was established, from which evidence, as of which date. If evidence
-becomes unreachable, the fact becomes unavailable rather than remaining
-asserted, so a work can drop out of a release without any new claim having been
-registered against it. Assessment records evaluated copyright status under
-Japanese law based on cited evidence. See [reliance](#reliance) for the basis
-used for most works.
+Assessments record facts together with their premises, rather than permanent
+verdicts. Each fact specifies what was established, from which evidence, and as
+of which date. If the evidence can no longer be reached, the fact becomes
+unavailable, so a work can drop out of a release without anyone making a new
+claim against it. See [reliance](#reliance) for the basis most works use.
 
 ## reliance
 
-The default admission basis: Aozora Bunko's published copyright-expired
-classification for a specific edition, recorded as an attributed upstream
-assertion alongside the raw page bytes. A recorded exception or conflicting
+The usual admission basis: Aozora Bunko's own copyright-expired classification
+of a specific edition, recorded as Aozora Bunko's assertion together with the
+raw bytes of the pages it was read from. A recorded exception or a conflicting
 reviewed finding prevents reliance.
 
-Reliance is re-checked against the live source at release time. Retained
-evidence cannot substitute for a current check.
+Reliance is checked again against the live Aozora Bunko pages at release time.
+The retained bytes do not replace that check.
 
 ## fidelity
 
-The proportion of source markup preserved in the resulting encoding. It
-measures markup preservation: rights standing comes from assessment, and
-correctness from validation.
+How much of the source markup survives into the encoding. Fidelity is about
+markup only: rights come from assessment and schema conformance from
+validation.
 
-Two evidence reports accompany each build:
+Each build produces two fidelity reports:
 
-- **source accountability**: Scans raw Aozora Bunko text for recognizable markup
-  independently of the parser, recording exact byte spans.
-- **interpretation coverage**: Compares the scan against converted output,
-  counting claimed versus unaccounted annotations per family. Unaccounted
-  annotations are listed in full.
+- **source accountability**: a scan of the raw Aozora Bunko text for
+  recognisable markup, made without the parser, with the exact byte span of
+  each occurrence.
+- **interpretation coverage**: a comparison of that scan with the converted
+  output, counting claimed and unaccounted annotations per family and listing
+  every unaccounted one in full.
 
-Fidelity measures presence, not interpretive correctness. Ambiguities are
-recorded directly in the published TEI as `interpretation-problem` notes.
+Fidelity reporting verifies that a marker was present and recognised, not that
+it was interpreted correctly. Ambiguities are recorded in the published TEI as
+`interpretation-problem` notes.
 
 ## work, edition, document
 
-Three distinct concepts maintained throughout:
+Three different things:
 
-- **work**: The intellectual work (e.g. 蜘蛛の糸). A Soranoha identifier denotes a work.
-- **edition**: A specific source, such as a printed edition or the Aozora Bunko
-  transcription derived from it. The `source_content_hash` in the manifest and
-  `<sourceDesc>` in each TEI file identify the edition.
-- **document**: A specific byte sequence identified by its SHA-256 digest. Two
-  releases of the same work from the same edition may produce different
-  documents as conversion tooling evolves.
+- **work**: the text as an intellectual work (for example 蜘蛛の糸). Works
+  are designated by Soranoha identifiers.
+- **edition**: a particular source of the work, such as a printed edition or
+  the Aozora Bunko transcription made from it. `source_content_hash` in the
+  manifest and `<sourceDesc>` in each TEI file identify the edition.
+- **document**: a particular byte sequence, identified by its SHA-256 digest.
+  Two releases of the same work from the same edition may produce different
+  documents as the conversion tooling changes.
 
 Cite the identifier for the work, the identifier plus `source_content_hash`
 for the edition, and the artifact id for exact bytes. See
@@ -73,116 +73,110 @@ for the edition, and the artifact id for exact bytes. See
 
 ## artifact
 
-One published file, identified by its content: `snh:1:<type>:<sha256>`. The
-types published per work are `tei`, `plaintext`, `markdown`, and
-`tei-validation`.
+One published file, identified by its content as `snh:1:<type>:<sha256>`. Each
+work has four: `tei`, `plaintext`, `markdown` and `tei-validation`.
 
-Artifact IDs identify bytes directly and can be verified by computing the SHA-256
-hash locally.
+An artifact ID can be checked by computing the SHA-256 of the file locally.
 
 ## manifest
 
-The signed record of one release. It lists every admitted work with its
-identifier, its `source_content_hash`, and the ID and byte length of each of
-its four artifacts; the rights grant; admission evidence; the release catalog;
-and the parent manifest digest.
+The signed record of one release. In the manifest, every admitted work is
+listed with its identifier, `source_content_hash`, and the ID and byte length of
+each of its four artifacts, together with the rights grant, admission evidence,
+release catalog and digest of the parent manifest.
 
-The manifest is authoritative. Site pages, indexes, and reading views are
-generated downstream from the manifest. `https://soranoha.org/releases/latest`
-serves the current manifest.
+The manifest is the authoritative record; site pages, indexes and reading
+views are generated from it. `https://soranoha.org/releases/latest` serves the
+current manifest.
 
 ## chain
 
-The append-only sequence of manifests, each referencing its predecessor back
-to genesis.
+The sequence of manifests, each referring to the one before it, back to the
+first release, the genesis. Nothing is removed from it.
 
-Earlier releases remain immutable. A withdrawal removes a work from current
-distribution; it cannot alter historical manifests.
+Earlier releases do not change. A withdrawal removes a work from current
+distribution; it does not alter earlier manifests.
 
-Signing roles are separated between publication and governance keys, with
-governance keys kept offline. See the [protocol specification](design/snh-protocol-v1.md).
+Publication and governance use different signing keys, and the governance keys
+are kept offline. See the [protocol specification](design/snh-protocol-v1.md).
 
 ## release
 
-One published state of the corpus: a manifest, its signature, and the
-artifacts it lists. Identified by the manifest's SHA-256 hash (the release head).
-
-Citing a release head identifies the exact corpus state referenced.
+One published state of the corpus: a manifest, its signature and the artifacts
+it lists. A release is identified by the SHA-256 of its manifest, the release
+head; citing the head specifies that exact state.
 
 ## catalog
 
-The bibliography of every work in a release, including identifiers, titles,
-readings, contributors, first publication details, orthographic style, NDC
-classification, Aozora Bunko card URL, and source edition. Published as
-`https://soranoha.org/catalog.json`.
+The bibliography of every work in a release: identifiers, titles, readings,
+contributors, first publication, orthographic style, NDC class, Aozora Bunko
+card URL and source edition. Published at `https://soranoha.org/catalog.json`.
 
-The catalog is part of the signed release. It contains bibliographic facts
-rather than presentation-layer artifacts like download filenames or formatted
-citations.
+Bibliographic facts are recorded in the catalog, excluding presentation-level
+elements such as download filenames or formatted citations.
 
 ## withdrawal
 
-Removing a work from current distribution via a signed governance event
-specifying a reason code and public statement.
+Removing a work from current distribution by a signed governance event that
+records a reason code and a public statement.
 
-Withdrawal halts distribution from `/works/<identifier>/` and the active catalog.
-It does not delete historical records: prior signed manifests continue to list the
-work, and its artifacts remain addressable by hash. Withdrawal records are served
-at `https://soranoha.org/withdrawn/<identifier>.json`.
+A withdrawn work is removed from `/works/<identifier>/` and from the active
+catalog. Earlier signed manifests continue to list it, and its artifacts remain
+addressable by hash. The withdrawal record is served at
+`https://soranoha.org/withdrawn/<identifier>.json`.
 
 For rights inquiries or withdrawal requests, see [rights](rights.md).
 
 ## body-v1
 
-The reading policy defining canonical reading text, used by the plaintext
-projection, the site reading view, and external annotation layers.
+The reading policy that defines the plain reading text. The plaintext
+projection, the site's reading view and external annotation layers all use it.
 
-It traverses the TEI body and resolves alternatives deterministically: selecting
-apparatus lemmas, choosing corrected or regularized editorial readings over
-source originals, keeping base text rather than ruby annotations, and omitting
-editorial notes or figure descriptions. Unresolved gaiji are excluded from
-annotatable spans rather than replaced.
+The policy specifies deterministic resolution across the TEI body: selecting
+the apparatus lemma rather than the variant, the corrected or regularised
+reading rather than the source original, the base text rather than ruby
+readings, and omitting editorial notes and figure descriptions. Unresolved
+gaiji are excluded from annotatable spans rather than replaced.
 
-The name is versioned: an annotation states the policy that produced its
-offsets and remains checkable against that policy.
+Because the name includes a version designation, annotations can specify the
+exact policy used to determine their offsets and be verified accordingly.
 
 ## gaiji (外字)
 
 A character the Aozora Bunko source file could not encode, written as a
-prose description, usually with a JIS X 0213 code point:
+description in words, usually with a JIS X 0213 code point:
 `※［＃「特のへん＋廴＋聿」、第3水準1-87-71］`.
 
-Published TEI includes both the resolved character and the original source
-marker verbatim, allowing resolutions to be verified or challenged. See
+The published TEI keeps both the resolved character and the original marker
+verbatim, so a resolution can be checked or disputed. See
 [the worked example](worked-example.md#encodingdesc-taxonomies-and-gaiji-declarations).
 
 ## ruby (ルビ)
 
-A reading printed alongside or above base characters (furigana). Written as
-`蓮池《はすいけ》` in source text; represented in TEI as `<ruby>` containing
-`<rb>` (base) and `<rt>` (reading).
+A reading printed beside or above base characters (furigana). Written
+`蓮池《はすいけ》` in the source; in TEI, `<ruby>` containing `<rb>` (base) and
+`<rt>` (reading).
 
-Ruby readings appear in the TEI encoding and are omitted from plaintext
+Ruby readings are present in the TEI edition and excluded from plaintext
 projections, which retain base text only.
 
 ## source offset
 
-A byte range into the UTF-8 decoded Aozora Bunko source text, recorded for
-almost every element in the published TEI.
+A byte range into the UTF-8 decoding of the Aozora Bunko source text, recorded
+for almost every element of the published TEI.
 
-Offsets state a claim about the corpus against the source text. The text they
-index is identified once per document: `primary-text-hash` in `<sourceDesc>` is
-the sha256 of the Aozora Bunko text member as distributed, and the offsets
-index that member's UTF-8 decoding. A hash mismatch identifies bytes the
-offsets do not index.
+The text the offsets index is identified once per document: `primary-text-hash`
+in `<sourceDesc>` is the SHA-256 of the Aozora Bunko text file as distributed,
+and the offsets index that file's UTF-8 decoding. If the hash does not match,
+the offsets do not index those bytes.
 
 ## snh
 
 The publication protocol: the format of manifests, governance events,
-admission evidence, and artifact IDs, along with verifier rules. Also the
+admission evidence and artifact IDs, and the rules a verifier applies. Also the
 prefix of the extension vocabulary in published TEI
 (`https://w3id.org/soranoha/ns/tei`).
 
-Used to verify the corpus independently or build conforming tools. See the
+Use it to verify the corpus yourself or to build tools that conform. See the
 [protocol specification](design/snh-protocol-v1.md) and the
 [TEI extension vocabulary](../soranoha/docs/tei-vocabulary.md).

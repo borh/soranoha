@@ -120,7 +120,7 @@
   "The fixture catalog: one entry per manifest work, in the manifest's order
   and bound to the same source hashes, which is what the verifier checks."
   [entries]
-  {"schema" "snh-catalog/1"
+  {"schema" "snh-catalog/2"
    "works" (mapv (fn [{:strs [slug source_content_hash rights]}]
                    {"slug" slug
                     "source_content_hash" source_content_hash
@@ -135,6 +135,7 @@
                     "card_url" (str "https://www.aozora.gr.jp/cards/000001/card"
                                     slug ".html")
                     "archive_stem" (str "fixture_" slug)
+                    "body_character_count" 0
                     "contributors" [{"person_id" "000001"
                                      "family_name" "試験"
                                      "given_name" nil

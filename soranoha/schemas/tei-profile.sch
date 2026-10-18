@@ -13,7 +13,7 @@
    <ns prefix="sch" uri="http://purl.oclc.org/dsdl/schematron"/>
    <ns prefix="sch1x" uri="http://www.ascc.net/xml/schematron"/>
    <!-- ******************************************************* -->
-   <!-- constraints in en, und, mul, zxx, of which there are 90 -->
+   <!-- constraints in en, und, mul, zxx, of which there are 91 -->
    <!-- ******************************************************* -->
    <pattern id="snh-tei-header-title">
       <rule context="tei:teiHeader">
@@ -79,6 +79,11 @@
    <pattern id="snh-source-span-target-exists">
       <rule context="*[@source]">
          <assert test="every $s in tokenize(normalize-space(@source), '\s+') satisfies exists(id(substring-after($s, '#'))[@xml:id = substring-after($s, '#')])"> Soranoha TEI source span fragments must resolve to an existing @xml:id in this document.</assert>
+      </rule>
+   </pattern>
+   <pattern id="snh-catref-target-exists">
+      <rule context="tei:catRef[@target]">
+         <assert test="every $t in tokenize(normalize-space(@target), '\s+') satisfies exists(//tei:category[@xml:id = substring-after($t, '#')])"> Soranoha TEI catRef targets must resolve to a category declared in this document.</assert>
       </rule>
    </pattern>
    <pattern id="snh-transcription-vs-annotation">

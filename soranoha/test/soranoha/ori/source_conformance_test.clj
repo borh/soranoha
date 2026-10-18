@@ -2023,12 +2023,12 @@
   (let [marker "［＃ここに表組入る、別ファイル（densyanokonzatsu_table.txt）参照］"
         result (transcribe (source (str "前。" marker "後。")))
         note (first (filter #(= "external-table-reference" (attribute % "type")) (elements result "note")))
-        reference (first (elements result "ref"))
+        ;; the header's taxonomy bibl also holds a ref, so select by parent
+        reference (first (filter #(= note (.getParentNode ^Node %)) (elements result "ref")))
         problem (first (get-in result [:ir "interpretation_problems"]))]
     (is (= "前。後。" (:plaintext result)))
     (is (= "前。後。" (projection/markdown (:view result))))
     (is (= "densyanokonzatsu_table.txt" (attribute reference "target")))
-    (is (= note (.getParentNode ^Node reference)))
     (is (not (string/blank? (attribute note "source"))))
     (is (= marker (get problem "raw")))
     (is (= "content-outside-primary-input" (get problem "kind")))

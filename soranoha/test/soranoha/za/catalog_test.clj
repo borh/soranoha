@@ -48,7 +48,7 @@
                                   {"person_id" "000235" "relation_to_work" "著者"}]}
                  {"000235" {"family_name" "上田" "given_name" "敏"
                             "family_name_romaji" "Ueda" "given_name_romaji" "Bin"}}
-                 "kaichoon.txt" nil)]
+                 "kaichoon.txt" nil 0)]
       (is (= [["000235" "翻訳者"] ["000235" "著者"]]
              (mapv (juxt #(get % "person_id") #(get % "relation_to_work"))
                    (get entry "contributors")))
@@ -71,7 +71,7 @@
                             "source_editions" []}
                     "contributors" []}
                    {}
-                   "shokuhin.txt" nil)
+                   "shokuhin.txt" nil 0)
                   "rights"))))))
 
 (deftest an-archive-with-bytes-after-its-end-is-marked-on-the-entry
@@ -85,7 +85,19 @@
                          "card_url" "https://www.aozora.gr.jp/cards/001505/card58100.html"
                          "source_editions" []}
                  "contributors" []}
-                {} "shiken.txt" %)]
+                {} "shiken.txt" % 0)]
     (is (= 984 (get (entry 984) "trailing_bytes_after_archive")))
     (testing "and an archive with none carries no field at all, which is almost every work"
       (is (not (contains? (entry nil) "trailing_bytes_after_archive"))))))
+
+(deftest the-entry-carries-the-body-character-count-the-plaintext-stage-recorded
+  (testing "as recorded"
+    (is (= 2345
+           (get (#'catalog/work-entry
+                 "000092_000879" (apply str (repeat 64 "a")) "public-domain"
+                 {"work" {"title" "蜘蛛の糸" "orthographic_style" "新字新仮名"
+                          "card_url" "https://www.aozora.gr.jp/cards/000879/card92.html"
+                          "source_editions" []}
+                  "contributors" []}
+                 {} "kumono_ito.txt" nil 2345)
+                "body_character_count")))))

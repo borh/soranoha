@@ -20,6 +20,11 @@
             [soranoha.ori.accountability :as accountability]
             [soranoha.ori.validate :as validate]
             [soranoha.core.json :as record-json]
+            [soranoha.core.ndc :as ndc]
+            [soranoha.gates.catalog-figures :as catalog-figures]
+            [soranoha.gates.docs-links :as docs-links]
+            [soranoha.gates.flake-inputs :as flake-inputs]
+            [soranoha.gates.schema-hashes :as schema-hashes]
             [soranoha.core.parallel :as parallel]
             [soranoha.snh.corpus-delta :as corpus-delta]
             [soranoha.snh.decode :as decode]
@@ -1114,6 +1119,14 @@
    :event {:coerce :string}
    :event-sig {:coerce :string}
    :out {:coerce :string}
+   :ttl {:coerce :string}
+   :table {:coerce :string}
+   :check {:coerce :boolean}
+   ;; repository gates: the repository root, since the Nix wrapper runs the
+   ;; kernel from its store copy of soranoha/
+   :repo {:coerce :string}
+   :stems {:coerce :boolean}
+   :quotes-only {:coerce :boolean}
    :serve-root {:coerce :string}
    :release-doi {:coerce :string}
    :release-name {:coerce :string}
@@ -1129,6 +1142,31 @@
    :limit {:coerce :long}
    ;; no default: build! fails closed without a wrapper-supplied identity
    :clj-toolchain-id {:coerce :string}})
+
+(defn ndc9-sections!
+  "Derive the NDC9 class table from `--ttl` and write it to `--table`, or with
+  `--check` compare without writing. Returns true when the committed table
+  differs from the derivation."
+  [{:keys [ttl table check]}]
+  (require-flags! "ndc9-sections" {"--ttl" ttl "--table" table})
+  (let [rendered (ndc/render ttl)
+        target (fs/file table)]
+    (if check
+      (let [drift? (not= (when (fs/exists? target) (slurp target)) rendered)]
+        (when drift?
+          (binding [*out* *err*]
+            (println (str table ": differs from the table derived from " ttl))))
+        drift?)
+      (do (spit target rendered)
+          false))))
+
+(defn- require-repo! [command {:keys [repo]}]
+  (require-flags! command {"--repo" repo})
+  repo)
+
+(defn- exit-unless-zero! [code]
+  (when-not (zero? code)
+    (System/exit code)))
 
 (defn -main [& args]
   (let [[command & rest-args] args
@@ -1165,8 +1203,20 @@
           "aozora-reliance-prepare" (aozora-reliance-prepare! opts)
           "archive-verify" (when-not (= :success (:result (archive-verify! opts)))
                              (System/exit 1))
+          ;; exit 1 on drift, as for assessment-drift
+          "ndc9-sections" (when (ndc9-sections! opts)
+                            (System/exit 1))
+          ;; repository gates: each prints its findings and the exit code
+          ;; is the gate's verdict
+          "docs-links" (exit-unless-zero! (docs-links/gate! (require-repo! "docs-links" opts)))
+          "flake-input-policy" (exit-unless-zero! (flake-inputs/gate! (require-repo! "flake-input-policy" opts)))
+          "schema-hash-coherence" (exit-unless-zero! (schema-hashes/gate! (require-repo! "schema-hash-coherence" opts)))
+          "catalog-figures" (exit-unless-zero!
+                             (catalog-figures/gate!
+                              (assoc opts :repo (require-repo! "catalog-figures" opts)
+                                     :aozora-root (or (:aozora-root opts) (System/getenv "CORPUS_CHECKOUT")))))
           (do (binding [*out* *err*]
-                (println "usage: build|release|release-needed|release-delta|corpus-delta|governance-event-prepare|governance|serving-activate|publication-init|assessment-evaluate|assessment-drift|aozora-reliance-prepare|archive-verify [--root R --aozora-root A --assets-root S ...]"))
+                (println "usage: build|release|release-needed|release-delta|corpus-delta|governance-event-prepare|governance|serving-activate|publication-init|assessment-evaluate|assessment-drift|aozora-reliance-prepare|archive-verify|ndc9-sections|docs-links|flake-input-policy|schema-hash-coherence|catalog-figures [--root R --aozora-root A --assets-root S ...]"))
               (System/exit 2))))
       (System/exit 0)
       (catch clojure.lang.ExceptionInfo e

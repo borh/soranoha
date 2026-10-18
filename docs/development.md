@@ -83,6 +83,77 @@ Each work directory in `$EXPORT_DIR` contains `tei.xml`, `plain.txt`, `text.md`,
 outputs in the computation store. Building exports does not publish them or accept
 an assessment.
 
+## Previewing the site locally
+
+`just site-preview` builds a subset of works, assembles a serving tree around
+a temporary chain signed with the checked-in fixture keys, and serves it with
+Caddy on 127.0.0.1. Every page comes from the publication and serving code, so
+a page that renders incorrectly here renders incorrectly in production. It is
+not a release.
+
+### Corpus checkout
+
+The build takes its inputs from an Aozora Bunko checkout at the revision
+pinned by the flake as `aozorabunko-src`, a Forgejo mirror of the upstream
+repository. Clone it once outside the repository and check out the pinned
+revision:
+
+```sh
+rev=$(sed -n 's/.*aozorabunko.git?rev=\([0-9a-f]*\).*/\1/p' flake.nix)
+git clone https://code.hyakutake-barbel.ts.net/bor/aozorabunko.git "$HOME/Dependencies/aozorabunko"
+git -C "$HOME/Dependencies/aozorabunko" checkout "$rev"
+```
+
+Repeat the checkout step when the pin moves. The source revision recorded by the
+kernel is the checkout's commit, so a checkout at another commit builds against a
+different corpus from the one the checks use.
+
+### Machine configuration
+
+The scripts take their paths from the first of `.soranoha/env` in the
+repository and `${XDG_CONFIG_HOME:-$HOME/.config}/soranoha/env`. Environment
+variables exported in the shell take precedence over both. In environments using
+direnv, `.envrc` sources the same configuration file. Copy
+`config/soranoha.env.example` to one of those locations and set:
+
+```sh
+export CORPUS_CHECKOUT="$HOME/Dependencies/aozorabunko"
+```
+
+`SORANOHA_PREVIEW_DIR` in the same file moves the preview's work directory.
+
+### Work directory
+
+The preview writes under `SORANOHA_PREVIEW_DIR`, by default
+`${XDG_CACHE_HOME:-$HOME/.cache}/soranoha/preview`, and nothing in the
+repository:
+
+| Path | Contents |
+|---|---|
+| `root/` | The kernel's computation store. Kept between runs, so a second preview of the same works is quick. It grows with every distinct set of works built. |
+| `run/` | The build export of the current preview. |
+| `chain/` | The temporary chain origin and clone. |
+| `tree/` | The serving tree Caddy serves. |
+
+Each run deletes `run/`, `chain/` and `tree/` first. Delete the whole
+directory to reclaim the space.
+
+### Serving
+
+```sh
+just site-preview works=200 port=8787
+```
+
+`works` is the number of works to build, taken from the start of the catalog
+selection; `port` is the local port. Stop with Ctrl-C. To look at the last
+tree again without rebuilding:
+
+```sh
+nix develop --command env SORANOHA_SERVE_LISTEN=127.0.0.1:8787 \
+  SORANOHA_SERVE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/soranoha/preview/tree" \
+  caddy run --config soranoha/config/caddy/Caddyfile --adapter caddyfile
+```
+
 ## Regenerating the TEI profile
 
 The pinned recipe uses TEI P5 4.11.0 and TEI Stylesheets 7.60.0 with Saxon-HE.
@@ -101,6 +172,22 @@ depends on the prose edited: a `remarks` block or a `constraintSpec`
 description is copied into neither generated file, so it changes `odd_hash`
 alone; an `attDef` description is copied into the Relax NG as documentation,
 so it changes `rng_hash` as well.
+
+## Regenerating the NDC class table
+
+`soranoha/resources/ndc/ndc9-sections.json` lists the three-digit classes of
+NDC9 with their labels, derived from the Japan Library Association's Linked
+Data release pinned as the `ndc9-ld` flake input. After updating that input,
+unzip it and rewrite the table:
+
+```sh
+nix run .#soranoha-kernel -- ndc9-sections --ttl /path/to/ndc9.ttl \
+  --table "$PWD/soranoha/resources/ndc/ndc9-sections.json"
+just evidence-gate
+```
+
+The `ndc9-sections-drift` check in `evidence-gate` re-derives the table
+from the pinned input, failing if the committed file differs.
 
 ## Source identity
 

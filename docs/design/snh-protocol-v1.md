@@ -658,9 +658,9 @@ binds relied-upon source content hashes to built work inputs; the verifier
 checks that published works carry the same canonical source content hash.
 Withdrawal handling still subtracts the withdrawn set from admission.
 
-## 13. Release catalog payload version 1
+## 13. Release catalog payload version 2
 
-`snh-catalog/1` uses the registered `catalog` release-level type and the
+`snh-catalog/2` uses the registered `catalog` release-level type and the
 `snh:1:catalog:<sha256>` identity over its canonical stored bytes. ONE
 release-level object, not one per work: a reader looking for a text should
 need one fetch, and a manifest that cannot list its own contents is a weak
@@ -671,9 +671,10 @@ the manifest's `works` (§8). Each entry is closed:
 
 `{slug, source_content_hash, rights, title, title_reading, subtitle,
 original_title, first_published, orthographic_style, ndc, card_url,
-archive_stem, contributors, source_editions}` (nullable where Aozora Bunko's
-catalog leaves the field empty; `title`, `orthographic_style`, `card_url` and
-`archive_stem` are always present). `contributors` is sorted by `(person_id,
+archive_stem, body_character_count, contributors, source_editions}` (nullable
+where Aozora Bunko's catalog leaves the field empty; `title`,
+`orthographic_style`, `card_url`, `archive_stem` and `body_character_count`
+are always present). `contributors` is sorted by `(person_id,
 relation_to_work)`, unique on that pair, non-empty, each `{person_id,
 family_name, given_name, family_name_romaji, given_name_romaji,
 relation_to_work}`. One person may hold more than one relation to a work, so
@@ -699,6 +700,15 @@ are the catalog's own and are published as written.
 member, without its extension. Every published work has exactly one such
 member (the source bundle fails closed on none and on several), so the value
 is always well defined and needs no fallback rule.
+
+`body_character_count` is the number of Unicode code points in the work's
+published plaintext projection that are not White_Space characters. Line
+breaks, indentation and the ideographic space are layout and are not counted,
+so the value is stable under a layout-only change to the projection; U+FFFC,
+the placeholder for an unresolved glyph, stands for one character of the text
+and is counted. The plaintext stage records it in its projection report while
+the text is in memory, and the assembler reads that report; the assembler
+never reads a payload blob.
 
 One further field may appear and is otherwise absent.
 `trailing_bytes_after_archive` is the number of bytes following the end of the
