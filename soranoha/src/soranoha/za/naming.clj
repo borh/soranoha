@@ -1,17 +1,17 @@
 (ns soranoha.za.naming
-  "How the serving layer names things a reader saves: people, files and bulk
-  archives.
+  "The identifiers the serving layer gives to what a reader saves: people, files
+  and bulk archives.
 
   Renderings, not facts. The signed catalog carries `archive_stem` and the
   romanized name parts; it excludes the assembled filename they render into,
   because a derived value stored beside its own inputs can disagree with them
-  and the chain is append-only. The rule lives here so it can be corrected in a
+  and the chain is append-only. The rule is here so it can be corrected in a
   later release without rewriting a signed record.
 
   A download filename is a convenience. The citable thing is the identifier,
   which is why it is a component of every filename rather than an alternative
   to one: 470 author-and-title pairs are shared by 2357 works in the Aozora Bunko
-  catalog, so a name built from author and title alone would silently
+  catalog, so a name built from author and title alone would
   overwrite more than one work in ten of any bulk extraction.
 
   Pure: same catalog entry in, same name out, with no clock, environment or
@@ -44,8 +44,8 @@
       (string/join "、" (map person-label authors)))))
 
 (def ^:private transliterations
-  "Letters that survive NFKD intact but have a settled Latin spelling. Kept
-  small on purpose: it covers what the Aozora Bunko person catalog actually
+  "Letters that remain intact under NFKD but have a settled Latin spelling.
+  Kept small: it covers what the Aozora Bunko person catalog
   contains plus its immediate neighbours, and anything else falls through to
   the person-id fallback rather than to a guess. Measured over the whole
   catalog, the only romanized name with nothing Latin in it at all is person
@@ -57,8 +57,7 @@
 (def ^:private component-limit
   "Characters kept from one rendered component. No Aozora Bunko author component
   reaches it, the longest measured being 38 characters, and no stem is known
-  to, but a
-  filename has to stay under the 255-byte limit every filesystem in play
+  to, but a filename has to stay under the 255-byte limit every filesystem in play
   imposes, and truncation must be a rule rather than an accident. Uniqueness
   does not depend on it: the identifier component is never truncated."
   64)
@@ -69,8 +68,8 @@
 
   Apostrophes are kept because they are meaningful: 204 Aozora Bunko stems use
   Hepburn's n' disambiguation, as in `ippon'ashino_heitai`, and shells handle
-  them with ordinary quoting. Hyphens fold to underscores, which is what keeps the
-  three components of a filename separable by splitting on the hyphen."
+  them with ordinary quoting. Hyphens fold to underscores, so the three
+  components of a filename remain separable by splitting on the hyphen."
   [s]
   (if (string/blank? s)
     ""
@@ -87,7 +86,7 @@
   relation when a work records none. One name, not all of them: 422 works
   have several authors, and a filename that grew with the contributor list
   would be unbounded. The person id is the fallback when nothing Latin
-  survives, so the name still resolves through /authors/<id>."
+  remains, so the name still resolves through /authors/<id>."
   [work]
   (let [contributors (get work "contributors")
         person (or (first (authors-of work)) (first contributors))
@@ -104,15 +103,14 @@
 
   Four layers state this set, and they have to state the same one: the manifest
   schema, the serving configuration's typed routes, the download list on each
-  work page, and the extension table below. A release was assembled carrying
-  three of the four while the other layers already promised four, and nothing
-  failed. It lives here because this is the lowest namespace all of them
-  already reach; the Caddyfile cannot read it, so a test compares the two."
+  work page, and the extension table below. It is defined here because this
+  is the lowest namespace all of them already reach; the Caddyfile cannot
+  read it, so a test compares the two."
   ["markdown" "plaintext" "tei" "tei-validation"])
 
 (def extensions
   "Artifact type to the extension a reader expects for those bytes. The
-  predictable routes name the type and carry no extension, which is why a
+  predictable routes contain the type and carry no extension, which is why a
   browser save or `curl -O` there produces a file called `tei`."
   {"tei" "xml"
    "plaintext" "txt"
@@ -141,7 +139,7 @@
 
 (def bulk-artifact-types
   "The types published as bulk archives, in the order their archives are
-  generated. TEI and plain text are what a corpus is wanted for; Markdown and
+  generated. TEI and plain text are the corpus formats in use; Markdown and
   the validation reports are per-work conveniences, and bulk-publishing them
   would double the archive cost for a use nobody has stated."
   ["tei" "plaintext"])

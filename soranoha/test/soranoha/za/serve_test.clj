@@ -71,7 +71,7 @@
                          (conj acc hex))))]
     (is (= 3 (:releases result)))
 
-    (testing "releases/HEAD names the head"
+    (testing "releases/HEAD identifies the head"
       (is (= (str (:head result) "\n")
              (String. (tree-bytes out verify/head-path) "UTF-8"))))
 
@@ -106,7 +106,7 @@
             (is (= (hash/sha256-bytes (fs/read-all-bytes
                                        (fs/path out (str "releases/" hex ext))))
                    (hash/sha256-bytes (fs/read-all-bytes alias)))))))
-      ;; the alias lives beside the content-addressed names rather than among
+      ;; the alias is beside the content-addressed names rather than among
       ;; them, so a name directly under releases/ is still its own sha256
       (is (empty? (filter #(= 12 (count (fs/strip-ext (fs/file-name (str %)))))
                           (fs/glob out "releases/*.json")))))
@@ -121,7 +121,7 @@
         (doseq [hex withdrawn-artifacts]
           (is (fs/exists? (fs/path out (verify/blob-path hex)))))))
 
-    (testing "the work-facing layer names only the current corpus"
+    (testing "the work-facing layer lists only the current corpus"
       (is (fs/sym-link? (fs/path out "releases/latest")))
       (is (fs/sym-link? (fs/path out "catalog.json")))
       (let [catalog (json/read-json
@@ -159,8 +159,8 @@
                    "rights.html" "citation.html" "history.html" "ns/tei.html"
                    "schemas/tei-profile.odd" "license/cc0-1.0.txt"]]
         (is (fs/regular-file? (fs/path out rel)) rel))
-      ;; the reader documents returned once each was checked; the two written
-      ;; for implementers stay in the repository and have no page
+      ;; the reader documents are served; the two written for implementers
+      ;; stay in the repository and have no page
       (doseq [rel ["start-here.html" "example.html" "glossary.html"
                    "identifiers.html" "assessment.html" "accountability.html"
                    "validation.html" "annotation-layers.html"]]
@@ -169,7 +169,7 @@
         (is (not (fs/exists? (fs/path out rel))) rel))
       (let [landing (String. (tree-bytes out "index.html") "UTF-8")]
         (is (str/includes? landing (:head result))
-            "the landing page names the release it was generated from")
+            "the landing page states the release it was generated from")
         (is (str/includes? landing "/catalog.json")
             "and points at the signed record rather than standing in for it"))
       (let [page (String. (tree-bytes out (str "works/" slug-a "/index.html")) "UTF-8")]
@@ -187,7 +187,7 @@
               "CSL-JSON is an array of records, which is what Zotero and Pandoc read")
           (is (= slug-a (get record "archive_location")))
           (is (str/includes? (get record "note") (:head result))
-              "every rendered citation names the release it came from")
+              "every rendered citation states the release it came from")
           (is (str/starts-with? entry (str "@incollection{soranoha-" slug-a ",")))
           (is (str/includes? entry (str "version = {" (:head result) "},")))))
 

@@ -81,10 +81,10 @@
                                   "id" (str "snh:1:" kind ":" hex)
                                   "bytes" (fs/size path)})
                                blobs)
-             ;; the reserved annotation layer slot. No stage publishes one
-             ;; yet, so this is empty for every work; it is here because the
+             ;; the reserved annotation layer slot. No stage publishes one,
+             ;; so this is empty for every work; it is present because the
              ;; schema is closed and adding it after genesis would be a wire
-             ;; version every verifier of the day has to handle.
+             ;; version change every deployed verifier has to handle.
              "layers" []}
      :blobs (into {} (map (fn [[_ hex path]] [hex path])) blobs)}))
 
@@ -183,14 +183,13 @@
 
 (defn covers-from
   "Where the range this release covers starts: the predecessor's
-  `upstream_rev` when the corpus moved, the predecessor's own
+  `upstream_rev` when the corpus changed, the predecessor's own
   `covers_from` when it did not, and null at genesis.
 
-  Carrying it forward unchanged is what makes a rerun at the same upstream
-  revision a no-op rather than a new release. `corpus` is a projection key,
-  so a `covers_from` that advanced on every attempt would make every
-  projection differ from the head's and publish a release for a corpus
-  nobody moved."
+  Carrying it forward unchanged makes a rerun at the same upstream revision
+  a no-op rather than a new release. `corpus` is a projection key, so a
+  `covers_from` that advanced on every attempt would make every projection
+  differ from the head's and publish a release for an unchanged corpus."
   [head-manifest corpus]
   (let [head-corpus (get head-manifest "corpus")]
     (cond
@@ -205,13 +204,13 @@
 
   A work is here only when its `source_content_hash` is the one the parent
   published and the `validate-tei` stage coordinate is the one the parent
-  published. If the source moved, upstream reproofread it. If the stage
-  coordinate moved, the TEI profile tightened and reclassifying a document
-  is what that is for. With neither moved, the document is the same
-  document judged by the same profile, and the only remaining explanation
-  is that something between the source and the TEI got worse.
+  published. If the source changed, upstream reproofread it. If the stage
+  coordinate changed, the TEI profile was tightened, and reclassifying a
+  document is its purpose. With neither changed, the document is the same
+  document validated by the same profile, and the only remaining explanation
+  is a regression between the source and the TEI.
 
-  Both facts are already on the chain and neither is taken on trust: every
+  Both facts are already on the chain and neither is accepted unverified: every
   verifier re-derives `validation_summary.invalid_slugs` from the published
   validation records, and the work entry carries the source hash its
   artifacts were built from. So this compares two signed statements, and it
@@ -239,11 +238,11 @@
   value (nil at genesis) closing over everything else; the head's withdrawn
   set is subtracted from the admitted works, as the transaction requires.
 
-  A release that regresses validation does not get assembled. The chain is
+  A release that regresses validation is not assembled. The chain is
   append-only, so a toolchain change that breaks works the last release
   handled cannot be unpublished, only withdrawn work by work through
-  governance events. Refusing costs one release; publishing costs the
-  history. This is the only place both manifests are in hand before
+  governance events. Refusing delays one release; a published regression
+  stays in the history. This is the only place both manifests are in hand before
   anything is signed."
   [opts]
   (fn [head-manifest]

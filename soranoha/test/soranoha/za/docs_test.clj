@@ -7,7 +7,7 @@
   or a test file a document points at. What it can check is the part that
   belongs to serving: every served file is present and titled, no two entries
   claim one route, and a link either becomes a route this site publishes or
-  becomes the repository path it names."
+  becomes the repository path it refers to."
   (:require [babashka.fs :as fs]
             [clojure.string :as string]
             [clojure.test :refer [deftest is testing]]
@@ -34,9 +34,9 @@
 (def ^:private routes
   (into #{} (map :route) (concat served docs/generated verbatim)))
 
-(deftest a-generated-page-names-a-repository-document-that-exists
-  ;; the long form is linked rather than served, so the page has to name a
-  ;; path a reader can actually find in a checkout
+(deftest a-generated-page-refers-to-a-repository-document-that-exists
+  ;; the long form is linked rather than served, so the page has to state a
+  ;; path a reader can find in a checkout
   (doseq [{:keys [route source]} docs/generated]
     (testing route
       (is (string? source))
@@ -60,7 +60,7 @@
 
 (deftest every-schema-file-is-served-at-the-iri-it-declares
   ;; the directory rule and the files' own identifiers must agree, or a
-  ;; record would name a schema the site serves under another route
+  ;; record would identify a schema the site serves under another route
   (let [entries (docs/schema-files)]
     (is (= 3 (count entries)) "the ab-validator schema directory is served")
     (doseq [{:keys [route path]} entries]
@@ -96,7 +96,7 @@
             :let [resolved (docs/resolve-link path target)]]
       (testing (str route " -> " target)
         (if (string? resolved)
-          ;; a repository file the site does not serve: the page names the
+          ;; a repository file the site does not serve: the page shows the
           ;; path instead of linking, and the path stays repository-relative
           ;; so a reader can find it in a checkout
           (is (not (string/starts-with? resolved "/")) resolved)

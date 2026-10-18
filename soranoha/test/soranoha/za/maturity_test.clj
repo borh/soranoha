@@ -15,7 +15,7 @@
                   maturity/labels)))))
 
 (deftest no-label-configured-is-not-an-error
-  (testing "a deployment may deliberately say nothing about maturity"
+  (testing "a deployment may state nothing about maturity"
     (is (nil? (maturity/label! nil)))
     (is (nil? (maturity/label! "")))
     (is (nil? (maturity/label! "   ")))))
@@ -24,7 +24,7 @@
   (let [thrown (try (maturity/label! "beta") nil
                     (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :unknown-maturity-label (:reason thrown)))
-    (testing "the error names what this build can render, because the
+    (testing "the error lists what this build can render, because the
               operator's next action is to pick one of them"
       (is (= ["early" "stable"] (:known thrown))))))
 

@@ -34,19 +34,21 @@ curl -o 000092_000879.xml https://soranoha.org/works/000092_000879/tei
 curl -o 000092_000879.txt https://soranoha.org/works/000092_000879/plaintext
 ```
 
-The URL has no extension because it names the artifact type, not a file; give
-`curl` the name you want. Every work also serves the same bytes under a
-readable name, which is what a browser save or `curl -O` writes to disk:
+The URL names the artifact type and carries no extension; give `curl` the
+output name. The site also serves each work's bytes under a readable name,
+which is what a browser save or `curl -O` writes to disk:
 
 ```sh
 curl -O https://soranoha.org/works/000092_000879/Akutagawa_Ryunosuke-kumono_ito-000092_000879.xml
 ```
 
-The filename structure is `<author>-<stem>-<identifier>.<ext>`. The slug
-identifier is canonical and is what disambiguates: 2357 works in the Aozora
-Bunko catalog share an author and title with another work, so without it those
-files would overwrite each other during bulk extraction. The filename is a
-convenience for human downloads. Every work page shows both forms.
+The filename structure is `<author>-<stem>-<identifier>.<ext>`, where
+`<stem>` is Aozora Bunko's archive stem. The slug identifier provides canonical
+disambiguation: it uniquely identifies the work, and its place in the filename
+keeps apart the files of the 2357 works in the Aozora Bunko catalog that share
+an author and title with another work. The
+filename is a convenience for human downloads. Every work page shows both
+forms.
 
 To read it rather than download it, open
 `https://soranoha.org/works/000092_000879/` for the bibliography and
@@ -62,16 +64,16 @@ directory `000879`; pad each to six digits and join them in that order, work id
 first, giving `000092_000879`.
 
 Identifiers are stable across releases and denote the work, not a particular
-file. [Work identifiers](../soranoha/docs/work-identifiers.md) states exactly
-what that promises and what it does not.
+file. [Work identifiers](../soranoha/docs/work-identifiers.md) states what the
+identifier guarantees.
 
 ## Find a text
 
-- Search by title, kana title reading, author or identifier at `https://soranoha.org/`.
+- Search by title, kana title reading, author (in Japanese or romanized), or identifier at `https://soranoha.org/`.
 - Browse by author at `https://soranoha.org/authors/`, by title at
   `https://soranoha.org/titles/`, grouped under the first kana of the reading,
   or by NDC class at `https://soranoha.org/ndc/`.
-- Retrieve the bibliography of every work in the current release as a single JSON file at `https://soranoha.org/catalog.json`. This file forms part of the signed record rather than a convenience export.
+- Retrieve the bibliography of every work in the current release as a single JSON file at `https://soranoha.org/catalog.json`. This file is part of the signed record.
 
 A catalog entry gives you the identifier, the title and its reading, the
 author and other contributors, the first-publication note, the orthography
@@ -96,34 +98,27 @@ for work in catalog["works"][:5]:
 
 ## Get all of them
 
-The whole corpus is two files:
+The full corpus is distributed in two archives:
 
 - `https://soranoha.org/bulk/soranoha-tei.zip`
 - `https://soranoha.org/bulk/soranoha-plaintext.zip`
 
-Smaller selections are linked from the pages they match: every author page
-offers that person's works as a TEI archive and a plaintext archive, and every
-NDC class page offers that class the same way. All of them are pre-built,
-because the site is a static tree with no application behind it, so what you
-can download is exactly what is listed.
+Author and NDC class pages also provide pre-built TEI and plaintext ZIP archives
+for their respective subsets.
 
 Each archive contains the readable filenames plus `catalog.csv` at its root,
-carrying the structured citation fields for exactly the works inside it:
+carrying the structured citation fields for the works inside it:
 
     identifier, title, subtitle, title_reading, author,
     orthographic_style, ndc, first_published,
     source_edition_title, source_edition_publisher, source_edition_year,
     filename, source_content_hash, url, release, doi
 
-This CSV provides bibliographic records for spreadsheet or script ingestion.
-The canonical fields are `identifier`, `source_content_hash`, and `release`.
-Read with `utf-8-sig` to handle the UTF-8 byte-order mark.
-
-`source_edition_year` is the Gregorian year of the 底本's first edition,
-taken from Aozora Bunko's 初版発行年. That field is a free-form publication history
-rather than a year, as in `1981（昭和56）年3月20日`, sometimes with a
-printing history after it. The year is extracted for the machine-readable
-columns, while the work page shows the recorded string in full.
+The canonical citation fields are `identifier`, `source_content_hash`, and
+`release`. Read `catalog.csv` with `utf-8-sig` to strip the UTF-8 byte-order
+mark. `source_edition_year` holds the Gregorian year extracted from Aozora
+Bunko's free-form 初版発行年 string (such as `1981（昭和56）年3月20日`), while
+work pages display the recorded string in full.
 
 To fetch works individually, such as a filtered subset:
 
@@ -144,22 +139,19 @@ for work in catalog["works"]:
     time.sleep(0.5)
 ```
 
-Rate-limit automated requests when fetching individual texts, or use the bulk
-archives for complete corpus downloads. The two archives are also deposited on
-Zenodo quarterly beside the signed manifest; [Citing Soranoha](citation.md)
-specifies the version DOI scope.
-
-Because site availability is best effort and bandwidth is limited, retrieve the
-full corpus via bulk archives rather than sequential requests. The persistent
-record resides in the signed release chain and its archived copies, not the
-serving host.
+Rate-limit automated requests when fetching individual texts, and retrieve the
+full corpus through the bulk archives; site availability is best effort and
+bandwidth is limited. The two archives are also deposited on Zenodo quarterly
+beside the signed manifest; [Citing Soranoha](citation.md) specifies the
+version DOI scope. The persistent record is the signed release chain and its
+archived copies.
 
 ## Scale and coverage
 
 The source is Aozora Bunko's catalog of works whose copyright has expired in
 Japan, restricted to works with a downloadable text file: 17,655 of them in the
 catalog this release builds from, contributed by 1,167 authors, translators,
-editors and collators. Those numbers move as Aozora Bunko adds works and as
+editors and collators. Those numbers change as Aozora Bunko adds works and as
 copyrights expire. Each release states its own count on the landing page and
 in `/catalog.json`; a release is a fixed set of works, not a live view.
 
@@ -167,16 +159,16 @@ Contributors are recorded with their upstream Aozora Bunko roles, such as 著者
 校訂者, or 編者. A work can have several contributors, and the site indexes individuals
 across all assigned roles rather than authorship alone.
 
-Two boundaries exclude items present in upstream Aozora Bunko:
+Two rules bound what a release contains:
 
 **Publication is gated on rights assessment.** A work is admitted to a release
 only when its rights evaluation passes against recorded evidence, defaulting to
 Aozora Bunko's catalog metadata. See
 [admission and assessment](user-glossary.md#admission).
 
-**Illustrations are not included.** Aozora Bunko's image files are outside the
-grant. Where the source references an illustration, the TEI records the
-reference and its caption; the image itself is not published.
+**Illustrations are recorded by reference.** Where the source references an
+illustration, the TEI records the reference and its caption. Aozora Bunko's
+image files are outside the grant and are not published.
 
 ## Licence
 
@@ -191,35 +183,35 @@ licence in every file that contains it.
 
 You may copy, redistribute, adapt, translate, mine and republish all of it,
 commercially or not, without asking and without payment. For Soranoha's own
-encoding, attribution is requested, not required, which mirrors Aozora Bunko's
-own posture. Where the underlying work is under CC BY, attribution to that work
-is a condition of its licence. Each work's page and TEI header state which of
+encoding, attribution is requested, not required. Where the underlying work is
+under CC BY, attribution to that work is a condition of its licence. Each work's page and TEI header state which of
 the two standings applies.
 
 [Rights](rights.md) is the full statement, including what applies if you
 redistribute the software rather than the corpus, and how a rights holder asks
 for a work to be withdrawn. [Citing Soranoha](citation.md) details citation formats.
-Citations should name both the release and the identifier, because title and author
+Citations should state both the release and the identifier, because title and author
 alone do not uniquely identify a work.
 
-## What "signed" means, and why you might care
+## What "signed" means for a reader
 
 Every release is a signed manifest listing each published work and the SHA-256
 of each of its four files. The manifests form an append-only chain, so a
-release cannot be silently altered or removed after the fact, and anyone can
-check that the file they downloaded is the file the release says it published.
+release cannot be altered or removed after the fact without detection, and
+anyone can check that the file they downloaded is the file the release records
+as published.
 
 Every release in the chain is listed at `https://soranoha.org/history`, newest
 first, with its upstream Aozora Bunko revisions and added, removed, or
 re-encoded work counts derived directly from published manifests.
 
-The upstream revision a release names is a commit of Aozora Bunko's Git
+The upstream revision a release records is a commit of Aozora Bunko's Git
 repository, `https://github.com/aozorabunko/aozorabunko`. GitHub stopped
 serving that repository in 2026. Software Heritage archived it in full before
 then, so the revision resolves there as `swh:1:rev:<upstream_rev>`, and the
 archive's last visit of the origin, snapshot
 `swh:1:snp:861faf52eb29116fdb2984563a031acec1a8d6b1`, holds every revision a
-release names.
+release records.
 
 To compare a release against an earlier point in Aozora Bunko's history,
 check that history out and compare it against the release. From a
@@ -232,9 +224,9 @@ nix run .#soranoha-kernel -- corpus-delta \
   --release-pub release.pub --governance-pub governance.pub
 ```
 
-It names the works whose source differs, the works only one side has, and the
-works a governance event withdrew. Nothing is parsed and nothing is rebuilt,
-because a release records each work's source identity. The chain is verified
+The command lists the works whose source differs, the works only one side has, and the
+works a governance event withdrew. It compares the source identity each
+release records for each work, without parsing or rebuilding. The chain is verified
 against the published keys first, and the comparison runs locally against the
 supplied checkout.
 

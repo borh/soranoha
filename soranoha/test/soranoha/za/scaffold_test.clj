@@ -64,14 +64,14 @@
                       {"contribution_id" "translator:000002"}]}
                     {"slug" "s-300" "contributions"
                      [{"contribution_id" "author:000003"}]}]})))))
-    (testing "a contributor added under surviving slugs is drift"
+    (testing "a contributor added under unchanged slugs is drift"
       (let [stale (assoc checkout "s-100" ["author:000001"])
             drift (scaffold/projection-drift checkout stale)]
         (is (= 0 (:only-in-checkout-count drift)))
         (is (= 0 (:only-in-snapshot-count drift)))
         (is (= 1 (:contributions-differ-count drift)))
         (is (= ["s-100"] (:contributions-differ-sample drift)))))
-    (testing "a changed role under a surviving slug is drift"
+    (testing "a changed role under an unchanged slug is drift"
       (is (= 1 (:contributions-differ-count
                 (scaffold/projection-drift
                  checkout (assoc checkout "s-100" ["author:000001" "editor:000002"]))))))

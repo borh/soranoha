@@ -1,14 +1,13 @@
 # Rights and licensing
 
 This rights statement is identified by <https://w3id.org/soranoha/rights>.
-Every signed release manifest names this identifier in `rights.statement_url`,
+Every signed release manifest records this identifier in `rights.statement_url`,
 and every published TEI file references it in `publicationStmt/availability` via
-`licence/ptr/@target`. Because signed bytes cannot be modified later, they record
-this persistent identifier rather than a transient host URL. Registering the
-`w3id.org/soranoha/` redirects is a precondition of initial publication; the
-identifiers are written here in the form the signed bytes name.
+`licence/ptr/@target`. Registering the `w3id.org/soranoha/` redirects is a
+precondition of initial publication; the identifiers are written here in the
+form the signed bytes contain.
 
-## The short version
+## Permitted use in brief
 
 You may copy, redistribute, adapt, translate, mine, and republish everything
 Soranoha publishes, for any purpose, commercial or not, without asking and
@@ -43,9 +42,9 @@ them on Aozora Bunko under a Creative Commons Attribution licence. Aozora
 Bunko's catalog records that copyright subsists but not under what terms, so
 the licence is read from the notice the rightsholder wrote into the colophon.
 Soranoha publishes such a work only where attribution is the sole condition:
-a licence adding NonCommercial, NoDerivatives, or ShareAlike is refused at
+a licence adding NonCommercial, NoDerivatives, or ShareAlike is rejected at
 selection, and the work does not enter the corpus. The standing each work was
-admitted under travels with it, in `works[].rights` in the manifest, in the
+admitted under is recorded with it, in `works[].rights` in the manifest, in the
 catalog, and in the work's own TEI header.
 
 Soranoha publishes only works its assessment finds free to publish on these
@@ -55,8 +54,9 @@ terms; the reasoning is recorded in
 **Soranoha's encoding** (TEI markup, plaintext and Markdown
 projections, validation reports, and release manifests)
 is dedicated to the public domain under [CC0
-1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Where that
-encoding attracts copyright or a database right, those rights are waived. The
+1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). To the
+extent that copyright or database rights arise in the encoding, those rights
+are waived. The
 waiver covers only what Soranoha added. For a work under CC BY, the text inside
 the TEI, plaintext and Markdown files remains under that licence, and its
 attribution condition applies to any use of those files.
@@ -67,9 +67,7 @@ bibliographic data derives from Aozora Bunko's catalog CSV under CC-BY-4.0.
 Redistributing the catalog or listings built from it requires attributing Aozora
 Bunko as the source.
 
-CC0 was chosen because TEI transcription is largely a mechanical conversion
-of Aozora Bunko markup. A public-domain dedication avoids imposing attribution
-obligations downstream. Scholarly attribution is requested through `CITATION.cff`
+Scholarly attribution is requested through `CITATION.cff`
 and standard citation practice (see [citation](citation.md)).
 
 ## What covers what
@@ -86,7 +84,7 @@ and standard citation practice (see [citation](citation.md)).
 | Aozora Bunko catalog CSV (bibliographic metadata) | CC-BY-4.0 | Upstream metadata source |
 
 The encoding vocabulary and protocol schemas are dedicated under CC0. Locally authored source
-code is licensed under Apache-2.0 to provide an explicit patent grant. The forked
+code is licensed under Apache-2.0. The forked
 parser crates retain upstream's dual MIT/Apache-2.0 licence.
 
 Data tables in `ab-validator/crates/*/data/` document their provenance and terms
@@ -139,7 +137,7 @@ and, beside each work, the standing that work was admitted under is recorded as:
 In every published TEI file, one `licence` element covers each rights layer.
 Below, the underlying work is out of copyright, so its status is represented by
 the Creative Commons Public Domain Mark; for a work under CC BY, the first
-`licence` names that licence instead and states attribution as its condition.
+`licence` identifies that licence instead and states attribution as its condition.
 The second `licence` is CC0 either way. For a public-domain work it dedicates
 the encoding and the derived artifacts outright, as below; for a work under
 CC BY it waives Soranoha's rights only and states that the text in every
@@ -170,8 +168,7 @@ rejects files whose `publicationStmt/availability/licence` lacks a `@target`.
 To report a copyright concern or request removal of a published work,
 contact the maintainer via <https://orcid.org/0000-0003-2246-8774> with the
 work identifier (e.g. `000092_000879`) or Aozora Bunko card number and the
-basis of the claim. A claim does not need to be a formal legal notice to be
-acted on.
+basis of the claim. Informal notifications are accepted.
 
 Withdrawal is recorded through signed governance events. Each event carries a
 public `statement` and one of four `reason_code` values: `rights` for a
@@ -182,7 +179,7 @@ next corpus release.
 
 - The work is removed from `works[]`, so its artifacts are no longer served at
   `/works/<identifier>/`, and the release publishes a new catalog that no
-  longer describes it: a manifest may not name a catalog describing a work
+  longer describes it: a manifest may not reference a catalog describing a work
   withdrawn by that release.
 - The work is recorded in `withdrawn[]`, referencing the signed governance event served at `/withdrawn/<identifier>.json`.
 - **Append-only history**: Earlier releases containing the work remain in the signed chain; withdrawal ceases current distribution without rewriting historical releases.
@@ -196,4 +193,4 @@ See [`design/snh-protocol-v1.md`](design/snh-protocol-v1.md) and
 Soranoha publishes transcriptions alongside validation reports and recorded
 divergences, not a guarantee of fidelity. The corpus is provided as is. Do not
 rely on it for a legal, medical, or safety purpose without independent
-verification against the source edition each work names in its `sourceDesc`.
+verification against the source edition each work identifies in its `sourceDesc`.

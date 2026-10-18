@@ -16,7 +16,7 @@
   and pre-built ZIP archives for the bulk selections a static tree cannot
   assemble on request. It is a pure function of this release, so the reuse
   check covers it exactly as it covers chain content, but nothing in it is
-  named by a manifest or checked by a verifier, and a reader who wants the
+  referenced by a manifest or checked by a verifier, and a reader who wants the
   published record follows its links to the catalog, the manifests and the
   blobs.
 
@@ -56,7 +56,7 @@
   "slug -> artifact type -> blob path, for the head release. The reading view
   and the bulk archives both render from these bytes rather than from a copy
   of their own, so what a reader sees or unzips is the artifact the manifest
-  names."
+  references."
   [manifest]
   (into {}
         (for [work (get manifest "works")]
@@ -192,8 +192,8 @@
                                ;; `browse/pages`; holding it would make an
                                ;; activation cost the chain's length times a
                                ;; manifest, which the chain-length-3 fixture
-                               ;; never shows. Each caller gets its own
-                               ;; sequence, walks it once and lets it go.
+                               ;; does not exercise. Each caller gets its own
+                               ;; sequence, walks it once and releases it.
                                manifest-seq (fn []
                                               (map (fn [hex] [hex (manifest-of hex)]) chain))
                                blob-hexes (into (sorted-set)
@@ -213,18 +213,17 @@
                            ;; A citation carries the head abbreviated to twelve
                            ;; characters, because 64 in a bibliography is
                            ;; unreadable, so that abbreviation has to resolve or
-                           ;; the citation names bytes a reader cannot reach.
+                           ;; the citation identifies bytes a reader cannot reach.
                            ;; These are the same two files under their short
                            ;; name, in a directory of their own: a name directly
                            ;; under `releases/` is its own sha256, and an alias
-                           ;; there would cost a reader that check.
+                           ;; there would prevent a reader from making that check.
                            ;;
-                           ;; Ambiguity is refused rather than resolved by
-                           ;; guesswork. 48 bits over one chain makes a shared
-                           ;; prefix vanishingly unlikely, and if two releases
-                           ;; ever did share one, silently pointing at whichever
-                           ;; was written last is the one outcome a
-                           ;; content-addressed citation may not have.
+                           ;; Ambiguity is rejected rather than resolved. 48 bits
+                           ;; over one chain makes a shared prefix vanishingly
+                           ;; unlikely, and if two releases did share one,
+                           ;; resolving to whichever was written last would break
+                           ;; the content addressing a citation depends on.
                            (let [short-of (fn [hex] (subs hex 0 12))
                                  collisions (->> chain
                                                  (group-by short-of)

@@ -63,8 +63,8 @@
 
 (defn- tei-for
   "Published TEI for a fixture work, rendered by the same path that produces
-  the artifact a manifest names, so the reading pages under test are built
-  from the shape the release actually carries."
+  the artifact a manifest references, so the reading pages under test are
+  built from the shape the release carries."
   [slug]
   (.getBytes
    ^String (:tei (render/render-work
@@ -112,8 +112,8 @@
 
 (defn- pages
   "`browse/pages` yields `[path bytes]` pairs lazily, because one reading page
-  per work is more than a map should hold at once. Tests want random access,
-  so they realize the sequence they asked for."
+  per work is more than a map should hold at once. Tests need random access,
+  so they realize the sequence."
   [inputs]
   (into {} (browse/pages inputs)))
 
@@ -130,7 +130,7 @@
                     "style.css" "search.js" "search-index.json"]]
         (is (contains? pages path) path)))
 
-    (testing "so is every document, and every file the documents send a reader to"
+    (testing "so is every document, and every file the documents link to"
       (doseq [{:keys [route]} docs/documents]
         (is (contains? pages (str route ".html")) route))
       (doseq [{:keys [route]} (docs/verbatim-files)]
@@ -170,8 +170,8 @@
         work-page (page pages "works/000092_000879/index.html")]
     (testing "each artifact links its readable name, which is what gets saved"
       ;; against the set the release carries rather than a list of its own, so
-      ;; that a page offering three of four downloads, or a fourth nothing
-      ;; answers, fails here
+      ;; that a page offering three of four downloads, or a fourth that no
+      ;; route serves, fails here
       (is (= (set (map naming/extensions naming/artifact-kinds))
              (into #{}
                    (keep #(second (re-matches
@@ -193,7 +193,7 @@
 (deftest bulk-selections-are-linked-from-the-pages-they-mirror
   (let [works [(work "000092_000879" "蜘蛛の糸" "くものいと")]
         pages (pages (inputs works))]
-    (testing "the whole corpus, from the front door"
+    (testing "the whole corpus, from the landing page"
       (let [landing (page pages "index.html")]
         (is (string/includes? landing "/bulk/soranoha-tei.zip"))
         (is (string/includes? landing "/bulk/soranoha-plaintext.zip"))))
@@ -206,14 +206,14 @@
     (testing "one NDC class, from that class's page"
       (is (string/includes? (page pages "ndc/9.html") "/bulk/ndc/soranoha-ndc-9-tei.zip")))
 
-    (testing "and every archive says what catalog.csv is for"
+    (testing "and every archive states what catalog.csv is for"
       (is (string/includes? (page pages "index.html") "catalog.csv")))))
 
 (deftest a-work-can-be-read-in-the-browser-without-scripting-test
   (let [slug "000092_000879"
         pages (pages (inputs [(work slug "蜘蛛の糸" "くものいと")]))
         read-page (page pages (str "works/" slug "/read.html"))]
-    (testing "the work page sends a reader to the reading view"
+    (testing "the work page links to the reading view"
       (is (string/includes? (page pages (str "works/" slug "/index.html"))
                             (str "/works/" slug "/read"))))
 
@@ -231,7 +231,7 @@
       (is (not (string/includes? read-page "<script>"))
           "every script is an external file the reader can decline"))
 
-    (testing "and the page says which release it renders and how to cite it"
+    (testing "and the page states which release it renders and how to cite it"
       (is (string/includes? read-page head-hex))
       (is (string/includes? read-page (str "/works/" slug "/tei")))
       (is (string/includes? read-page "/citation")))))
@@ -264,11 +264,42 @@
   (testing "and reaches the search index as JSON string content"
     (let [pages (pages (inputs [(work "000005_000005" "引用\"符" "あ")]))
           index (json/read-json (page pages "search-index.json"))]
-      (is (= [["000005_000005" "引用\"符" "あ" "芥川 龍之介"]]
-             (get index "works")))
+      (is (= [["000005_000005" "引用\"符" "あ" "芥川 龍之介" "Akutagawa Ryunosuke"]]
+             (get index "works"))
+          "with the romanized author name, so a reader can type it instead of the kanji")
       (is (= head-hex (get index "release"))))))
 
-(deftest a-withdrawn-work-explains-itself-and-names-its-last-release-test
+(deftest a-class-page-groups-its-works-under-their-authors-test
+  (let [kurata [{"person_id" "000283" "family_name" "倉田" "given_name" "百三"
+                 "family_name_romaji" "Kurata" "given_name_romaji" "Hyakuzo"
+                 "relation_to_work" "著者"}]
+        pages (pages (inputs [(work "000001_000283" "学生と教養" "がくせいときょうよう"
+                                    :ndc "NDC 159" :contributors kurata)
+                              (work "000002_000283" "学生と生活" "がくせいとせいかつ"
+                                    :ndc "NDC 159" :contributors kurata)
+                              (work "000003_000879" "侏儒の言葉" "しゅじゅのことば"
+                                    :ndc "NDC 159")]))
+        class-page (page pages "ndc/1.html")]
+    (is (= ["芥川 龍之介" "倉田 百三"]
+           (map second (re-seq #"<h3 class=\"group\"><a href=\"/authors/\d+\">([^<]+)</a>" class-page)))
+        "one heading per author, in the order of the author index")
+    (is (not (string/includes? class-page "— 倉田 百三"))
+        "the byline is the heading, so the rows do not repeat it")
+    (testing "and an author's own page states the byline only where it differs"
+      (let [author-page (page pages "authors/000283.html")]
+        (is (string/includes? author-page "学生と教養"))
+        (is (not (string/includes? author-page "— 倉田 百三")))))))
+
+(deftest copy-buttons-are-offered-for-values-and-not-for-names-test
+  (let [pages (pages (inputs [(work "000092_000879" "蜘蛛の糸" "くものいと")]))
+        work-page (page pages "works/000092_000879/index.html")]
+    (is (string/includes? (page pages "copy.js") "'pre, code.citation, code.value'"))
+    (is (string/includes? work-page "<code class=\"value\">000092_000879</code>"))
+    (is (string/includes? work-page "<code class=\"value\">sha256:"))
+    (is (not (string/includes? (page pages "start-here.html") "class=\"value\""))
+        "a field name in the documentation is a name, not a value to copy")))
+
+(deftest a-withdrawn-work-page-states-the-withdrawal-and-the-last-release-test
   (let [pages (pages (inputs [(work "000035_001567" "走れメロス" "はしれめろす")]
                              [{"slug" "000092_000879"
                                "event" (str "snh:1:governance-event:" event-hex)}]))
@@ -281,12 +312,12 @@
     (is (string/includes? (page pages "index.html") "取り下げ")
         "the landing page counts withdrawals rather than hiding them")))
 
-(deftest withdrawn-works-find-their-own-last-release-in-one-pass
+(deftest the-last-release-of-each-withdrawn-work-is-found-in-one-pass
   ;; Two works withdrawn at different points, so a lookup that stopped at the
-  ;; first release still listing anything would name the wrong one for the
+  ;; first release still listing anything would return the wrong one for the
   ;; older withdrawal. Reading the chain once for all of them rather than once
-  ;; per withdrawal is what keeps an activation from re-walking it, so the
-  ;; per-slug answer has to survive that sharing.
+  ;; per withdrawal prevents an activation from re-walking it, so the per-slug
+  ;; result must remain correct under that sharing.
   (let [kept (work "000035_001567" "走れメロス" "はしれめろす")
         older "000092_000879"
         newer "000005_000005"
@@ -338,7 +369,7 @@
         "generation is a pure function of the release, which is what lets the
          exporter's reuse check treat these files like chain content")))
 
-(deftest the-pages-point-at-the-signed-record-rather-than-standing-in-for-it-test
+(deftest the-pages-link-to-the-signed-record-rather-than-replacing-it-test
   (let [pages (pages (inputs [(work "000092_000879" "蜘蛛の糸" "くものいと")]))]
     (doseq [path ["index.html" "works/000092_000879/index.html"]]
       (is (string/includes? (page pages path) "/catalog.json") path)
@@ -373,7 +404,7 @@
     ;; Every manifest carries rights.statement_url and every published TEI
     ;; header carries a <ptr> to the same URL, so this page is where a reader
     ;; holding a detached file has to arrive at an answer. It stands on its
-    ;; own: naming a repository document is background, not the answer.
+    ;; own: a reference to a repository document is background, not the answer.
     (testing "and the rights page is the whole statement the signed bytes cite"
       (let [rights-page (page pages "rights.html")]
         (testing "the grant, read from this release's own manifest"
@@ -428,7 +459,7 @@
         (is (some? prev-row))
         (is (string/includes? prev-row "<td>1</td><td></td><td></td><td></td>"))))
 
-    (testing "each row names the upstream revisions the release stands for"
+    (testing "each row lists the upstream revisions the release covers"
       (is (string/includes? (row head-hex)
                             (str (subs prev-rev 0 12) " .. " (subs head-rev 0 12))))
       (is (not (string/includes? (row prev-hex) " .. "))
@@ -441,7 +472,7 @@
         (is (string/includes? with-event (str "/governance/" event-hex ".json")))
         (is (string/includes? with-event "withdrawal"))))
 
-    (testing "and the landing page sends a reader to it"
+    (testing "and the landing page links to it"
       (is (string/includes? (page (pages (inputs works)) "index.html") "\"/history\"")))))
 
 (deftest html-rendering-escapes-every-untrusted-position-test
@@ -475,11 +506,11 @@
                  :work-rights "CC-BY-2.1-JP")
         pages (pages (inputs [pd by]))
         page-of (fn [w] (page pages (str "works/" (get w "slug") "/index.html")))]
-    (testing "the public-domain work says the term expired"
+    (testing "the public-domain work states the term expired"
       (is (string/includes? (page-of pd) "著作権の存続期間が満了しています"))
       (is (string/includes? (page-of pd)
                             "https://creativecommons.org/publicdomain/mark/1.0/")))
-    (testing "the licensed work names its licence and states the condition"
+    (testing "the licensed work states its licence and the condition"
       (is (string/includes? (page-of by) "CC-BY-2.1-JP"))
       (is (string/includes? (page-of by)
                             "https://creativecommons.org/licenses/by/2.1/jp/"))
@@ -493,37 +524,36 @@
         (is (string/includes? rights-page "public-domain"))
         (is (string/includes? rights-page "CC-BY-2.1-JP"))
         ;; Attribution being a request holds for most of the corpus and not
-        ;; for the CC BY works, so the sentence saying so has to carry its
-        ;; qualifier. Asserting the absence of the unqualified sentence is
-        ;; what this used to do, and it could not fail: the string it looked
-        ;; for was punctuated with a 、 the page never emits, while the real
-        ;; sentence contains the rest of it as a substring.
+        ;; for the CC BY works, so the sentence stating it has to carry its
+        ;; qualifier. The test asserts the qualified sentence is present: an
+        ;; assertion that the unqualified sentence is absent could not fail,
+        ;; because the qualified sentence contains it as a substring.
         (is (string/includes? rights-page "ほとんどの作品では、クレジット表示はお願いであって")
             "the request is stated as holding for most works, not all")
         (is (string/includes? rights-page "クレジット表示はそのライセンスの条件です")
             "and the licensed works are named as the exception")))))
 
-(deftest a-work-page-names-the-bytes-that-follow-its-source-archive
-  ;; Standard zip readers refuse 058100_001505's archive: 984 bytes follow
-  ;; the archive proper, and the decoy record in them is what the reader
-  ;; trusts and then rejects. The members are intact and are what the
-  ;; edition was built from, so the page has to say that where a reader
-  ;; checking against the source will meet it.
+(deftest a-work-page-states-the-bytes-that-follow-its-source-archive
+  ;; Standard zip readers reject 058100_001505's archive: 984 bytes follow
+  ;; the archive proper, and the reader reads the decoy record in them and
+  ;; then rejects the archive. The members are intact and are what the
+  ;; edition was built from, so the page states that where a reader
+  ;; checking against the source encounters the rejection.
   (let [trailing (work "058100_001505" "ちょび髭サミュエルの話" "ちょびひげさみゅえるのはなし"
                        :trailing-bytes 984)
         ordinary (work "000092_000879" "蜘蛛の糸" "くものいと")
         pages (pages (inputs [trailing ordinary]))
         page-of (fn [w] (page pages (str "works/" (get w "slug") "/index.html")))]
-    (testing "the affected work states the count and that the text survived it"
+    (testing "the affected work states the count and that the text is intact"
       (is (string/includes? (page-of trailing) "底本アーカイブ"))
-      (is (string/includes? (page-of trailing) "984 バイトが続いています"))
-      (is (string/includes? (page-of trailing) "984 bytes after the archive proper")))
-    (testing "and every other work says nothing, because nothing is wrong with theirs"
+      (is (string/includes? (page-of trailing) "984バイトの余剰データを含みます"))
+      (is (string/includes? (page-of trailing) "984 bytes of trailing data after the end of the archive")))
+    (testing "and every other work states nothing, because nothing is wrong with theirs"
       (is (not (string/includes? (page-of ordinary) "底本アーカイブ")))
       (is (not (string/includes? (page-of ordinary) "Source archive"))))))
 
 (deftest a-collection-lists-each-first-publication-rather-than-running-them-together
-  ;; Aozora Bunko's 初出 for a collection names one appearance per
+  ;; Aozora Bunko's 初出 for a collection states one appearance per
   ;; constituent piece, separated in its catalog by a literal <br>. 156
   ;; works carry several, the longest 414.
   (let [collection (work "001790_000067" "宿命" "しゅくめい"

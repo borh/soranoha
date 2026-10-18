@@ -6,16 +6,16 @@
   verbatim file is served byte for byte at its own extension, because it is
   something a reader feeds to a tool: a schema, a licence text.
 
-  Every entry names a repository-relative path, which is the same path the
-  documents already use to link to each other. That is what lets a link be
-  resolved without a second table: normalise the target against the linking
+  Every entry gives a repository-relative path, which is the same path the
+  documents already use to link to each other. A link therefore resolves
+  without a second table: normalise the target against the linking
   document's own path and look the result up here.
 
   The files are read from a root directory rather than the classpath because
   they are ordinary repository documents that must stay editable and
-  reviewable where they are. `SORANOHA_SITE_DOCS` names that root when the Nix
-  wrapper runs the exporter, where there is no repository around the store
-  path; the default suits a checkout, where the kernel runs from the
+  reviewable where they are. `SORANOHA_SITE_DOCS` gives that root when the Nix
+  wrapper runs the exporter, where the store path has no enclosing
+  repository; the default suits a checkout, where the kernel runs from the
   `soranoha` directory and the repository root is one level up."
   (:require [babashka.fs :as fs]
             [clojure.string :as string]))
@@ -23,39 +23,37 @@
 (def documents
   "The documents the site serves, each rendered from its own Markdown.
 
-  Every entry was checked claim by claim against the code, schemas, tests,
-  catalog or a served build before it came back, and the operator decided its
-  return. `ns/tei` is not optional: every TEI root declares the `snh:`
+  `ns/tei` is not optional: every TEI root declares the `snh:`
   namespace as `https://w3id.org/soranoha/ns/tei` and every header carries a
   pointer to it, so the namespace has to dereference to the vocabulary that
   defines it. Its route is short and stable because it is cited.
 
-  Two documents stay in the repository on purpose: the parser invariants and
+  Two documents are not served as pages: the parser invariants and
   the snh protocol specification are written for implementers, and a link to
   either resolves to its repository path rather than a page."
   [{:route "start-here" :path "docs/start-here.md"
     :ja "はじめに"}
    {:route "example" :path "docs/worked-example.md"
-    :ja "一作品を読み解く"}
+    :ja "変換の実例：蜘蛛の糸"}
    {:route "glossary" :path "docs/user-glossary.md"
     :ja "用語集"}
    {:route "identifiers" :path "soranoha/docs/work-identifiers.md"
     :ja "作品識別子"}
    {:route "ns/tei" :path "soranoha/docs/tei-vocabulary.md"
-    :ja "TEI 拡張語彙"}
+    :ja "TEI拡張語彙"}
    {:route "validation" :path "soranoha/docs/tei-validation.md"
-    :ja "TEI の検証"}
+    :ja "TEIの検証"}
    {:route "accountability" :path "soranoha/docs/source-accountability.md"
-    :ja "原文の説明責任"}
+    :ja "底本表記の照合と検証"}
    {:route "assessment" :path "soranoha/docs/assessment-evaluation.md"
     :ja "公開可否の判断"}
    {:route "annotation-layers" :path "docs/annotation-layers.md"
-    :ja "注釈の層"}])
+    :ja "研究用の注釈レイヤー"}])
 
 (def generated
   "Pages the browse layer assembles itself, because each states facts it reads
   from the release: the rights grant the head manifest carries, and the head
-  and DOI a citation has to name.
+  and DOI a citation must state.
 
   `/rights` is not optional. Every manifest carries
   `rights.statement_url` and every published TEI header carries a `<ptr>` to
@@ -63,10 +61,10 @@
 
   Each page carries its own statement rather than an excerpt of one. A reader
   who followed `rights.statement_url` out of a detached TEI file has to reach
-  the answer here, so a forwarding address to a repository document would not
-  discharge what the signed bytes promise.
+  the answer here, so a link onward to a repository document would not
+  satisfy the reference the signed bytes make.
 
-  `:source` names the repository document that treats the subject at length.
+  `:source` identifies the repository document that treats the subject at length.
   It is background a reader may want, not the page's substance."
   [{:route "rights" :ja "権利について"
     :source "docs/rights.md"}
@@ -86,7 +84,7 @@
    {:route "schemas/source-1.schema.json"
     :path "soranoha/resources/assessment/source-1.schema.json"}
    ;; these two are dereferenceable identifiers rather than documents a reader
-   ;; follows: every person and metadata record names its schema by an IRI
+   ;; follows: every person and metadata record identifies its schema by an IRI
    ;; under `w3id.org/soranoha/schemas/`, which redirects here
    {:route "schemas/person-record.schema.json"
     :path "soranoha/schemas/person-record.schema.json"}
@@ -94,14 +92,14 @@
     :path "soranoha/schemas/metadata-record.schema.json"}
    ;; the same kind of entry for the toolchain: a mapping or policy document
    ;; carries its own IRI as `mapping_id` or `policy_id`, and
-   ;; parser-IR output names the mapping it was derived from. The route is the
+   ;; parser-IR output identifies the mapping it was derived from. The route is the
    ;; IRI's path, extension and all, because that is the string the bytes hold
    {:route "mappings/aat-v1-to-parser-ir-v1/generated-probe"
     :path "ab-validator/data/aat-to-parser-ir-mapping-v1.json"}
    {:route "mappings/aat-v2-to-parser-ir-v1/generated-probe"
     :path "ab-validator/data/aat-to-parser-ir-mapping-v2.json"}
    {:route "policies/source-region-publication-v0"
-    :path "ab-validator/data/source-region-publication-policy-v0.json"}])
+    :path "soranoha/data/source-region-publication-policy-v0.json"}])
 
 (defn root
   "The directory the served files are read from."
@@ -133,9 +131,9 @@
 
 (defn- by-path
   ;; A generated page is keyed by the repository document it stands for, so a
-  ;; link to `rights.md` still reaches `/rights`. The page no longer carries
-  ;; that document's text, but it is still the route the project publishes for
-  ;; it, and a link to a served route must not degrade into a bare path.
+  ;; link to `rights.md` reaches `/rights`. The page does not carry that
+  ;; document's text, but it is the route the project publishes for it, and a
+  ;; link to a served route must not degrade into a bare path.
   []
   (into {} (map (juxt #(or (:path %) (:source %)) identity))
         (concat documents generated (verbatim-files))))

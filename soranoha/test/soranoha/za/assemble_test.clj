@@ -357,7 +357,7 @@
 (defn- manifest-of
   "A manifest carrying only what the regression check reads: which works were
   published from which source bytes, which of them failed validation, and the
-  profile they were judged by."
+  profile they were validated against."
   [profile works invalid]
   {"toolchain" {"validate-tei" {"nix_closure_hash" profile "stage_code_version" "4"}}
    "works" (mapv (fn [[slug source]] {"slug" slug "source_content_hash" source}) works)

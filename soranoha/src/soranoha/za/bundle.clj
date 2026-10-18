@@ -2,18 +2,18 @@
   "Bulk corpus selections as pre-built ZIP archives.
 
   Serving is a static tree with no application runtime, so a selection cannot
-  be assembled when it is asked for. Every selection a reader can take is
+  be assembled on request. Every selection a reader can take is
   therefore built at export time and served as an ordinary file. The
   selections mirror the axes the site already browses by, the whole corpus,
   one person and one NDC class, so `everything by this author` is a link on
   that author's page rather than a program the reader has to write.
 
-  Two artifact types are bulk-published; `soranoha.za.naming` says which and
+  Two artifact types are bulk-published; `soranoha.za.naming` states which and
   why, because the browse layer links the same archives.
 
   Each archive carries `catalog.csv` at its root: the structured citation
   fields, from `soranoha.za.citation`, for exactly the works inside it. The
-  CSV is what removes the need for a mapping program: it opens in a
+  CSV removes the need for a mapping program: it opens in a
   spreadsheet, and a whole selection can be turned into a bibliography
   without opening a single TEI file. The identifier, source hash and release
   columns, not the filename, are the citable ones. It is a serving-time
@@ -21,8 +21,8 @@
 
   Deterministic, like everything else the browse layer generates: fixed entry
   order, fixed modification time, fixed compression level, no environment and
-  no clock. That is what lets the exporter's reuse check compare an existing
-  archive byte for byte rather than trusting that it is the right one. The
+  no clock. The exporter's reuse check therefore compares an existing
+  archive byte for byte rather than assuming that it is the right one. The
   archives are written as a stream and never held whole: a corpus-wide TEI
   archive is far larger than any byte array this process should allocate."
   (:require [clojure.string :as string]
@@ -40,8 +40,8 @@
   reproducible from the release alone.
 
   `setTimeLocal` writes the MS-DOS date field directly, so the exporter's
-  timezone does not reach the bytes, but only for a date strictly inside the
-  DOS range. At its 1980-01-01 boundary the JDK falls back to an extended
+  timezone does not affect the bytes, but only for a date strictly inside the
+  DOS range. At its 1980-01-01 boundary the JDK writes an extended
   timestamp extra field holding an epoch second, which is computed through
   the default timezone and is therefore not reproducible. Hence a date well
   inside the range rather than the usual reproducible-build zero."
@@ -51,13 +51,13 @@
   "Written out rather than taken from `Deflater/DEFAULT_COMPRESSION`, whose
   meaning is whatever the platform's default happens to be. Six is zlib's
   long-standing default and the level these archives are pinned to; a
-  platform changing its mind must not change an archive's bytes."
+  change of platform default must not change an archive's bytes."
   6)
 
 (defn- csv-field
   "Every field is quoted, which RFC 4180 permits and which keeps a title
   containing a comma or a quotation mark from depending on the reader's
-  guesswork."
+  heuristics."
   [value]
   (str "\"" (string/replace (str (or value "")) "\"" "\"\"") "\""))
 
@@ -90,8 +90,8 @@
 (defn write-archive!
   "Write one selection into `out`. `artifact` resolves a slug and type to that
   work's published bytes, so an archive holds the artifacts the manifest
-  names rather than a copy made for it. The stream is finished but not
-  closed: the caller opened it and decides what happens to it."
+  references rather than a copy made for it. The stream is finished but not
+  closed: the caller opened it and closes it."
   [^OutputStream out {:keys [release works artifact-type artifact]}]
   (let [zip (ZipOutputStream. out StandardCharsets/UTF_8)]
     (.setLevel zip compression-level)
@@ -109,7 +109,7 @@
   "Every bulk selection for one release as `{:path :works :artifact-type}`,
   without building any archive. The paths a page links are rendered from
   `soranoha.za.naming` rather than read back from here, so the browse layer
-  does not have to know how an archive is built to point at one."
+  does not depend on how an archive is built to link to one."
   [catalog]
   (let [works (vec (get catalog "works"))
         people (browse/people works)
@@ -123,8 +123,8 @@
                              :works works})
                           people)
                      ;; every class, including the ones with nothing in them:
-                     ;; a link that answers "none in this release" is better
-                     ;; than a link that 404s
+                     ;; a link that answers "none in this release" rather
+                     ;; than a link that returns 404
                      (map (fn [[key _ _]]
                             {:path (naming/ndc-bundle-path key artifact-type)
                              :works (vec (get by-ndc key))})

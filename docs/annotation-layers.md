@@ -2,16 +2,16 @@
 
 Base transcription preserves source paragraphs and rich inline nodes. Sentence
 segmentation belongs to independently selected analysis layers; it neither splits
-source nodes nor adds sentence wrappers to base TEI. The TEI profile holds that
-line rather than leaving it to convention: any element of TEI's analysis module
-appearing inside `tei:text` is reported unless the header declares it, so an
-inline annotation cannot reach a published file in silence.
+source nodes nor adds sentence wrappers to base TEI. The TEI profile enforces this
+separation rather than leaving it to convention: any element of TEI's analysis
+module appearing inside `tei:text` is reported unless the header declares it, so
+an inline annotation cannot reach a published file without a report.
 
 Analysis consumes an identified text view of TEI rather than an export's presentation
 whitespace. The `body-v1` view selects ruby bases and corrected or regularized readings,
 omits notes, figure descriptions and running matter, and retains semantic line/page breaks and block
 separators. UTF-8 byte offsets are the coordinate unit. An unresolved empty glyph
-occupies U+FFFC and is excluded from eligible ranges; it is never silently deleted.
+occupies U+FFFC and is excluded from eligible ranges; it is never deleted without a report.
 The view identity binds the exact text and reading policy. Its DOM alignment is local
 to the source document and is not part of the reusable analyzer input. Image
 metadata is not principal text; `figDesc` preserves descriptions and a
@@ -51,15 +51,15 @@ the base TEI and ordered layer blob identities.
 Anchors can separate text nodes without changing their concatenated content. Because TEI
 glyphs remain atomic, assembly rejects an analysis boundary inside a multi-codepoint
 glyph rather than splitting its realization. Existing XML identifiers are preserved;
-an identifier collision or an incompatible text view is an error. File commands refuse
-to overwrite an existing output.
+an identifier collision or an incompatible text view is an error. File commands do not
+overwrite an existing output.
 
 ## Markdown consumer
 
 The `markdown/2` profile targets horizontal CommonMark with inline HTML. The
 flake-pinned reference consumer, cmark, runs with HTML enabled (`--unsafe`). Tests
-verify that text, ruby nesting, line breaks and generated `span` attributes survive
-that consumer. They do not qualify a browser's typography or a hosting service's
+verify that text, ruby nesting, line breaks and generated `span` attributes are
+preserved through that consumer. They do not qualify a browser's typography or a hosting service's
 sanitizer. Readers must permit `ruby`, `rb`, `rt`, `strong`, `em`, `br`, and `span`
 with its generated `style` and `data-tei-rend` attributes. Source text is escaped for
 both HTML and CommonMark, including text inside inline HTML.
@@ -85,7 +85,7 @@ These are explicit horizontal projection choices, not a rotation or a facsimile 
 vertical source typography. Generated spans retain the original `rend` in
 `data-tei-rend`; projection reports classify these cases as `transformed`.
 
-The profile intentionally omits source apparatus, alternative readings and layout
+The profile omits source apparatus, alternative readings and layout
 such as exact pagination. Generic `emphasis` does not identify a visual style and
 remains unsupported. Unknown rendition tokens, additional TEI inline styles,
 unsupported ruby placement, and unresolved glyphs also remain explicit in reports;
@@ -103,7 +103,7 @@ missing source correspondence.
 A supplied reading that differs from the base text is represented as `app` with
 `lem` for the supplied reading and `rdg type="base-text"` for the alternative. This
 does not assert that the base text is erroneous. Body and Markdown views select the
-supplied reading; Markdown reports the alternative as intentionally omitted.
+supplied reading; Markdown reports the alternative as omitted.
 
 Positive interpretation facts identify the exact source marker the interpreter
 resolved. They do not cover every nested marker in a rendered node's provenance

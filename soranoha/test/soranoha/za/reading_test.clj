@@ -1,11 +1,11 @@
 (ns soranoha.za.reading-test
-  "The reading view's contract is that it is a faithful projection: it must
+  "The reading view's contract is that it is a projection of the published TEI: it must
   select the same text the published plaintext selects, show the encoding
   facts a reader would otherwise have to read TEI source to find, and keep
-  the parser's own audit record out of the story.
+  the parser's own audit record out of the text.
 
   Every fixture here is real published TEI, rendered by the same
-  `soranoha.ori.render` path that produces the artifact a manifest names,
+  `soranoha.ori.render` path that produces the artifact a manifest references,
   so a change in what is published cannot pass these tests by leaving the
   reading view untouched."
   (:require [clojure.string :as string]
@@ -27,7 +27,7 @@
 (defn- markup
   "A rendered section as one HTML string, which is what a reader receives.
   `html/render` reads a vector as an element, so a list of sibling nodes is
-  handed to it as a sequence, exactly as the browse layer does."
+  passed to it as a sequence, exactly as the browse layer does."
   [nodes]
   (html/render (seq nodes)))
 
@@ -43,9 +43,20 @@
 
 (defn- text-of
   "Visible text of a list of sibling nodes: attribute maps are not text, so
-  what this returns is what a reader sees rather than what the markup says."
+  what this returns is what a reader sees rather than what the markup contains."
   [nodes]
   (apply str (map node-text nodes)))
+
+(deftest crossing-ruby-displays-every-target-and-reading
+  (let [source (str "<TEI xmlns='http://www.tei-c.org/ns/1.0'><teiHeader/><text><body><p>"
+                    "<ruby><rb><anchor xml:id='a'/>甲<anchor xml:id='b'/>乙"
+                    "<anchor xml:id='c'/>丙<anchor xml:id='d'/></rb>"
+                    "<rt from='#a' to='#c' place='right'>こうおつ</rt>"
+                    "<rt from='#b' to='#d' place='left'>おつへい</rt></ruby>"
+                    "</p></body></text></TEI>")
+        body (:body (reading/render source))]
+    (is (= "甲乙丙〔甲乙（右）：こうおつ；乙丙（左）：おつへい〕" (text-of body)))
+    (is (not (string/includes? (markup body) "<ruby")))))
 
 (deftest ruby-renders-above-its-base-characters-test
   (let [source (tei {"nodes" [{"type" "text" "text" "深い"}
@@ -71,7 +82,7 @@
     (testing "and the Aozora marker stays available on the same element"
       (is (string/includes? mapped "第3水準1-94-32"))))
 
-  (testing "with no mapping there is a visible placeholder naming the marker"
+  (testing "with no mapping there is a visible placeholder showing the marker"
     (let [unmapped (read-html
                     {"nodes" [{"type" "gaiji"
                                "span" {"start" 0 "end" 1}
@@ -88,7 +99,7 @@
                              "source_span" {"coordinate_system" "decoded_utf8" "start" 27 "end" 45}
                              "ruby" {"base" "涌水" "reading" "わきみず" "scope" "explicit"
                                      "direction" "right"}}]})]
-    (testing "a segment and a ruby each carry the span the TEI names, without the pointer's #"
+    (testing "a segment and a ruby each carry the span the TEI identifies, without the pointer's #"
       (is (string/includes? rendered "id=\"source-0-27\""))
       (is (string/includes? rendered "id=\"source-27-45\""))
       (is (not (string/includes? rendered "id=\"#source"))))
@@ -96,8 +107,8 @@
       (is (= 2 (count (re-seq #"id=\"source-" rendered)))))))
 
 (deftest a-source-reference-becomes-a-link-only-where-a-link-is-safe-test
-  (testing "an external table reference names its companion file as text"
-    ;; This is the target the corpus actually holds: an external table
+  (testing "an external table reference shows its companion file as text"
+    ;; This is the target the corpus holds: an external table
     ;; reference carries the Aozora Bunko companion filename, which this site
     ;; does not serve, so an anchor would resolve to nothing.
     (let [rendered (read-html
@@ -110,8 +121,8 @@
 
   (testing "a target carrying an executable scheme reaches no href"
     ;; @target is transcriber-controlled source content, so the value is not
-    ;; the publisher's. The chain signature and the TEI profile stand in front
-    ;; of this; the allowlist is what stands behind them.
+    ;; the publisher's. The chain signature and the TEI profile are checked
+    ;; before this; the allowlist is the last check.
     (doseq [target ["javascript:alert(1)"
                     "JavaScript:alert(1)"
                     "data:text/html,<script>alert(1)</script>"
@@ -142,7 +153,7 @@
       (is (string/includes? rendered "rend-bouten"))
       (is (string/includes? rendered "大事"))))
 
-  (testing "and one it cannot is named instead of being silently dropped"
+  (testing "and one it cannot is shown by name instead of being dropped"
     (let [rendered (read-html
                     {"nodes" [{"type" "emphasis" "text" "珍しい"
                                "style" "bouten"
@@ -174,7 +185,7 @@
       (is (string/includes? (markup body) "もとの")
           "the witness the editor set aside stays available on the element")))
 
-  (testing "a choice shows the branch the reading policy prefers"
+  (testing "a choice shows the branch the reading policy selects"
     (let [source (tei {"nodes" [{"type" "iteration-mark"
                                  "span" {"start" 0 "end" 3 "coordinate_system" "decoded_utf8"}
                                  "annotation_span" {"start" 3 "end" 6 "coordinate_system" "decoded_utf8"}

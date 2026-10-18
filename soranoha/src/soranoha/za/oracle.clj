@@ -77,7 +77,7 @@
   executed in `run-b` for a work already present in `run-a` must carry a
   changed trace key (a changed declared input). A work new to run-b
   explains all its executions; a same-key execution surfaces missing-blob
-  recovery work, which is exactly what the invariant should expose).
+  recovery work, which the invariant exposes).
 
   A changed key means a changed input only under complete, identical
   stage evidence, so the check fails closed with :runs-incomparable when
@@ -161,9 +161,9 @@
 (defn- work-evidence! [known-stages slug work]
   (let [stage-map (fn [field valid?]
                     (let [m (get work field)]
-                      ;; exact coverage, not subset: a stage silently absent
-                      ;; from the evidence would erase its execution from the
-                      ;; oracle's comparison
+                      ;; exact coverage, not subset: a stage absent from the
+                      ;; evidence would remove its execution from the oracle's
+                      ;; comparison
                       (when-not (and (map? m)
                                      (= known-stages
                                         (set (map keyword (keys m))))

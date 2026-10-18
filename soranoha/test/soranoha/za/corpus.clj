@@ -66,8 +66,8 @@
   URL basename. This is the real catalog's shape: every row of a work
   repeats that work's URL, so a multi-contributor work has several rows
   sharing one basename. Each work's own :person-id 著者 row is emitted
-  LAST, so the basename index (later rows win) resolves to it and the
-  work's metadata names that contributor as its author; any
+  last, so the basename index (a later row replaces an earlier one) resolves
+  to it and the work's metadata records that contributor as its author; any
   :contributors entries ({:person-id :role}) precede it."
   [root works]
   (write-zip! (fs/path root "index_pages" "list_person_all_extended_utf8.zip")
@@ -198,7 +198,7 @@
 
 (def ^:private validate-stage
   ;; include-and-flag: the record shape matches the kernel's real
-  ;; tei-validation output; the fixture marker stands in for a schema
+  ;; tei-validation output; the fixture marker represents a schema
   ;; violation
   {:stage-id "validate-tei"
    :stage-version "1"

@@ -11,12 +11,12 @@
   {"early"
    {:ja "初期リリース"
     :en "early release"
-    :note-ja (str "公開したばかりのコーパスです。署名と検証は本番のものと同じで、"
-                  "内容も検証済みですが、外字や図版の扱いなど、既知の未完了作業があります。"
-                  "お気づきの点をお寄せください。")
-    :note-en (str "Initial corpus release. Signatures and verification are active and "
-                  "contents are verified, with known development remaining in gaiji "
-                  "coverage and figure markup. Defect reports and feedback are welcome.")}
+    :note-ja (str "公開初期のコーパスです。署名と検証は本番と同じ方式で行っており、"
+                  "内容も検証済みです。外字や図版の扱いには既知の未完了作業があります。"
+                  "不具合のご報告やご意見をお寄せください。")
+    :note-en (str "Initial corpus release. Signatures and verification are in production use and "
+                  "the contents are verified; gaiji coverage and figure markup have known "
+                  "outstanding work. Defect reports and feedback are welcome.")}
    "stable"
    {:ja "安定版"
     :en "stable release"

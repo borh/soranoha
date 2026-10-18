@@ -2,7 +2,7 @@
   "Project selected catalog rows into contribution candidate identifiers.
   Catalog declarations do not establish exhaustive authorship or rights facts.
   Assessment evaluation and release drift checks share this projection;
-  malformed selected rows fail rather than silently dropping candidates."
+  malformed selected rows fail rather than dropping candidates."
   (:require [soranoha.aozora.csv :as csv]
             [soranoha.yomi.catalog :as catalog]))
 
@@ -49,7 +49,7 @@
   "{slug -> [catalog-listed contribution candidate id ...]} over a
   selection, ids sorted and deduplicated. Assessment evaluation uses it and
   release preflight re-derives it from the checkout under release: a
-  snapshot whose projection differs no longer describes the corpus being
+  snapshot whose projection differs does not describe the corpus being
   published, even when every slug still matches."
   [rows candidates]
   (let [by-work-id (group-by catalog/row-work-id rows)]
@@ -80,12 +80,12 @@
 
 (defn projection-drift
   "nil when the checkout's and the snapshot's projections are identical;
-  otherwise a diagnostic naming the drift: slugs on only one side, and
+  otherwise a diagnostic describing the drift: slugs on only one side, and
   slugs whose contribution-candidate lists differ (the case slug
   totality alone cannot see: a catalog revision that adds a translator
-  or changes a role while every slug survives). Counts are complete and
+  or changes a role while every slug remains). Counts are complete and
   each listed sample is bounded and reported beside its own count, so a
-  large drift stays readable without truncating silently."
+  large drift stays readable without unreported truncation."
   [checkout snapshot]
   (let [sample-limit 20
         only-checkout (sort (remove (set (keys snapshot)) (keys checkout)))

@@ -1,6 +1,6 @@
 (ns soranoha.za.citation
-  "Per-work citations, in the forms a humanities writer actually pastes into
-  something: a rendered line, CSL-JSON for Zotero and Pandoc, BibLaTeX for
+  "Per-work citations, in the forms a humanities writer pastes into a
+  document: a rendered line, CSL-JSON for Zotero and Pandoc, BibLaTeX for
   people who write TeX directly, and COinS so a browser connector can save the
   record in one click.
 
@@ -9,20 +9,20 @@
   and bulk consumers do not have to parse every TEI file to build a
   bibliography. Nothing here is a second source of metadata, and nothing here
   is signed: a citation form can be corrected in a later release, which is
-  exactly why it does not live in the chain.
+  why it is not in the chain.
 
-  Two things every form carries. The **identifier**, because a description
+  Two things every form carries. The identifier, because a description
   does not identify a work: measured over the Aozora Bunko catalog this release
   builds from, author and title leave 2357 works ambiguous, and author, title,
   副題, 文字遣い種別, 底本名 and 初出 together still leave 16. Both counts
-  move with the upstream catalog. And the **release**, because the corpus is
-  versioned and a citation that does not say which release was read does not
-  name the bytes that were read.
+  change with the upstream catalog. And the release, because the corpus is
+  versioned and a citation that does not state which release was read does
+  not identify the bytes that were read.
 
   Romanized titles are not published, here or anywhere else. The kana reading
   carries no word boundaries, so a mechanical transliteration is not correct
   Hepburn; the Japanese title and its reading are given, and the romanization
-  style is the citing journal's business.
+  style is the citing journal's choice.
 
   Pure, like the rest of the browse layer: same catalog entry, release head
   and DOI in, same bytes out."
@@ -38,18 +38,18 @@
 
   The permanent identifier `w3id.org/soranoha/works/<id>` is claimed for
   exactly this in the registration prepared under `docs/w3id/`, and would
-  survive a change of serving location, but it
-  resolves only by redirecting here, and the citation already carries two
-  identifiers that outlive the site: the work identifier and the release DOI.
-  A second indirection on the convenience field would buy nothing and add a
-  registration this URL would depend on."
+  remain valid after a change of serving location, but it resolves only by
+  redirecting here, and the citation already carries two identifiers
+  independent of the site: the work identifier and the release DOI. A second
+  indirection on the convenience field would add only a registration this URL
+  would depend on."
   "https://soranoha.org")
 
 (defn- blank->nil [s] (when-not (string/blank? s) s))
 
 (defn- statements
   "A field whose lines are separate bibliographic statements, as one line of
-  running text. 初出 is the field that does this: a collection names where
+  running text. 初出 is the field that does this: a collection states where
   each constituent piece first appeared, and the citation forms have nowhere
   to put a line break."
   [value]
@@ -70,7 +70,7 @@
 
 (defn- primary-edition
   "The first recorded 底本. A work can list two; the first is the one the
-  transcription was made from, and a citation names one book."
+  transcription was made from, and a citation cites one book."
   [work]
   (first (get work "source_editions")))
 
@@ -84,10 +84,10 @@
   the 18886 values across both edition slots contains a four-digit Gregorian
   year, and in all but one it leads the string.
 
-  Taking the first year is the semantically correct reading, not just the
-  convenient one: the field is 初版発行年, so where a printing history lists
-  several years the earliest is the first edition's, which is the year a
-  bibliography wants. Month and day are dropped: a book is cited by year,
+  Taking the first year is the semantically correct reading: the field is
+  初版発行年, so where a printing history lists several years the earliest is
+  the first edition's, which is the year a bibliography cites. Month and day
+  are dropped: a book is cited by year,
   and the 1033 irregular values have no dependable month to take.
 
   The full string is not discarded; it is what the work page and the TEI
@@ -135,15 +135,15 @@
   Latin script from the romanized name parts the catalog publishes, Western
   ordering and punctuation, and every title left in Japanese.
 
-  The titles stay Japanese because the alternative would be invented. The
+  The titles remain Japanese because a romanization would be invented. The
   kana reading carries no word boundaries, so a mechanical transliteration is
   not correct Hepburn, and the 文字遣い種別 values are Aozora Bunko's own
   classification rather than terms with settled English equivalents. A writer
   who needs romanized titles has the reading and their journal's style; a
-  writer who does not gets a form that is true.
+  writer who does not gets an accurate form.
 
   When a contributor has no romanized name at all (one person in the whole
-  Aozora Bunko catalog), this falls back to the Japanese name rather than dropping
+  Aozora Bunko catalog), this uses the Japanese name rather than dropping
   the author."
   [{:keys [head-hex doi]} work]
   (let [{:strs [slug orthographic_style]} work
@@ -169,7 +169,7 @@
   "Aozora Bunko's roles as CSL contributor variables. 校訂者 has no CSL counterpart,
   since CSL models editors and translators but not collators, so it is
   recorded as a plain contributor rather than promoted to editor, which would
-  say something the source does not."
+  state something the source does not."
   {"著者" "author" "翻訳者" "translator" "編者" "editor" "校訂者" "contributor"})
 
 (defn- csl-name [person]
@@ -187,7 +187,7 @@
 
   The identifier goes in `archive` and `archive_location` rather than into a
   note: those are the CSL variables for `which collection, and where in it`,
-  and Zotero surfaces them as fields a reader can act on."
+  and Zotero displays them as fields a reader can use."
   [{:keys [head-hex doi]} work]
   (let [{:strs [slug title_reading original_title first_published
                 orthographic_style ndc]} work
@@ -246,20 +246,20 @@
 
 (defn biblatex
   "One @incollection entry. Works are items inside a 底本, which is what
-  @incollection means; @book would say the transcription is the whole volume.
+  @incollection means; @book would state the transcription is the whole volume.
 
   The identifier uses BibLaTeX's own archive idiom rather than a note:
-  `eprinttype` names the collection and `eprint` the identifier inside it,
+  `eprinttype` identifies the collection and `eprint` the identifier inside it,
   which the standard drivers print as `Soranoha Aozora Bunko TEI Corpus:
   000092_000879`.
 
   The release and the original title are each written twice, because the
-  entry has two readers that want different things from it. `version` and
+  entry has two consumers that read different fields. `version` and
   `origtitle` are what biber and Zotero import, and no standard style prints
   either of them for an @incollection. `addendum` and `note` are printed by
   every standard driver, so the release the transcription came from and the
-  title it was translated from reach the citation a reader sees, which is
-  what makes that citation name the bytes that were read."
+  title it was translated from reach the citation a reader sees, so that
+  citation identifies the bytes that were read."
   ^String [{:keys [head-hex doi]} work]
   (let [{:strs [slug title subtitle title_reading original_title first_published
                 orthographic_style]} work
@@ -277,9 +277,9 @@
            ;; it, and a value outside the set prints as itself: `collator
            ;; Suzuki Gyozo` where a value inside it prints `Rev. by Suzuki
            ;; Gyozo`. 校訂 is revision of a text against its sources, so
-           ;; `reviser` is the entry in that set that says the nearest true
-           ;; thing. The Japanese role itself is on the work page and in the
-           ;; TEI header.
+           ;; `reviser` is the closest accurate entry in that set. The
+           ;; Japanese role itself is on the work page and in the TEI
+           ;; header.
            (str (field "editora" (bib-names collators))
                 (field "editoratype" "reviser")))
          (field "title" (tex title))
@@ -342,7 +342,7 @@
   "The bulk archives' `catalog.csv` header. Enough to build a bibliography
   for a whole selection in a spreadsheet without opening a single TEI file,
   and enough to get back to the record: `identifier` and `release` together
-  name the bytes, and `url` resolves to the page that serves them."
+  identify the bytes, and `url` resolves to the page that serves them."
   ["identifier" "title" "subtitle" "title_reading" "author"
    "orthographic_style" "ndc" "first_published"
    "source_edition_title" "source_edition_publisher" "source_edition_year"
@@ -350,7 +350,7 @@
 
 (defn csv-values
   "One work as `csv-columns`, in that order. `filename` is the archive member
-  this row describes, which the caller knows and the catalog does not."
+  this row describes, which the caller has and the catalog does not."
   [{:keys [head-hex doi]} work filename]
   (let [{:strs [slug title subtitle title_reading orthographic_style ndc
                 first_published source_content_hash]} work

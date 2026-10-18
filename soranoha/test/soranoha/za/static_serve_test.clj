@@ -46,7 +46,7 @@
 
 (def ^:private ^HttpClient client
   ;; redirects are followed because part of what is under test is whether a
-  ;; permanent identifier lands somewhere: w3id.org sends a consumer to a path
+  ;; permanent identifier resolves: w3id.org redirects a consumer to a path
   ;; here, and a 301 to the canonical form of that path is a success, not an
   ;; answer the consumer has to interpret
   (-> (HttpClient/newBuilder)
@@ -229,7 +229,7 @@
           (is (= 200 (:status response)))
           (is (= (:head result) (sign/parse-hex64-lf (:body response))))))
 
-      (testing "the browse layer answers at the front door and at readable URLs"
+      (testing "the browse layer answers at the root and at readable URLs"
         (doseq [path ["/" "/authors/" "/titles/" "/ndc/" "/rights" "/citation"
                       "/history" "/ns/tei" "/start-here" "/example" "/glossary"
                       "/identifiers" "/validation" "/accountability"
@@ -281,11 +281,11 @@
           (is (string-body? response "id=\"tategaki\"")
               "the vertical toggle is markup, not script")
           (is (string-body? response (:head result))
-              "the reading names the release it was rendered from"))
+              "the reading states the release it was rendered from"))
         (is (= 404 (:status (http-get port (str "/works/" slug-b "/read"))))
             "a withdrawn work has no reading page"))
 
-      (testing "a withdrawn work explains itself instead of returning a bare 404"
+      (testing "a withdrawn work's page explains the withdrawal instead of a bare 404"
         (let [response (http-get port (str "/works/" slug-b "/"))]
           (is (= 200 (:status response)))
           (is (string-body? response "takedown-request"))

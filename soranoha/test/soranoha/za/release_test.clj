@@ -1,7 +1,7 @@
 (ns soranoha.za.release-test
   "Automated release-driver acceptance over a local origin: consecutive
-  scheduled invocations across real upstream movement publish releases the
-  published checker verifies end-to-end; an unmoved upstream is the
+  scheduled invocations across real upstream changes publish releases the
+  published checker verifies end-to-end; an unchanged upstream is the
   scheduled no-op; a malformed assessment snapshot publishes nothing."
   (:require [babashka.fs :as fs]
             [babashka.process :as process]
@@ -138,7 +138,7 @@
         result-1 (drive! clone run-1 (snapshot-bytes [(pd merosu) (pd kumo)]))]
     (is (= :published (:outcome result-1)))
 
-    (testing "upstream movement publishes a successor release"
+    (testing "an upstream change publishes a successor release"
       (corpus/write-work! root added)
       (corpus/write-catalog! root [merosu kumo added])
       (corpus/commit-corpus! root)
@@ -168,7 +168,7 @@
                 delta (main/release-delta!
                        {:chain-clone clone :branch fx/branch
                         :release-pub release-pub :governance-pub governance-pub})]
-            (testing "the defaults name the newest release and the one before it"
+            (testing "the defaults select the newest release and the one before it"
               (is (= (:manifest-id result-2) (get delta "to_manifest")))
               (is (= (:manifest-id result-1) (get delta "from_manifest"))))
             (is (= (:commit run-1) (get-in delta ["corpus" "from"])))
@@ -221,7 +221,7 @@
                 (is (= [] (get-in against-head ["works" "source-changed"])))
                 (is (= [] (get against-head "unreadable")))))))
 
-        (testing "an unmoved upstream is the scheduled no-op"
+        (testing "an unchanged upstream is the scheduled no-op"
           (let [run-3 (corpus/run-corpus! root store)
                 result-3 (drive! clone run-3
                                  (snapshot-bytes
@@ -278,7 +278,7 @@
                         nil
                         (catch clojure.lang.ExceptionInfo e
                           (:reason (ex-data e)))))]
-    (testing "duplicate keys die at parse, before anything is assembled"
+    (testing "duplicate keys fail at parse, before anything is assembled"
       (is (= :parse-invalid
              (rejected (str/replace good-str "{\"candidates\""
                                     "{\"candidates\":[],\"candidates\"")))))
@@ -290,9 +290,9 @@
       (is (= :published (:outcome (drive! clone run good)))))))
 
 (deftest a-work-omitted-from-works-and-snapshot-cannot-pass-totality
-  ;; the co-omission failure: kumo vanishes from the built works AND from
+  ;; the co-omission failure: kumo is absent from the built works and from
   ;; the snapshot, but the selected population captured before execution
-  ;; still names it, so the driver refuses before assembly
+  ;; still lists it, so the driver refuses before assembly
   (let [root (corpus/init-corpus! [merosu kumo])
         run (corpus/run-corpus! root (temp-store!))
         {:keys [clone]} (fx/make-repos!)
@@ -440,7 +440,7 @@
                "-c" "user.email=assessment@localhost"
                "commit" "-qm" "Record assessment inputs"))
 
-(deftest release-input-errors-win-before-the-build-runs
+(deftest release-input-errors-are-reported-before-the-build-runs
   ;; every file input is preflighted; the aozora-root sentinel does not
   ;; exist, so any row that reached the build would fail with the
   ;; provenance gate's distinct error instead of its own
@@ -483,7 +483,7 @@
              (error (assoc base :policy
                            (write! "blocked.edn"
                                    "{:rights-publication :blocked-pending-assessment-migration}"))))))
-    (testing "a malformed snapshot dies at decode"
+    (testing "a malformed snapshot fails at decode"
       (is (= :parse-invalid
              (error (assoc base :assessment
                            (write! "dup.json"
@@ -629,7 +629,7 @@
           (finally
             (fs/write-bytes source-path original)
             (commit-assessment-inputs! dir)))))
-    (testing "source movement between preflight and publication is refused"
+    (testing "a source change between preflight and publication is refused"
       (let [before (main/source-provenance! root)
             error (with-redefs [main/publication-stages (constantly corpus/stage-set)
                                 release/release! (fn [{:keys [build-works!]}] (build-works! []))
@@ -643,7 +643,7 @@
                          nil
                          (catch clojure.lang.ExceptionInfo e (:reason (ex-data e)))))]
         (is (= :assessment-source-changed-during-build error))))
-    (testing "dropping a contributor under a surviving slug is refused"
+    (testing "dropping a contributor under an unchanged slug is refused"
       (corpus/write-catalog! root [merosu kumo])
       (corpus/commit-corpus! root)
       (let [drift (main/release-preflight-drift opts)]

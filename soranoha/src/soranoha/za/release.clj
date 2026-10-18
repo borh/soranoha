@@ -22,7 +22,7 @@
   strict UTF-8 + EDN decode, then only the authorizing rights-publication
   state releases; the value evaluated and the manifest policy hash
   derive from the same byte array, so the recorded hash can never
-  disagree with what was evaluated. The grant travels back to the caller so
+  disagree with what was evaluated. The grant is returned to the caller so
   the build embeds the same terms in each work's TEI that the manifest
   publishes, from this one read. The policy id is fixed here, by the
   authority, never supplied by the caller. Returns
@@ -77,7 +77,7 @@
   it must recheck source and assessment inputs before returning on every attempt.
   :source-hashes binds assessed source facts even when no artifact is requested.
   :verified-head is passed through to the transaction: a proof of the current
-  head that THIS process computed, letting a caller that publishes a run of
+  head that this process computed, letting a caller that publishes a run of
   releases avoid re-verifying the whole chain once per release."
   [{:keys [selection build-works! source-hashes cas-dir upstream-origin selection-params
            policy-id policy-hash rights snapshot-bytes

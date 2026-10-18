@@ -55,7 +55,7 @@
                  ;; keep it.
                  (string/replace #"[\s_]*\s[\s_]*" "_"))]
     ;; The schema admits printable ASCII with no space, so a stem that still
-    ;; does not is refused by name here rather than by position in the works
+    ;; does not is rejected by name here rather than by position in the works
     ;; array when the whole catalog is decoded.
     (when-not (re-matches #"[!-~]+" stem)
       (fail! :archive-stem-outside-catalog-character-set
@@ -86,7 +86,7 @@
   carries it so that selecting works by their terms costs one file rather than
   one file per work: the only other published copy is inside each TEI header.
 
-  `trailing-bytes-after-archive` records the trailing garbage byte count for archives
+  `trailing-bytes-after-archive` records the trailing byte count for archives
   that carry trailing bytes after the zip end-of-central-directory record. Enables
   readers and web views to distinguish upstream format anomalies from file corruption."
   [slug source-content-hash rights metadata-record persons primary-text-member
@@ -105,8 +105,8 @@
              "card_url" (get work "card_url")
              "archive_stem" (archive-stem slug primary-text-member)
              ;; by the pair, because the pair is the entry's identity: sorting on the
-             ;; person alone left two relations of one person in whatever order the
-             ;; metadata record happened to carry them, which is not an order
+             ;; person alone would leave two relations of one person in the arbitrary
+             ;; order of the metadata record
              "contributors" (vec (sort-by (juxt #(get % "person_id") #(get % "relation_to_work"))
                                           (map #(contributor-entry slug persons %)
                                                (get metadata-record "contributors"))))

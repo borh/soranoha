@@ -26,9 +26,9 @@ Assessment records **facts with premises**, not permanent verdicts. A fact
 records what was established, from which evidence, as of which date. If evidence
 becomes unreachable, the fact becomes unavailable rather than remaining
 asserted, so a work can drop out of a release without any new claim having been
-registered against it. Assessment is not legal advice, and Soranoha is not a
-rights clearinghouse. See [reliance](#reliance) for the basis used for most
-works.
+registered against it. Assessment records evaluated copyright status under
+Japanese law based on cited evidence. See [reliance](#reliance) for the basis
+used for most works.
 
 ## reliance
 
@@ -80,7 +80,7 @@ One published file, identified by its content: `snh:1:<type>:<sha256>`. The
 types published per work are `tei`, `plaintext`, `markdown`, and
 `tei-validation`.
 
-Artifact IDs name bytes directly and can be verified by computing the SHA-256
+Artifact IDs identify bytes directly and can be verified by computing the SHA-256
 hash locally.
 
 ## manifest
@@ -108,7 +108,7 @@ governance keys kept offline. See the [protocol specification](design/snh-protoc
 ## release
 
 One published state of the corpus: a manifest, its signature, and the
-artifacts it names. Identified by the manifest's SHA-256 hash (the release head).
+artifacts it lists. Identified by the manifest's SHA-256 hash (the release head).
 
 Citing a release head identifies the exact corpus state referenced.
 
@@ -129,7 +129,7 @@ Removing a work from current distribution via a signed governance event
 specifying a reason code and public statement.
 
 Withdrawal halts distribution from `/works/<identifier>/` and the active catalog.
-It does not delete historical records: prior signed manifests continue to name the
+It does not delete historical records: prior signed manifests continue to list the
 work, and its artifacts remain addressable by hash. Withdrawal records are served
 at `https://soranoha.org/withdrawn/<identifier>.json`.
 
@@ -146,9 +146,8 @@ source originals, keeping base text rather than ruby annotations, and omitting
 editorial notes or figure descriptions. Unresolved gaiji are excluded from
 annotatable spans rather than replaced.
 
-The name is versioned so that an annotation can say which policy produced the
-offsets it uses. That is what keeps the annotation checkable if the policy ever
-changes, rather than silently reinterpreted against a different reading.
+The name is versioned: an annotation states the policy that produced its
+offsets and remains checkable against that policy.
 
 ## gaiji (外字)
 
@@ -174,12 +173,11 @@ projections, which retain base text only.
 A byte range into the UTF-8 decoded Aozora Bunko source text, recorded for
 almost every element in the published TEI.
 
-Offsets let a claim about the corpus be stated against the source rather than
-against a particular tool's output. The text they index is named once per
-document: `primary-text-hash` in `<sourceDesc>` is the sha256 of the Aozora
-Bunko text member as distributed, while the offsets index that member's UTF-8
-decoding. Applying them to the wrong bytes therefore makes the mismatch
-visible.
+Offsets state a claim about the corpus against the source text. The text they
+index is identified once per document: `primary-text-hash` in `<sourceDesc>` is
+the sha256 of the Aozora Bunko text member as distributed, and the offsets
+index that member's UTF-8 decoding. A hash mismatch identifies bytes the
+offsets do not index.
 
 ## snh
 

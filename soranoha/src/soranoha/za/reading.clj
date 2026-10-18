@@ -2,17 +2,17 @@
   "Published TEI to readable hiccup, for the serving layer's reading view.
 
   A projection, never a replacement. The TEI artifact is what the release
-  signs and what a citation names; this renders it so the encoding is legible
-  to a reader who does not read TEI source. Every reading page names the
+  signs and what a citation identifies; this renders it so the encoding is legible
+  to a reader who does not read TEI source. Every reading page identifies the
   release it came from and links the artifact itself, so a reader who doubts
   the rendering can check it against the bytes.
 
-  Why this lives in the serving layer rather than in the published bytes: an
-  `<?xml-stylesheet?>` processing instruction would change every TEI
-  artifact's bytes, and so would move presentation into the signed record,
-  into the conformance vectors and into genesis. Presentation is exactly the
-  thing that will need correcting after publication, and a rendering that
-  lives here can be corrected without republishing anything.
+  The rendering is in the serving layer rather than in the published bytes
+  because an `<?xml-stylesheet?>` processing instruction would change every
+  TEI artifact's bytes, and so would move presentation into the signed
+  record, into the conformance vectors and into genesis. Presentation is the
+  part most likely to need correction after publication, and a rendering
+  here can be corrected without republishing anything.
 
   What the reading shows is the same text the plaintext projection publishes:
   one lemma from an apparatus, the first supported branch of a choice, the
@@ -39,8 +39,8 @@
 
 (def ^:private audit-note-types
   "Notes that record what the parser established rather than what the source
-  says. They belong to the validation report a reader can fetch, and putting
-  a JSON diagnostic in the middle of a story would be worse than useless."
+  states. They belong to the validation report a reader can fetch, and a
+  JSON diagnostic in the middle of a story would interrupt the text."
   #{"interpretation-problem" "parser-diagnostic" "source-span"
     "parser-completion" "source-decoding"})
 
@@ -52,7 +52,7 @@
 (def ^:private decoration-classes
   "Aozora Bunko's emphasis-mark names, as they reach `@rend` from the parser's
   `decoration.kind`, mapped onto ASCII class names. The source keyword is the
-  identifier; this table only says which of them this stylesheet can draw and
+  identifier; this table only states which of them this stylesheet can draw and
   which mark it draws for each. A name absent here still reaches the reader,
   as the element's title."
   {"傍点" "dots"
@@ -64,6 +64,7 @@
    "ばつ傍点" "dots-cross"
    "白三角傍点" "dots-triangle-open"
    "黒三角傍点" "dots-triangle"
+   "白四角傍点" "dots-square-open"
    "傍線" "line"
    "二重傍線" "line-double"
    "波線" "line-wavy"
@@ -72,8 +73,8 @@
 
 (def ^:private font-sizes
   "`snh:layout-params` for a font-size scope onto one CSS length. Levels are
-  clamped: Aozora Bunko records `［＃５段階大きな文字］` and a reader gains nothing
-  from a font that leaves the page."
+  clamped: Aozora Bunko records `［＃５段階大きな文字］`, and a font wider than
+  the page is unreadable."
   {"absolute" {"extra-large" "1.7em" "large" "1.35em" "medium" "1em" "small" ".85em"}
    "qualitative" {"larger" "1.3em" "smaller" ".8em"}
    "large" ["1.15em" "1.3em" "1.5em" "1.7em" "1.9em"]
@@ -83,14 +84,14 @@
   "The TEI emitter writes `@style` for the source-derived geometry it cannot
   express in TEI attributes, such as indents, measures, column counts, and
   alignment. Every value in it comes from the parser's own bounded vocabulary,
-  but this rendering re-checks the shape rather than trusting the upstream
+  but this rendering re-checks the shape rather than relying on the upstream
   check; declarations that do not match are dropped instead of passed through."
   #"[a-z-]+: -?[0-9]+(?:\.[0-9]+)?(?:em|px)?|[a-z-]+: [a-z][a-z-]*")
 
 (def ^:private ignored-properties
   ;; `writing-mode` states a run's direction relative to the source's vertical
-  ;; setting, and this view is horizontal until the reader says otherwise. The
-  ;; layout-kind classes carry the same fact in a form the toggle can honour.
+  ;; setting, and this view is horizontal until the reader selects vertical.
+  ;; The layout-kind classes carry the same fact in a form the toggle can apply.
   #{"writing-mode"})
 
 (defn- attr [^Element element ^String name]
@@ -201,11 +202,11 @@
   "The `href` a TEI `ref/@target` may become, or nil when it may not become one.
 
   A target is source content, not the publisher's: `render-editor-note-node`
-  puts the companion file an external table reference names straight into it.
-  So only `http` and `https` become an anchor. Everything else is shown as
-  text, which is right for both halves of what else can arrive: a
-  `javascript:` or `data:` URL is then visible rather than executable, and
-  the companion filename the corpus actually carries tells the reader what
+  puts the companion file an external table reference refers to straight into
+  it. So only `http` and `https` become an anchor. Everything else is shown
+  as text, which suits both other kinds of target: a `javascript:` or
+  `data:` URL is then visible rather than executable, and the companion
+  filename the corpus carries shows the reader what
   the source pointed at instead of offering a link to a file this site does
   not serve. `soranoha.za.docs/resolve-link` makes the same choice for a
   repository path a document links to."
@@ -215,8 +216,8 @@
       target)))
 
 (defn- source-id
-  "The element's `@source` reference as an HTML id, so that a link can name
-  the place in the text the TEI names: `/works/<slug>/read#source-12-40`.
+  "The element's `@source` reference as an HTML id, so that a link can address
+  the place in the text the TEI identifies: `/works/<slug>/read#source-12-40`.
   The reference is `#source-<start>-<end>` in the work's own byte
   coordinates, unique within the document because two elements never
   account for the same span, and a paragraph carries none of its own: a link
@@ -252,7 +253,7 @@
 
 (defn- required-child
   "The child an element's reading depends on. `soranoha.annotations.view`
-  refuses a document without it and the profile forbids one. Reaching this point
+  rejects a document without it and the profile forbids one. Reaching this point
   indicates the published TEI violates pipeline invariants, warranting an explicit
   named exception instead of a downstream null pointer."
   [element names]
@@ -325,11 +326,21 @@
 
       "ruby"
       (if-let [base (child-named element "rb")]
-        [:ruby (element-attrs element ["ruby"])
-         (render-nodes declarations (view/children base))
-         [:rt (some->> (child-named element "rt")
-                       view/children
-                       (render-nodes declarations))]]
+        (if (some #(and (= "rt" (view/local-name %)) (.hasAttribute ^Element % "from")) (view/children element))
+          [:span (element-attrs element ["ruby"])
+           (render-nodes declarations (view/children base))
+           (into [:span {:class "ruby-readings"} "〔"]
+                 (concat
+                  (interpose "；"
+                             (for [{:keys [target reading place]} (view/ranged-ruby-readings element)]
+                               [:span (str target "（" ({"left" "左" "right" "右"} place place) "）：")
+                                (render-nodes declarations (view/children reading))]))
+                  ["〕"]))]
+          [:ruby (element-attrs element ["ruby"])
+           (render-nodes declarations (view/children base))
+           [:rt (some->> (child-named element "rt")
+                         view/children
+                         (render-nodes declarations))]])
         (into [:span (element-attrs element ["ruby"])] (kids)))
 
       "app"
@@ -338,7 +349,7 @@
       (let [rdgs (filter #(= "rdg" (view/local-name %)) (view/children element))]
         [:span (element-attrs element ["app"]
                               (when (seq rdgs)
-                                (str "底本: " (string/join " / " (map text-content rdgs)))))
+                                (str "底本：" (string/join " / " (map text-content rdgs)))))
          (render-nodes declarations (view/children (required-child element ["lem"])))])
 
       "choice"
@@ -361,7 +372,7 @@
       "figDesc" (into [:figcaption (element-attrs element ["fig-desc"])] (kids))
       ;; the url is source content and the image is not published, so it is
       ;; read as text here for the same reason a `ref/@target` is: this is
-      ;; what the source pointed at, not somewhere to send the reader
+      ;; what the source pointed at, not a link target for the reader
       "graphic" [:span {:class "graphic-url"} (or (attr element "url") "")]
 
       "note"
@@ -379,9 +390,9 @@
                         (not (string/blank? target))
                         (conj [:span {:class "ref-target"} target])))))
 
-      ;; the profile can admit an element before this stylesheet has an
-      ;; opinion about it; showing its text unstyled is wrong in a way a
-      ;; reader can see, and dropping it is wrong in a way they cannot
+      ;; the profile can admit an element before this stylesheet has a
+      ;; rule for it; showing its text unstyled is an error a reader can
+      ;; see, and dropping it would be an error a reader cannot see
       (into [:span (element-attrs element [(str "tei-" tag)])] (kids)))))
 
 (defn- render-nodes [declarations nodes]
@@ -400,7 +411,7 @@
   "Published TEI to `{:front :body :back}`, each a vector of hiccup nodes.
 
   `:body` is the work. `:front` and `:back` contain surrounding source material,
-  specifically Aozora Bunko's notes on the text and the colophon naming the printed
+  specifically Aozora Bunko's notes on the text and the colophon identifying the printed
   edition from which the transcription was made. The colophon is the one piece of
   bibliographic evidence a reader cannot reconstruct from the catalog, so it
   is rendered rather than dropped; the parser's own audit notes are dropped,

@@ -6,20 +6,20 @@
   for the same reason `soranoha.za.html` is: the exporter must produce these
   bytes identically on every activation, and a Markdown library brings a
   parser, its own escaping rules and its own version to a tree that is checked
-  byte for byte. The subset covers what the documents actually use: ATX
+  byte for byte. The subset covers what the documents use: ATX
   headings, paragraphs, fenced code, pipe tables, bullet lists, blockquotes,
   and inline code, links, autolinks, bold and italic. There are no images, no
   ordered lists, no raw HTML blocks and no reference links in any served
   document.
 
-  An unterminated code fence throws rather than being tolerated, because the
-  alternative is a page whose remainder is swallowed into a code block.
+  An unterminated code fence throws rather than being tolerated, because
+  otherwise the remainder of the page would render as a code block.
 
   How a link target becomes a URL is the caller's decision, passed in as
-  `link`. When it answers with a string instead of attributes, the link is
-  rendered as its label followed by that string in code, which is how a
-  reference to a repository file the site does not serve reaches the reader:
-  named, and not as an anchor to nothing."
+  `link`. When it returns a string instead of attributes, the link is
+  rendered as its label followed by that string in code, so a reference to a
+  repository file the site does not serve is shown to the reader as a path,
+  not as an anchor to nothing."
   (:require [clojure.string :as string]))
 
 (defn slug
@@ -113,8 +113,8 @@
                              (cond
                                (not (string? resolved)) [:a resolved shown]
                                ;; the label is already the path, as it is
-                               ;; whenever a document names a file in
-                               ;; backticks; saying it twice helps nobody
+                               ;; whenever a document refers to a file in
+                               ;; backticks; repeating it adds nothing
                                (= (string/replace label "`" "") resolved)
                                [:code resolved]
                                :else (list shown " (" [:code resolved] ")")))
@@ -199,10 +199,10 @@
         (heading-line line)
         (let [[level text] (heading-line line)]
           (recur (rest lines)
-                 ;; The id is what makes a link to a section resolve. Both the
-                 ;; documents' own cross-references and a reader's bookmark
-                 ;; depend on it, so it is derived from the heading rather
-                 ;; than counted, and survives a section moving.
+                 ;; The id resolves a link to a section. Both the documents'
+                 ;; own cross-references and a reader's bookmark depend on it,
+                 ;; so it is derived from the heading rather than counted, and
+                 ;; is unchanged when a section moves.
                  (conj out (into [(keyword (str "h" level)) {:id (slug text)}]
                                  (inline text link)))))
 
@@ -237,10 +237,10 @@
   two. Heading levels below it are kept, so a document's `##` sections are the
   page's `h2` sections.
 
-  `from` names a heading by its identifier and starts there instead, which is
+  `from` identifies a heading by its identifier and starts there instead, which is
   how a page that already states a document's opening in its own words carries
-  the rest of that document without repeating it. A `from` that names no
-  heading throws rather than silently rendering nothing."
+  the rest of that document without repeating it. A `from` that identifies no
+  heading throws rather than rendering nothing."
   [{:keys [text link source from]}]
   (let [lines (string/split-lines text)
         after-title (rest (drop-while (complement heading-line) lines))]
@@ -254,7 +254,7 @@
       (blocks after-title link source))))
 
 (defn title
-  "The document's first ATX heading, which is what the page is called."
+  "The document's first ATX heading, which is the page title."
   [text]
   (or (some #(second (heading-line %)) (string/split-lines text))
       (throw (ex-info "document has no heading to use as its title"

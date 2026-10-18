@@ -2,10 +2,10 @@
   "The browse layer: static pages generated from one release's own verified
   bytes.
 
-  Presentation, not publication. Nothing here is named by a manifest, hashed
+  Presentation, not publication. Nothing here is referenced by a manifest, hashed
   into the chain, or checked by a verifier: a reader who wants the published
   record follows the links these pages carry to `/catalog.json`, the
-  manifests and the blobs. What the pages add is a way in: without them the
+  manifests and the blobs. The pages provide an entry point: without them the
   only documented entry point is a 64-character hex string.
 
   Every page is a pure function of the head manifest, its catalog and the
@@ -34,26 +34,30 @@
 (def ^:private orcid-url
   "Where a rights claim is sent. An ORCID record rather than a mail address:
   the served rights statement is what every manifest and every detached TEI
-  file points at, so its contact route has to outlive any one mailbox, and
+  file points at, so its contact route must remain valid beyond any one mailbox, and
   ORCID is the identifier the project already publishes in `CITATION.cff`."
   "https://orcid.org/0000-0003-2246-8774")
 
 (def ^:private example-identifier
   "A work identifier shown as a shape rather than as a link, so a reader
-  recognises the form to quote when naming a work in a claim."
+  recognises the form to quote when identifying a work in a claim."
   "000092_000879")
 
 (def ^:private stylesheet
   (string/join
    "\n"
-   ;; Pastel light blue and green, which is what the name is: 空 for the
+   ;; Pastel light blue and green, after the name: 空 for the
    ;; blue surfaces and 葉 for the green ones. Green carries the page and its
    ;; rules, blue carries what a reader acts on (links) and the table headings
-   ;; that separate a grid from the prose around it. Every text colour here
-   ;; clears WCAG AA against every surface it is used on: --muted, the
-   ;; smallest text, is 5.66:1 on --bg and 4.86:1 on --sky.
-   [(str ":root { --ink: #152a28; --muted: #4a6a66; --rule: #bfdcd5;"
-         " --bg: #f5fbf9; --panel: #e2f0ed; --sky: #dcebf4; --link: #15607f; }")
+   ;; that separate a grid from the prose around it. Every text colour in
+   ;; either scheme meets WCAG AA against every surface it is used on; the
+   ;; dark scheme keeps the same hues on dark surfaces and follows the
+   ;; reader's system preference.
+   [(str ":root { color-scheme: light dark; --ink: #152a28; --muted: #4a6a66; --rule: #bfdcd5;"
+         " --bg: #f5fbf9; --panel: #e2f0ed; --sky: #dcebf4; --field: #fff; --link: #15607f; }")
+    (str "@media (prefers-color-scheme: dark) { :root { --ink: #e4efec; --muted: #9fbab5;"
+         " --rule: #33504b; --bg: #0f1c1a; --panel: #1a2b28; --sky: #182a36; --field: #142321;"
+         " --link: #8ac4e0; } }")
     "* { box-sizing: border-box; }"
     "body { margin: 0; background: var(--bg); color: var(--ink);"
     "  font-family: \"Hiragino Mincho ProN\", \"Yu Mincho\", \"Noto Serif JP\", Georgia, serif;"
@@ -63,45 +67,57 @@
     "header { border-block-end: 1px solid var(--rule);"
     "  padding-block: 1.5rem 1rem; }"
     "header a.site { font-size: 1.15rem; font-weight: bold; text-decoration: none; color: var(--ink); }"
-    "nav { margin-top: .5rem; font-size: .9rem; }"
-    "nav a { margin-right: 1rem; }"
+    "nav { margin-block-start: .5rem; font-size: .9rem; display: flex; flex-wrap: wrap; gap: .35rem 1rem; }"
     "a { color: var(--link); }"
+    "a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {"
+    "  outline: 2px solid var(--link); outline-offset: 2px; }"
     "main { padding-block: 1.5rem 3rem; }"
     "h1 { font-size: 1.6rem; line-height: 1.35; margin-block: 0 .25rem; }"
     "h2 { font-size: 1.15rem; margin-block: 2rem .5rem;"
     "  border-block-end: 1px solid var(--rule); padding-block-end: .25rem; }"
     ".en { color: var(--muted); font-weight: normal; }"
     ".reading { color: var(--muted); margin-block: 0 1rem; }"
-    ;; set off by a rule rather than by a colour: this says what stage the
-    ;; corpus is at, and a warning colour would say the bytes are provisional
+    ;; set off by a rule rather than by a colour: this states the corpus's
+    ;; stage, and a warning colour would suggest the bytes are provisional
     ".maturity { border-inline-start: 3px solid var(--rule); padding-inline-start: .75rem;"
     "  font-size: .95rem; }"
     ".stats { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1.5rem; }"
     ".stats li { margin: 0; }"
     ".stats .n { font-size: 1.5rem; display: block; }"
     "dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1.25rem; margin: 0; }"
-    "dl.facts dt { color: var(--muted); font-size: .9rem; }"
-    "dl.facts dd { margin: 0; }"
+    ;; a term can carry several values. Pinning each element to its column
+    ;; keeps a second value under the first; auto-placement would put it in
+    ;; the term column
+    "dl.facts dt { grid-column: 1; color: var(--muted); font-size: .9rem; }"
+    "dl.facts dd { grid-column: 2; margin: 0; }"
     "ul.works, ul.plain { list-style: none; padding: 0; }"
-    "ul.works li { padding: .35rem 0; border-bottom: 1px solid var(--rule); }"
+    "ul.works li { padding-block: .35rem; border-block-end: 1px solid var(--rule); }"
+    "ul.works li.empty { color: var(--muted); }"
     "ul.works .by { color: var(--muted); font-size: .9rem; }"
     ;; smaller than the byline, since it is only needed on the rows that
     ;; would otherwise look identical
     "ul.works .variant { color: var(--muted); font-size: .85rem; }"
+    "h3.group { font-size: 1rem; margin-block: 1.5rem .25rem; }"
+    "h3.group .by { font-weight: normal; }"
     "ul.cols { list-style: none; padding: 0; columns: 2; }"
     "ul.plain li.evidence { margin-block-start: .5rem; padding-block-start: .5rem;"
     "  border-block-start: 1px solid var(--rule); }"
+    "a.read-link { display: inline-block; padding: .4rem .85rem; background: var(--panel);"
+    "  border: 1px solid var(--rule); border-radius: 3px; text-decoration: none;"
+    "  font-weight: bold; color: var(--ink); }"
+    "a.read-link:hover, a.read-link:focus-visible { background: var(--sky); border-color: var(--link); }"
     "code.citation { display: block; white-space: pre-wrap; overflow-wrap: anywhere;"
     "  padding: .6em .8em; background: var(--panel); border-radius: 3px; }"
     "code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em;"
     "  overflow-wrap: anywhere; }"
     "footer { border-block-start: 1px solid var(--rule); padding-block: 1rem 3rem;"
     "  font-size: .85rem; color: var(--muted); }"
-    "#q { width: 100%; padding: .6rem .8rem; font-size: 1rem; font-family: inherit;"
-    "  border: 1px solid var(--rule); background: #fff; }"
+    "#q { inline-size: 100%; padding: .6rem .8rem; font-size: 1rem; font-family: inherit;"
+    "  border: 1px solid var(--rule); border-radius: 3px; background: var(--field); color: var(--ink); }"
+    "#q:disabled { background: var(--panel); color: var(--muted); }"
     "#results:empty { display: none; }"
-    ;; the copy button sits beside the value it copies, quiet until wanted:
-    ;; this is a convenience next to the text, not a control competing with it
+    ;; the copy button sits beside the value it copies, in the muted colour
+    ;; until hovered or focused, so it is subordinate to the text it copies
     "button.copy { margin-inline-start: .5em; padding: .1em .5em; font: inherit;"
     "  font-size: .75em; line-height: 1.6; color: var(--muted); cursor: pointer;"
     "  background: var(--bg); border: 1px solid var(--rule); border-radius: 3px;"
@@ -111,27 +127,29 @@
     "button.copy.done { color: var(--link); border-color: var(--link); }"
     ;; beside a short value the button sits inline, but these two are blocks
     ;; the full width of the column, so the button goes under the block it
-    ;; copies and against its trailing edge, where it still reads as belonging
-    ;; to that block rather than floating loose beneath it
+    ;; copies and against its trailing edge, so it is visually attached to
+    ;; that block
     "pre + button.copy, code.citation + button.copy { display: block;"
-    "  width: fit-content; margin: .4rem 0 0; margin-inline-start: auto; }"
-    "@media (max-width: 32rem) { dl.facts { grid-template-columns: 1fr; } ul.cols { columns: 1; } }"
+    "  inline-size: fit-content; margin-block: .4rem 0; margin-inline: auto 0; }"
+    "@media (max-width: 32rem) { dl.facts { grid-template-columns: 1fr; }"
+    "  dl.facts dd { grid-column: 1; margin-inline-start: 1rem; } ul.cols { columns: 1; } }"
 
     ;; the documentation pages. Prose the project wrote, so unlike the reading
     ;; view these are ordinary elements and take ordinary rules.
-    "main.doc h3 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }"
-    "main.doc table { border-collapse: collapse; width: 100%; font-size: .9rem;"
-    "  display: block; overflow-x: auto; }"
+    "main.doc h3 { font-size: 1.05rem; margin-block: 1.5rem .5rem; }"
+    "main.doc table { border-collapse: collapse; inline-size: 100%; font-size: .9rem;"
+    "  margin-block: 1rem; }"
+    "@media (max-width: 40rem) { main.doc table { display: block; overflow-x: auto; } }"
     "main.doc th, main.doc td { border: 1px solid var(--rule); padding: .3rem .5rem;"
     "  text-align: start; vertical-align: top; }"
     "main.doc th { background: var(--sky); }"
     "main.doc pre { background: var(--panel); padding: .6rem .8rem; border-radius: 3px;"
     "  overflow-x: auto; font-size: .85rem; line-height: 1.5; }"
     "main.doc pre code { font-size: 1em; overflow-wrap: normal; }"
-    "main.doc blockquote { margin: 1rem 0; padding-inline-start: 1rem;"
+    "main.doc blockquote { margin-block: 1rem; margin-inline: 0; padding-inline-start: 1rem;"
     "  border-inline-start: 3px solid var(--rule); color: var(--muted); }"
-    "nav.siblings { margin-top: 3rem; border-top: 1px solid var(--rule); padding-top: 1rem;"
-    "  font-size: .9rem; }"
+    "nav.siblings { margin-block-start: 3rem; border-block-start: 1px solid var(--rule);"
+    "  padding-block-start: 1rem; font-size: .9rem; }"
 
     ;; the reading view. Everything below styles TEI that has been projected
     ;; into HTML by soranoha.za.reading; the class names are that projection's
@@ -143,12 +161,13 @@
     "details.front summary { cursor: pointer; }"
     "details.bibtex summary { cursor: pointer; color: var(--muted); font-size: .9rem; }"
     ;; the entry wraps rather than scrolls: a reader is here to select it, and
-    ;; a line running off the edge is the one thing that makes that harder
-    "details.bibtex pre { margin: .5rem 0 0; padding: .6em .8em; background: var(--panel);"
+    ;; a line running off the edge makes selection harder
+    "details.bibtex pre { margin-block: .5rem 0; margin-inline: 0; padding: .6em .8em; background: var(--panel);"
     "  border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace;"
     "  font-size: .85em; white-space: pre-wrap; overflow-wrap: anywhere; }"
     ".colophon, .provenance { font-size: .9rem; }"
     ".tei { line-height: 2; }"
+    ".tei [title] { cursor: help; }"
     ".tei section { margin-block: 0 1.5rem; }"
     ".tei p { margin-block: 0 1em; }"
     ;; a source heading is part of the work, not part of the site's chrome, so
@@ -159,9 +178,9 @@
     ".tei h4 { font-size: 1.05rem; }"
     ".tei ruby { ruby-align: center; }"
     ".tei rt { font-size: .5em; font-weight: normal; }"
-    ".tei .gaiji { border-bottom: 1px dotted var(--muted); }"
+    ".tei .gaiji { border-block-end: 1px dotted var(--muted); }"
     ".tei .gaiji-unmapped { color: var(--muted); }"
-    ".tei .app, .tei .choice { border-bottom: 1px dotted var(--rule); }"
+    ".tei .app, .tei .choice { border-block-end: 1px dotted var(--rule); }"
     ".tei .note { font-size: .85em; color: var(--muted); }"
     ".tei .gap { color: var(--muted); }"
     ".tei .pb { display: block; block-size: 1px; background: var(--rule); margin-block: 1.5rem; }"
@@ -182,10 +201,11 @@
     ".tei .rend-dots-cross { text-emphasis: filled \"\\00d7\"; }"
     ".tei .rend-dots-triangle { text-emphasis: filled triangle; }"
     ".tei .rend-dots-triangle-open { text-emphasis: open triangle; }"
-    ".tei .rend-line { text-decoration: underline; }"
-    ".tei .rend-line-double { text-decoration: underline double; }"
-    ".tei .rend-line-wavy { text-decoration: underline wavy; }"
-    ".tei .rend-line-dashed { text-decoration: underline dashed; }"
+    ".tei .rend-dots-square-open { text-emphasis: \"\\25a1\"; }"
+    ".tei .rend-line { text-decoration: underline; text-underline-position: under right; }"
+    ".tei .rend-line-double { text-decoration: underline double; text-underline-position: under right; }"
+    ".tei .rend-line-wavy { text-decoration: underline wavy; text-underline-position: under right; }"
+    ".tei .rend-line-dashed { text-decoration: underline dashed; text-underline-position: under right; }"
     ".tei .rend-left { text-emphasis-position: under left; text-underline-position: left; }"
     ".tei .layout-chitsuki { display: block; text-align: end; }"
     ".tei .layout-jizume { display: block; }"
@@ -208,34 +228,64 @@
     ;; a top margin vertically, which is what 字下げ means in each direction.
     ;;
     ;; The mode is set on body, which propagates it to the viewport, so the
-    ;; page's own scroller is the one that runs right to left. Giving the text
-    ;; a scrolling box of its own instead is what the earlier rule did, and it
-    ;; opened every work at its last line: a nested scroller starts at its left
-    ;; edge, and in vertical-rl the left edge is the end. Measured on 小説総論
-    ;; at 1280px, the first paragraph sat at x=2821 and had to be scrolled back
-    ;; to; on the document scroller it sits at x=859, on screen at load. The
-    ;; fixed height that box needed also clipped the last line of every work.
-    "body:has(#tategaki:checked) { writing-mode: vertical-rl; text-orientation: mixed; }"]))
+    ;; page's own scroller is the one that runs right to left. A nested
+    ;; scrolling box would open every work at its last line: a nested scroller
+    ;; starts at its left edge, and in vertical-rl the left edge is the end.
+    ;; Measured on 小説総論 at 1280px, a nested box places the first paragraph
+    ;; at x=2821; on the document scroller it is at x=859, on screen at load. A
+    ;; nested box also needs a fixed height, which clips the last line of every
+    ;; work.
+    "body:has(#tategaki:checked) { writing-mode: vertical-rl; text-orientation: mixed; }"
+    "body:has(#tategaki:checked) main, body:has(#tategaki:checked) header, body:has(#tategaki:checked) footer {"
+    "  max-inline-size: min(42rem, calc(100dvh - 3rem)); padding-block: 1.5rem; }"]))
 
 (def ^:private search-js
   ;; Progressive enhancement only. Every work is reachable through the
   ;; generated author, title and NDC indexes with scripting off; this makes
   ;; 17308 works findable by typing instead of by navigating.
+  ;;
+  ;; `fold` lowercases, strips diacritics and folds katakana to hiragana on
+  ;; both the index and the query, so natsume finds Natsume and ソウセキ
+  ;; finds そうせき.
   (string/join
    "\n"
    ["(function () {"
-    "  var box = document.getElementById('q'), out = document.getElementById('results'), rows = null;"
+    "  var box = document.getElementById('q'), out = document.getElementById('results'), rows = null, loaded = false;"
     "  if (!box || !out) { return; }"
     "  box.disabled = false;"
     "  box.placeholder = box.getAttribute('data-ready');"
+    "  function fold(s) {"
+    "    s = (s || '').toLowerCase();"
+    "    if (s.normalize) { s = s.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, ''); }"
+    "    return s.replace(/[\\u30a1-\\u30f6]/g, function (c) {"
+    "      return String.fromCharCode(c.charCodeAt(0) - 0x60);"
+    "    });"
+    "  }"
     "  function draw() {"
-    "    var q = box.value.trim().toLowerCase();"
-    "    if (!rows || q === '') { out.textContent = ''; return; }"
-    "    var hits = [], i;"
+    "    var q = fold(box.value.trim());"
+    "    if (!loaded || q === '') { out.textContent = ''; return; }"
+    "    var terms = q.split(/[\\s\\u3000]+/).filter(Boolean);"
+    "    var hits = [], i, j, ok;"
     "    for (i = 0; i < rows.length && hits.length < 50; i++) {"
-    "      if (rows[i][4].indexOf(q) !== -1) { hits.push(rows[i]); }"
+    "      ok = true;"
+    "      for (j = 0; j < terms.length; j++) {"
+    "        if (rows[i][4].indexOf(terms[j]) === -1) { ok = false; break; }"
+    "      }"
+    "      if (ok) { hits.push(rows[i]); }"
     "    }"
     "    out.innerHTML = '';"
+    "    if (hits.length === 0) {"
+    "      var empty = document.createElement('li');"
+    "      empty.className = 'empty';"
+    "      empty.textContent = '該当する作品はありません ';"
+    "      var en = document.createElement('span');"
+    "      en.className = 'en';"
+    "      en.lang = 'en';"
+    "      en.textContent = '/ No matching works';"
+    "      empty.appendChild(en);"
+    "      out.appendChild(empty);"
+    "      return;"
+    "    }"
     "    for (i = 0; i < hits.length; i++) {"
     "      var li = document.createElement('li');"
     "      var a = document.createElement('a');"
@@ -256,8 +306,10 @@
     "    rows = [];"
     "    fetch('/search-index.json').then(function (r) { return r.json(); }).then(function (d) {"
     "      rows = d.works.map(function (w) {"
-    "        return [w[0], w[1], w[2], w[3], (w[1] + ' ' + w[2] + ' ' + w[3] + ' ' + w[0]).toLowerCase()];"
+    "        var compact = (w[3] || '').replace(/\\s+/g, '');"
+    "        return [w[0], w[1], w[2], w[3], fold(w[1] + ' ' + w[2] + ' ' + w[3] + ' ' + compact + ' ' + w[0] + ' ' + w[4])];"
     "      });"
+    "      loaded = true;"
     "      draw();"
     "    });"
     "  }"
@@ -268,10 +320,16 @@
 (def ^:private copy-js
   ;; Progressive enhancement, like the search box: the button is created here
   ;; rather than emitted into every page, so with scripting off a reader gets
-  ;; selectable text and no dead control. The button is a sibling of the code
+  ;; selectable text and no inoperative control. The button is a sibling of the code
   ;; rather than a child, so selecting the code by hand never picks it up, and
   ;; a code inside a link gets its button after the link so the anchor stays
   ;; whole.
+  ;;
+  ;; A button belongs beside a value a reader would rather copy than retype:
+  ;; every `pre`, the citation blocks, and the codes the pages mark
+  ;; `value`, which are identifiers, hashes, filenames and URLs. A code in a
+  ;; sentence is a name, and a field name in the documentation takes no
+  ;; button.
   (string/join
    "\n"
    ["(function () {"
@@ -283,40 +341,30 @@
     "    var anchor = node.parentNode;"
     "    if (!anchor) { return; }"
     "    if (anchor.tagName === 'A') { node = anchor; anchor = anchor.parentNode; }"
-    "    var button = document.createElement('button');"
+    "    var button = document.createElement('button'), timer = null;"
     "    button.type = 'button';"
     "    button.className = 'copy';"
     "    button.textContent = idle;"
     "    button.setAttribute('aria-label', idle);"
     "    button.addEventListener('click', function () {"
     "      clip.writeText(text).then(function () {"
+    "        if (timer) { clearTimeout(timer); }"
     "        button.textContent = done;"
+    "        button.setAttribute('aria-label', done);"
     "        button.classList.add('done');"
-    "        setTimeout(function () {"
+    "        timer = setTimeout(function () {"
     "          button.textContent = idle;"
+    "          button.setAttribute('aria-label', idle);"
     "          button.classList.remove('done');"
+    "          timer = null;"
     "        }, 1500);"
     "      });"
     "    });"
     "    anchor.insertBefore(button, node.nextSibling);"
     "  }"
-    "  var blocks = document.querySelectorAll('pre'), i;"
-    "  for (i = 0; i < blocks.length; i++) {"
-    "    attach(blocks[i], blocks[i].textContent);"
-    "  }"
-    ;; A button belongs beside a value a reader would rather copy than retype,
-    ;; and not beside every `code` in a sentence. Two exclusions do that.
-    ;; Reference tables are prose about the vocabulary rather than values to
-    ;; take away: on the vocabulary page 74 of 113 codes are table cells.
-    ;; Twelve characters is where the rest divides: every value a work page
-    ;; presents is 13 or longer, the shortest being the identifier itself,
-    ;; while the inline mentions left over are `@rend` and `snh:src`.
-    "  var codes = document.querySelectorAll('code');"
-    "  for (i = 0; i < codes.length; i++) {"
-    "    var code = codes[i];"
-    "    if (code.closest('pre') || code.closest('table')) { continue; }"
-    "    if (code.textContent.length < 12) { continue; }"
-    "    attach(code, code.textContent);"
+    "  var nodes = document.querySelectorAll('pre, code.citation, code.value'), i;"
+    "  for (i = 0; i < nodes.length; i++) {"
+    "    attach(nodes[i], nodes[i].textContent);"
     "  }"
     "})();"]))
 
@@ -350,8 +398,8 @@
      (into [:main (cond-> {} main-class (assoc :class main-class))] body)
      [:footer
       [:p (bilingual
-           "本文は青空文庫の作品、符号化データは CC0 1.0。作品ごとの権利の状態は各作品のページにあります。署名はマニフェストと各ファイルにかかり、このサイトはそれを表示しています。"
-           "Texts are works from Aozora Bunko; the encoding is CC0 1.0. Each work's page states the rights standing of that work. The signature covers the manifest and the artifact files, and this site displays them.")]
+           "本文は青空文庫の収録作品で、符号化データはCC0 1.0で提供しています。作品ごとの権利の状態は各作品のページに記載しています。公開マニフェストは電子署名されており、各ファイルのハッシュ値を記録しています。本サイトはその署名済みの内容を表示しています。"
+           "Texts are works from Aozora Bunko; the encoding is CC0 1.0. Each work's page states the rights standing of that work. The release manifest is signed and records the hash of every file; this site displays the signed content.")]
       [:p [:a {:href "/catalog.json"} "/catalog.json"] " · "
        [:a {:href "/releases/HEAD"} "/releases/HEAD"] " · "
        [:a {:href "https://www.aozora.gr.jp/"} "青空文庫"]]]
@@ -375,7 +423,7 @@
    ["other" "その他" ""]])
 
 (defn- hiragana
-  "Katakana folded to hiragana so one reading form drives the index."
+  "Katakana folded to hiragana so one reading form keys the index."
   [^String s]
   (apply str (map (fn [c]
                     (let [n (int c)]
@@ -441,30 +489,66 @@
     (when (seq parts)
       (str "（" (string/join "・" parts) "）"))))
 
-(defn- work-link [work facts]
-  (let [slug (get work "slug")]
+(defn- work-link [work facts stated-byline]
+  (let [slug (get work "slug")
+        by (naming/byline work)]
     [:li
      [:a {:href (str "/works/" slug "/")} (get work "title")]
-     (when-let [by (naming/byline work)]
+     (when (and by (not= by stated-byline))
        [:span {:class "by"} (str " — " by)])
      (when-let [label (and facts (variant-label work facts))]
        [:span {:class "variant"} (str " " label)])]))
 
 (defn- work-list
   "One row per work. A title and byline do not identify a work uniquely.
-  Where the same pair names more than one work in a list, each row also shows
+  Where the same pair identifies more than one work in a list, each row also shows
   what separates it, so that three rows reading わかれ道 — 樋口 一葉 are not
-  read as one row repeated three times."
+  read as one row repeated three times.
+
+  `stated-byline` is the byline the heading above the list already states;
+  a row whose byline is exactly that one leaves it out, and a row with a
+  different byline, such as a co-authored or translated work on an author's
+  page, keeps it."
+  ([works] (work-list works nil))
+  ([works stated-byline]
+   (if (seq works)
+     (let [ambiguous (into {}
+                           (keep (fn [[key group]]
+                                   (when (< 1 (count group))
+                                     [key (variant-facts group)])))
+                           (group-by (juxt #(get % "title") naming/byline) works))]
+       (into [:ul {:class "works"}]
+             (map #(work-link % (get ambiguous [(get % "title") (naming/byline %)]) stated-byline)
+                  works)))
+     [:p (bilingual "該当する作品はありません。" "No works here.")])))
+
+(defn- author-groups
+  "`works` grouped under their authors, as a library shelf is: one heading
+  per author set, in the order of the author index, each with the works in
+  the order given. Works with no recorded author come last under one heading."
   [works]
-  (if (seq works)
-    (let [ambiguous (into {}
-                          (keep (fn [[key group]]
-                                  (when (< 1 (count group))
-                                    [key (variant-facts group)])))
-                          (group-by (juxt #(get % "title") naming/byline) works))]
-      (into [:ul {:class "works"}]
-            (map #(work-link % (get ambiguous [(get % "title") (naming/byline %)])) works)))
-    [:p (bilingual "該当する作品はありません。" "No works here.")]))
+  (let [groups (group-by #(mapv (fn [person] (get person "person_id")) (naming/authors-of %))
+                         works)
+        order (fn [[ids group]]
+                (if (empty? ids)
+                  [1]
+                  [0 (mapv (fn [person]
+                             [(or (naming/person-name-romaji person) "￿")
+                              (or (naming/person-name-ja person) "")
+                              (get person "person_id")])
+                           (naming/authors-of (first group)))]))]
+    (for [[_ group] (sort-by order groups)
+          :let [authors (naming/authors-of (first group))]]
+      (list
+       [:h3 {:class "group"}
+        (if (seq authors)
+          (interpose "、" (map (fn [person]
+                                [:a {:href (str "/authors/" (get person "person_id"))}
+                                 (naming/person-label person)])
+                              authors))
+          (bilingual "著者の記録なし" "No recorded author"))
+        [:span {:class "by"} (str " (" (count group) ")")]]
+       (work-list group (naming/byline (first group)))))))
 
 (defn- archive-label [artifact-type]
   (case artifact-type
@@ -486,15 +570,12 @@
                  [:span {:class "by"} " ZIP"]])
               paths))
    [:p (bilingual
-        (str "どの ZIP にも直下に catalog.csv が入っています。識別子、作品名、著者、底本、初出、分類、リリースなど、"
-             "引用に必要な項目が列に分かれているので、表計算ソフトでそのまま開けます。"
-             "TEI ファイルを一つも開かずに、まとめた作品全体の文献表を作れます。"
-             "引用には識別子・底本ハッシュ・リリースの列を使ってください。ファイル名は便宜のためのものです。")
-        (str "Every archive carries catalog.csv at its root, with the structured citation "
-             "fields in columns: identifier, title, author, source edition, first publication, "
-             "class and release among them. It opens directly in a spreadsheet, so a whole "
-             "selection becomes a bibliography without opening a single TEI file. Cite the "
-             "identifier, source hash and release columns; the filename is a convenience."))]])
+        (str "各ZIPの直下には、識別子・作品名・著者・底本・初出・分類・リリースなどを収めたcatalog.csvが入っています。"
+             "表計算ソフトでそのまま開いて文献表を作成できます。"
+             "引用には識別子・底本ハッシュ・リリースの列を使ってください（ファイル名は便宜上のものです）。")
+        (str "Every archive includes catalog.csv at its root with columns for identifier, "
+             "title, author, source edition, first publication, class and release. "
+             "Cite the identifier, source hash and release columns; the filename is for convenience."))]])
 
 (defn- corpus-archives []
   (map (juxt naming/corpus-bundle-path identity) naming/bulk-artifact-types))
@@ -510,14 +591,14 @@
     [:dt (bilingual "目録" "Catalog")]
     [:dd [:a {:href "/catalog.json"} "/catalog.json"]]
     [:dt (bilingual "履歴" "History")]
-    [:dd [:a {:href "/history"} (bilingual "このリリースまでのすべてのリリース" "Every release up to this one")]]]])
+    [:dd [:a {:href "/history"} (bilingual "リリース履歴一覧" "All releases up to this one")]]]])
 
 (defn- document-entries
   "Every served document with its own text and its own English title.
 
   Read once per activation and passed around, because the landing page, the
-  page itself and every page's sibling list all name the same set, and a
-  document read twice could be read twice differently."
+  page itself and every page's sibling list all list the same set, and two
+  reads of one document could differ."
   []
   (mapv (fn [document]
           (let [text (docs/read-text (:path document))]
@@ -529,7 +610,7 @@
   reach the rest without going back to the landing page."
   [entries current]
   [:nav {:class "siblings"}
-   [:p (bilingual "ほかの解説:" "Other documents:")]
+   [:p (bilingual "ほかの解説：" "Other documents:")]
    [:p (interpose
         " · "
         (for [{:keys [route ja en]} entries
@@ -547,7 +628,7 @@
            [(sibling-nav entries route)])))
 
 (defn- maturity-notice
-  "The corpus's maturity, said once where a reader arrives, rather than in the
+  "The corpus's maturity, stated once where a reader arrives, rather than in the
   chrome of every page. It is a statement about the corpus's stage, not about
   the release being viewed, and repeating it on every page would read as a
   warning about the bytes on that page instead."
@@ -560,14 +641,14 @@
 
 (defn- landing [head-hex works withdrawn-count release-name maturity entries]
   (chrome
-   "青空文庫 TEI コーパス"
-   [[:h1 (bilingual "青空文庫 TEI コーパス" "Aozora Bunko TEI corpus")]
+   "青空文庫TEIコーパス"
+   [[:h1 (bilingual "青空文庫TEIコーパス" "Aozora Bunko TEI corpus")]
     [:p (bilingual
-         (str "青空文庫の作品を TEI P5 に変換し、内容のハッシュで特定できる署名付きのリリースとして公開しています。"
-              "各作品に TEI、プレーンテキスト、Markdown、検証レポートが付きます。")
+         (str "青空文庫の作品をTEI P5に変換し、ハッシュ値で識別できる署名付きリリースとして公開しています。"
+              "各作品につき、TEI、プレーンテキスト、Markdown、検証レポートの4形式を提供しています。")
          (str "Works from Aozora Bunko converted to TEI P5 and published as "
-              "signed, content-addressed releases. Every work carries TEI, plain text, "
-              "Markdown and a validation report."))]
+              "signed, content-addressed releases. Each work is published in four formats: "
+              "TEI, plain text, Markdown and a validation report."))]
     (when maturity (maturity-notice release-name maturity))
     [:ul {:class "stats"}
      [:li [:span {:class "n"} (str (count works))] (bilingual "作品" "works")]
@@ -579,40 +660,41 @@
     [:section
      [:h2 (bilingual "作品を探す" "Find a work")]
      [:p [:input {:id "q" :type "search" :disabled true
-                  :placeholder "検索には JavaScript が必要です / Search requires JavaScript"
-                  :data-ready "作品名・著者名 / Title or author"
+                  :aria-label "作品名・著者名で検索 / Search by title or author"
+                  :placeholder "検索にはJavaScriptが必要です / Search requires JavaScript"
+                  :data-ready "作品名・読み・著者名（ローマ字も可） / Title, reading or author, romaji accepted"
                   :autocomplete "off"}]]
-     [:ul {:class "works" :id "results"}]
-     [:p (bilingual "一覧から探すこともできます:" "Or browse the indexes:")
+     [:ul {:class "works" :id "results" :aria-live "polite"}]
+     [:p (bilingual "一覧から探せます：" "Or browse the indexes:")
       " "
-      [:a {:href "/authors/"} (bilingual "著者" "authors")] "、"
-      [:a {:href "/titles/"} (bilingual "作品名の読み" "title readings")] "、"
-      [:a {:href "/ndc/"} (bilingual "NDC 分類" "NDC classes")] "。"]]
+      [:a {:href "/authors/"} (bilingual "著者" "authors")] " · "
+      [:a {:href "/titles/"} (bilingual "作品名の読み" "title readings")] " · "
+      [:a {:href "/ndc/"} (bilingual "NDC分類" "NDC classes")]]]
 
     [:section
      [:h2 (bilingual "そのまま使う" "Use it directly")]
      [:dl {:class "facts"}
       [:dt [:a {:href "/catalog.json"} "/catalog.json"]]
-      [:dd (bilingual "全作品の書誌。署名されたリリースの一部です。"
+      [:dd (bilingual "全作品の書誌目録（署名済みリリースの一部）"
                       "Bibliography of every work in this release; part of the signed record.")]
       [:dt [:a {:href "/releases/HEAD"} "/releases/HEAD"]]
-      [:dd (bilingual "現在のリリースのハッシュ。" "The current release head.")]
+      [:dd (bilingual "現在のリリースのハッシュ" "The current release head.")]
       [:dt [:a {:href "/releases/latest"} "/releases/latest"]]
-      [:dd (bilingual "現在のリリースのマニフェスト。" "The current release manifest.")]
+      [:dd (bilingual "現在のリリースのマニフェスト" "The current release manifest.")]
       [:dt [:code "/works/<識別子>/tei"]]
-      [:dd (bilingual "作品ごとのファイル。plaintext・markdown・tei-validation も同じ形です。"
+      [:dd (bilingual "作品ごとのファイル（plaintext・markdown・tei-validationも同様）"
                       "Per-work artifacts; plaintext, markdown and tei-validation take the same form.")]]]
 
     (bulk-section
-     "このリリースの全作品を一つの ZIP にまとめてあります。著者ごと・分類ごとの ZIP は、それぞれのページにあります。"
+     "このリリースの全作品を一つのZIPにまとめています。著者別・NDC分類別のZIPは各ページにあります。"
      "Every work in this release, in one archive. Per-author and per-class archives are on the author and NDC pages."
      (corpus-archives))
 
     [:section
      [:h2 (bilingual "解説" "Documentation")]
      [:p (bilingual
-          "何がどう符号化されているか、識別子はどう読むか、公開の可否をどう判断しているかまで、このサイトで説明しています。初めての方は「はじめに」から。"
-          "How the texts are encoded, how to read an identifier, and how publication is assessed. Start with Start here.")]
+          "符号化の方針、識別子の体系、収録判定の基準をまとめています。概要は「はじめに」を参照してください。"
+          "See Start here for an overview of encoding policy, identifiers, and assessment criteria.")]
      [:ul {:class "cols plain"}
       (for [{:keys [route ja en]} entries]
         [:li [:a {:href (str "/" route)} (bilingual ja en)]])]]
@@ -620,8 +702,8 @@
     [:section
      [:h2 (bilingual "権利と引用" "Rights and citation")]
      [:p (bilingual
-          "底本は、著作権の消滅した作品か、権利者がクリエイティブ・コモンズ 表示ライセンスの下で公開している作品です。Soranoha の符号化データは CC0 1.0。作品ごとの権利の状態は catalog.csv の rights 列にあります。"
-          "Each underlying work is either out of copyright or published by its rightsholder under a Creative Commons Attribution licence; Soranoha's encoding is CC0 1.0. The rights column of catalog.csv carries each work's own standing.")]
+          "底本とした作品は、著作権の保護期間が満了しているか、または権利者がクリエイティブ・コモンズ表示ライセンス（CC BY）で公開しているものです。Soranohaの符号化データはCC0 1.0で提供しています。作品ごとの権利状態は各作品のページとcatalog.jsonに記載しています。"
+          "Each underlying work is either out of copyright or published by its rightsholder under a Creative Commons Attribution licence; Soranoha's encoding is CC0 1.0. Each work's page and catalog.json record each work's standing.")]
      [:p [:a {:href "/rights"} (bilingual "権利について" "Rights statement")] " · "
       [:a {:href "/citation"} (bilingual "引用のしかた" "How to cite")]]]
 
@@ -633,7 +715,7 @@
    "著者一覧"
    [[:h1 (bilingual "著者一覧" "Authors")]
     [:p (bilingual
-         (str "このリリースの作品に関わった人物 " (count people) " 名。ローマ字表記の頭文字順です。")
+         (str "このリリースの収録作品に関わる人物は" (count people) "名です（ローマ字表記の頭文字順）。")
          (str (count people) " people in this release, ordered by the initial of the romanized name."))]
     (into [:ul {:class "cols"}]
           (map (fn [{:keys [person-id label count*]}]
@@ -647,14 +729,14 @@
    [[:h1 label]
     (when romaji [:p {:class "reading" :lang "ja-Latn"} romaji])
     [:dl {:class "facts"}
-     [:dt (bilingual "人物 ID" "Person ID")]
-     [:dd [:code person-id]]]
+     [:dt (bilingual "人物ID" "Person ID")]
+     [:dd [:code {:class "value"} person-id]]]
     (mapcat (fn [[relation works]]
               [[:h2 (str relation " (" (count works) ")")]
-               (work-list works)])
+               (work-list works label)])
             entries)
     (bulk-section
-     "この人物が関わった作品を、役割を問わずまとめて取得できます。"
+     "この人物が関わる作品を、役割を問わず一括取得できます。"
      "Every work this person contributed to, in any role, in one archive."
      (map (juxt #(naming/author-bundle-path person person-id %) identity)
           naming/bulk-artifact-types))]))
@@ -664,7 +746,7 @@
    "作品名から探す"
    [[:h1 (bilingual "作品名から探す" "Titles by reading")]
     [:p (bilingual
-         "作品名の読みの頭文字で分けています。読みのない作品は「その他」に入ります。"
+         "作品名の読みの頭文字で分類しています。読みの記録がない作品は「その他」に入ります。"
          "Grouped by the first kana of the title reading; works with no recorded reading fall under その他.")]
     (into [:ul {:class "cols"}]
           (map (fn [{:keys [key label count*]}]
@@ -676,16 +758,16 @@
   (chrome
    (str "作品名 " label)
    [[:h1 label]
-    [:p (bilingual (str (count works) " 作品。読みの順に並べています。")
+    [:p (bilingual (str "全" (count works) "作品（読みの順）。")
                    (str (count works) " works, ordered by reading."))]
     (work-list works)]))
 
 (defn- ndc-index [classes]
   (chrome
-   "NDC 分類から探す"
-   [[:h1 (bilingual "NDC 分類から探す" "By NDC class")]
+   "NDC分類から探す"
+   [[:h1 (bilingual "NDC分類から探す" "By NDC class")]
     [:p (bilingual
-         "日本十進分類法の第一次区分です。分類のない作品と児童書の K 記号は「その他」にまとめています。"
+         "日本十進分類法（NDC）の第一次区分です。分類のない作品と児童書のK記号は「その他」にまとめています。"
          "Nippon Decimal Classification main classes. Unclassified works and Aozora Bunko's K-prefixed children's codes are grouped under その他.")]
     (into [:ul {:class "plain"}]
           (map (fn [{:keys [key ja en count*]}]
@@ -697,10 +779,10 @@
   (chrome
    (str "NDC " key " " ja)
    [[:h1 (bilingual (str key " " ja) en)]
-    [:p (bilingual (str (count works) " 作品。") (str (count works) " works."))]
-    (work-list works)
+    [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
+    (if (seq works) (author-groups works) (work-list works))
     (bulk-section
-     (str "この分類の " (count works) " 作品をまとめて取得できます。")
+     (str "この分類の" (count works) "作品を一括取得できます。")
      (str "All " (count works) " works in this class, in one archive.")
      (map (juxt #(naming/ndc-bundle-path key %) identity)
           naming/bulk-artifact-types))]))
@@ -719,7 +801,7 @@
 
 (defn- work-page
   "One work's bibliography page. `release` carries the head hex and the
-  release DOI, which every citation form on the page has to name."
+  release DOI, which every citation form on the page must state."
   [release work]
   (let [{:keys [head-hex]} release
         {:strs [slug title title_reading subtitle original_title first_published
@@ -774,33 +856,33 @@
          (list [:dt (bilingual "青空文庫" "Aozora Bunko card")]
                [:dd [:a {:href card_url} card_url]]))
        [:dt (bilingual "識別子" "Identifier")]
-       [:dd [:code slug]]
+       [:dd [:code {:class "value"} slug]]
        [:dt (bilingual "底本ハッシュ" "Source hash")]
-       [:dd [:code (str "sha256:" source_content_hash)]]
-       ;; Standard zip readers refuse an archive that carries bytes past its
-       ;; end, so a reader who goes to check this transcription against its
-       ;; source meets the refusal first. The count sits next to the hash of
-       ;; the bytes we read because together they say where the fault is: in
-       ;; the file Aozora Bunko ships, not in what was published from it.
+       [:dd [:code {:class "value"} (str "sha256:" source_content_hash)]]
+       ;; Standard zip readers reject an archive that carries bytes past its
+       ;; end, so a reader who checks this transcription against its source
+       ;; meets the rejection first. The count is beside the hash of the bytes
+       ;; read because together they locate the fault: in the file Aozora
+       ;; Bunko ships, not in what was published from it.
        (when trailing-bytes
          (list [:dt (bilingual "底本アーカイブ" "Source archive")]
                [:dd (bilingual
-                     (str "青空文庫のこの ZIP には、アーカイブ本体の後ろに "
-                          trailing-bytes " バイトが続いています。"
-                          "unzip などの一般的なツールはこれを理由にファイルを開けません。"
-                          "収録されている本文自体は無傷で、本サイトはそれを読み取っています。")
-                     (str "Aozora Bunko's archive for this work carries "
-                          trailing-bytes " bytes after the archive proper. "
-                          "unzip and other standard tools refuse the file on account of them. "
-                          "The members themselves are intact, and are what this edition was built from."))]))]
+                     (str "本作品の底本ZIPアーカイブは、末尾に"
+                          trailing-bytes "バイトの余剰データを含みます。"
+                          "このためunzipなどの一般的な展開ツールはこのファイルを読み込めませんが、"
+                          "収録された本文データは破損しておらず、本版はそれをそのまま変換しています。")
+                     (str "Aozora Bunko's archive for this work has "
+                          trailing-bytes " bytes of trailing data after the end of the archive. "
+                          "Standard tools such as unzip reject the file on account of those bytes; "
+                          "the archived text is intact, and this edition is converted from it directly."))]))]
 
       [:section
        [:h2 (bilingual "本文を読む" "Read the text")]
        [:p [:a {:class "read-link" :href (str "/works/" slug "/read")}
             (bilingual "この作品を読む" "Read this work")]]
        [:p (bilingual
-            "ルビ、外字、傍点、字下げをそのまま表示して読めます。縦書きに切り替えることもできます。この表示は下の TEI ファイルから組み立てています。"
-            "Ruby, gaiji, emphasis marks and indentation are shown as encoded, and the text can be set vertically. The reading view is built from the TEI file below.")]]
+            "TEI版から変換した閲覧用表示です。ルビ・外字・傍点・字下げを再現し、縦書き表示にも切り替えられます。"
+            "Rendered from the TEI edition with ruby, gaiji, emphasis marks, indentation, and vertical layout support.")]]
 
       [:section
        [:h2 (bilingual "ダウンロード" "Downloads")]
@@ -809,7 +891,7 @@
                     (let [name (naming/filename work artifact-type)]
                       [:li (cond-> {} class (assoc :class class))
                        [:a {:href (str "/works/" slug "/" name) :download name} label]
-                       [:span {:class "by"} " " [:code name]]]))
+                       [:span {:class "by"} " " [:code {:class "value"} name]]]))
                   ;; the first three are the work itself in three forms; the
                   ;; report is evidence about them, so it sits below a rule
                   ;; rather than reading as a fourth copy of the text
@@ -818,28 +900,29 @@
                    ["markdown" "Markdown"]
                    ["tei-validation" (bilingual "検証レポート" "Validation report") "evidence"]]))
        [:p (bilingual
-            (str "引用には識別子を使ってください。ファイル名は便宜のためのものです。"
-                 "同じバイト列は、末尾に種別名を置いた URL からも取得できます。この URL は識別子から組み立てられ、リリースをまたいでも同じです。")
-            (str "Cite the identifier; the filename is a convenience. The same bytes are also "
-                 "served at URLs named after the artifact type, which are constructible from "
-                 "the identifier and stable across releases."))]
+            (str "引用には識別子を使ってください（ファイル名は便宜上のものです）。"
+                 "同じデータは、識別子と種別名からなる固定URLでも取得できます：")
+            (str "Cite the identifier; the filename is for convenience. The same bytes are also "
+                 "served at stable URLs formed from the identifier and artifact type:"))]
        [:p (->> naming/artifact-kinds
                 (map (fn [artifact-type]
-                       [:code (str "/works/" slug "/" artifact-type)]))
+                       [:code {:class "value"} (str "/works/" slug "/" artifact-type)]))
                 (interpose " · "))]]
 
       [:section
        [:h2 (bilingual "引用" "Citation")]
        [:p (bilingual
-            "引用には識別子とリリースを含めてください。作品名と著者名だけでは一意に定まりません。"
-            "Cite the identifier and the release: title and author alone do not identify a work.")]
+            "引用には識別子とリリースを含めてください。作品名と著者名だけでは作品を特定できません。"
+            "Include the identifier and release when citing; title and author alone do not uniquely identify a work.")]
+       [:p {:class "by"} (bilingual "日本語文献用" "For a Japanese bibliography")]
        [:p [:code {:class "citation" :lang "ja"} (citation/rendered release work)]]
+       [:p {:class "by"} (bilingual "英語文献用" "For an English bibliography")]
        [:p [:code {:class "citation"} (citation/rendered-en release work)]]
        [:p {:class "by"}
         (bilingual
-         "上が日本語の文献表用、下が英語の文献表用です。作品名はどちらも日本語のままです。読みには語の切れ目がないため、ヘボン式への翻字には編集上の判断が要ります。翻字は投稿先の様式に従ってください。"
-         "The first form is for a Japanese bibliography, the second for an English one. Titles stay in Japanese in both: the reading carries no word boundaries, so Hepburn romanization takes editorial judgement. Romanize to your journal's style.")]
-       [:p (bilingual "文献管理ソフト向け:" "For reference managers:")
+         "作品名は日本語表記のまま記載しています。ローマ字表記が必要な場合は、投稿先の規定に従って翻字してください。"
+         "Titles are given in Japanese; romanize them according to your venue's style.")]
+       [:p (bilingual "文献管理ソフト向け：" "For reference managers:")
         " "
         [:a {:href (str "/works/" slug "/citation.json") :download (str slug ".json")}
          "CSL-JSON"]
@@ -847,14 +930,14 @@
         [:a {:href (str "/works/" slug "/citation.bib") :download (str slug ".bib")}
          "BibLaTeX"]]
        ;; a download is the wrong shape for the common case, which is pasting
-       ;; one entry into a .bib file already open in an editor. Folded away,
-       ;; because a reader who wants the file still wants the link above.
+       ;; one entry into a .bib file already open in an editor. Collapsed by
+       ;; default, because the link above serves the file.
        [:details {:class "bibtex"}
-        [:summary (bilingual "BibLaTeX をそのままコピーする" "Copy the BibLaTeX entry")]
+        [:summary (bilingual "BibLaTeXをそのままコピーする" "Copy the BibLaTeX entry")]
         [:pre (citation/biblatex release work)]]
        ;; COinS: an empty span whose title is an OpenURL context object. This
-       ;; is the one metadata form a browser connector reads without being
-       ;; told the site exists, and `genre=bookitem` is what makes it save the
+       ;; is the one metadata form a browser connector reads without
+       ;; site-specific configuration, and `genre=bookitem` makes it save the
        ;; work as a section of its 底本 rather than as a book of its own.
        [:span {:class "Z3988" :title (citation/coins release work)}]
        [:p [:a {:href "/citation"} (bilingual "引用のしかた" "How to cite")]]]
@@ -862,8 +945,8 @@
       (release-note head-hex nil)])))
 
 (defn- reading-page
-  "One work rendered for reading. The page is a projection: it says so, names
-  the release it was rendered from, and links the TEI file it was rendered
+  "One work rendered for reading. The page is a projection: it states this,
+  identifies the release it was rendered from, and links the TEI file it was rendered
   out of, because a reader who thinks the rendering is wrong needs the bytes
   to check it against."
   [release work {:keys [front body back]}]
@@ -883,7 +966,10 @@
       [:p {:class "controls"}
        [:input {:type "checkbox" :id "tategaki"}]
        " "
-       [:label {:for "tategaki"} (bilingual "縦書きで読む" "Read vertically")]]
+       [:label {:for "tategaki"} (bilingual "縦書きで読む" "Read vertically")]
+       " · "
+       [:a {:href (str "/works/" slug "/")}
+        (bilingual "書誌・ダウンロード" "Bibliography and downloads")]]
 
       (when front
         [:details {:class "front"}
@@ -900,8 +986,8 @@
       [:section {:class "provenance"}
        [:h2 (bilingual "この表示について" "About this rendering")]
        [:p (bilingual
-            "記録は下にリンクした署名済みの TEI ファイルです。このページはそれを読むための一つの形です。読みが複数ある箇所は一つだけを本文に示し、もう一方は語の title に残しています。"
-            "The record is the signed TEI file linked below. This page is one way of reading it. Where the text has more than one reading, the page shows one of them and keeps the other on the word itself, in its title text.")]
+            "本ページは署名済みTEI文書の閲覧用表示です。原本データは「TEI」欄のリンクから取得できます。複数の読みがある箇所は、本文に一方を表示し、もう一方を要素のtitle属性に記載しています。"
+            "This page is a reading view of the signed TEI file, which is the authoritative record and is linked under TEI. Where a word carries two readings, one is shown inline and the other in the element's title attribute.")]
        [:dl {:class "facts"}
         [:dt (bilingual "リリース" "Release")]
         [:dd [:a {:href (str "/releases/" head-hex ".json")} [:code head-hex]]]
@@ -928,21 +1014,21 @@
      [:dd [:code (or reason_code "—")]]
      [:dt (bilingual "説明" "Statement")]
      [:dd (or statement "—")]
-     ;; the two rows above are read out of this file, so the label names the
+     ;; the two rows above are read out of this file, so the label identifies the
      ;; document a reader would be opening rather than its role in the protocol
      [:dt (bilingual "取り下げの記録" "Withdrawal record")]
      [:dd [:a {:href (str "/withdrawn/" slug ".json")} (str "/withdrawn/" slug ".json")]]]
     [:p (bilingual
-         "この作品は現在のリリースでは配布していません。取り下げても記録を消すことはなく、以後の配布を止めるだけで、過去のリリースは署名の連鎖にそのまま残ります。"
-         "Soranoha no longer distributes this work in the current release. Withdrawing a work removes nothing: it stops further distribution, and the signed chain keeps every earlier release exactly as published.")]
+         "この作品は現在のリリースでは配布していません。取り下げ以後のリリースには収録されず、それ以前のリリースは署名済みの履歴にそのまま残ります。"
+         "This work is not distributed in the current release. Withdrawal stops distribution in subsequent releases; earlier releases in the signed history are unchanged.")]
     (when last-release
-      [:p (bilingual "最後に収録されたリリース:" "Last release that contained it:")
+      [:p (bilingual "最後に収録されたリリース：" "Last release that contained it:")
        " " [:a {:href (str "/releases/" last-release ".json")} [:code last-release]]])
     [:p [:a {:href "/rights"} (bilingual "権利について" "Rights statement")]]]))
 
 (defn- covered-range
   "The upstream revisions a release covers. A release is minted when the
-  corpus moved rather than on every upstream commit, so one release spans
+  corpus changed rather than on every upstream commit, so one release spans
   `(covers_from, upstream_rev]`, which can be several revisions. Genesis
   has no predecessor revision to open its range and shows only its own."
   [{:strs [covers_from upstream_rev]}]
@@ -955,13 +1041,13 @@
   added, works removed, and works whose source bytes changed.
 
   Counts rather than lists. A corpus release changes a median of two works
-  out of 17,602, but a toolchain change moves every one of them, and a page
-  naming them all would be larger than the manifests it summarises.
+  out of 17,602, but a toolchain change changes every one of them, and a page
+  listing them all would be larger than the manifests it summarises.
 
-  `source_content_hash` is what decides `changed`, because it is the fact
+  `source_content_hash` decides `changed`, because it is the fact
   about the work rather than about the toolchain: a release that reruns an
   unchanged source through a new parser publishes different artifacts, and
-  saying that every work changed would bury the two that did."
+  saying that every work changed would obscure the two that did."
   [manifest predecessor]
   (let [source-of (fn [m]
                     (into {} (map (juxt #(get % "slug") #(get % "source_content_hash")))
@@ -1009,11 +1095,10 @@
    {:main-class "doc"}
    [[:h1 (bilingual "リリースの履歴" "Release history")]
     [:p (bilingual
-         (str "署名された連鎖にあるすべてのリリースです。新しいものから順に並んでいます。"
-              "各行の数字は、そのリリースが一つ前のリリースに対して何を変えたかを、公開されたマニフェストから数え直したものです。")
-         (str "Every release in the signed chain, newest first. The counts on each row are "
-              "what that release changed against the one before it, recomputed from the "
-              "published manifests."))]
+         (str "署名付きリリース履歴の一覧です（新しい順）。"
+              "各行の件数は、直前のリリースからの差分を公開マニフェストから集計した値です。")
+         (str "All releases in the signed history, newest first. Each row shows the "
+              "changes relative to the preceding release, computed from the published manifests."))]
     [:table
      [:thead
       [:tr
@@ -1028,20 +1113,19 @@
                   (history-row entry (second predecessor) events))
                 (partition-all 2 1 (manifest-seq))))]
     [:p (bilingual
-         "「底本の範囲」は、そのリリースが対象とする青空文庫のリビジョンの範囲です。作品の書庫が動いたときにリリースを作るので、一つのリリースが複数のリビジョンにまたがることがあります。最初のリリースには比較対象となる前のリリースがないので、変更の欄は空です。"
+         "「底本の範囲」は、そのリリースが対象とする青空文庫のリビジョン範囲です。作品アーカイブが追加・更新された時点でリリースを作成するため、1つのリリースが複数のリビジョンを含む場合があります。最初のリリースには比較対象がないため、差分の列は空欄です。"
          (str "The upstream range is the span of Aozora Bunko revisions a release covers. "
-              "A release is minted when a work archive moved, so one release can cover "
-              "several revisions. The oldest release has no predecessor to compare against, so its "
-              "change columns are empty."))]]))
+              "Releases are created when a work archive is added or updated, so a single release can span "
+              "multiple revisions. The initial release has no predecessor, so its change columns are blank."))]]))
 
 (defn- last-release-of
   "The newest release still listing each of `slugs`, in one newest-first pass.
 
-  A withdrawn work's page has to name the release it was last published in,
+  A withdrawn work's page must state the release it was last published in,
   and the chain is ordered newest first, so the answer for every slug is
   found by walking until none are outstanding. Done once for all of them
-  rather than once per slug: the alternative reads the chain again for every
-  withdrawal, and reading the chain is the expensive part."
+  rather than once per slug: a per-slug pass would read the chain again for
+  every withdrawal, and reading the chain is the expensive part."
   [manifest-seq slugs]
   (loop [remaining (manifest-seq)
          wanted (set slugs)
@@ -1059,10 +1143,10 @@
   "One of the two pages that state facts read from the release.
 
   The facts come from the head manifest rather than from a document that could
-  disagree with it, which is the whole reason these two pages are assembled
-  here instead of being served from Markdown.
+  disagree with it, which is the reason these two pages are assembled here
+  instead of being served from Markdown.
 
-  `:source` names the repository document that treats the subject at length.
+  `:source` identifies the repository document that treats the subject at length.
   The page stands on its own without it: a reader who followed
   `rights.statement_url` out of a detached TEI file has to find the answer
   here, not a forwarding address."
@@ -1072,12 +1156,12 @@
    {:main-class "doc"}
    (concat [[:h1 (bilingual ja title)]] lead
            [[:p {:class "by"}
-             (bilingual (str "背景と詳細はリポジトリの " source " にあります。")
+             (bilingual (str "背景と詳細はリポジトリの" source "にあります。")
                         (str "Background and detail are in " source
                              " in the repository."))]])))
 
 (defn- works-standings
-  "The standings the release actually publishes under, in the order the rights
+  "The standings the release publishes under, in the order the rights
   page lists them: the public domain first, because it is almost every work,
   then the licences, so a reader meets the common case before the exception."
   [manifest]
@@ -1090,11 +1174,11 @@
    document
    "Rights and licensing"
    [[:p (bilingual
-         "複製、再頒布、翻案、翻訳、情報解析、公衆送信のいずれも、営利非営利を問わず自由に行えます。許諾を得る必要も、対価を支払う必要もありません。ほとんどの作品では、クレジット表示はお願いであって利用の条件ではありません。権利者がクリエイティブ・コモンズ 表示ライセンスの下で公開している作品に限り、クレジット表示はそのライセンスの条件です。どの作品がどちらにあたるかは、その作品のページに書いてあります。"
-         "You may copy, redistribute, adapt, translate, mine and republish everything here, commercially or not, without asking and without payment. For almost every work, attribution is requested rather than required. For the works whose rightsholder publishes them under a Creative Commons Attribution licence, attribution is a condition of that licence. Each work's own page says which of the two it is.")]
+         "複製、再頒布、翻案、翻訳、情報解析、公衆送信はいずれも、営利・非営利を問わず自由に行えます。許諾や対価は不要です。ほとんどの作品では、クレジット表示はお願いであって利用の条件ではありません。権利者がクリエイティブ・コモンズ表示ライセンス（CC BY）で公開している作品に限り、クレジット表示はそのライセンスの条件です。各作品の権利状態は作品ページに記載しています。"
+         "You may copy, redistribute, adapt, translate, mine and republish everything here, commercially or not, without permission or fee. For almost every work, attribution is requested rather than required. For works published by their rightsholder under a Creative Commons Attribution licence, attribution is a condition of that licence. Each work page states which applies.")]
     ;; the grant as this release states it, rather than as this document
-    ;; describes it: a served page that disagreed with the signed manifest
-    ;; would be the one thing a rights statement may not do
+    ;; describes it: a served rights statement must not disagree with the
+    ;; signed manifest
     [:dl {:class "facts"}
      [:dt (bilingual "底本の権利状態" "Underlying works")]
      ;; one <dd> per standing: <dl> allows several for one <dt>, and a corpus
@@ -1107,61 +1191,61 @@
      [:dt (bilingual "この文書" "This statement")]
      [:dd [:a {:href statement_url} statement_url]]]
     [:p (bilingual
-         "上の各項目は、このリリースのマニフェストに書かれている値です。底本の権利状態は作品ごとに記録しているので、このリリースに含まれるものをすべて挙げています。"
-         "Every row above is read from this release's own manifest. The standing of the underlying works is recorded per work, so the row lists each one the release publishes under.")]
+         "これらの項目の値は、このリリースのマニフェストから読み取っています。底本の権利状態は作品ごとに記録されており、このリリースに含まれるすべての区分を列挙しています。"
+         "These values are read from this release's manifest. Underlying rights are recorded per work, and every standing present in this release is listed.")]
 
     [:h2 (bilingual "権利の二つの層" "Two rights layers")]
     [:p (bilingual
-         "底本のほとんどは、著作権の存続期間が満了して権利が消滅した青空文庫の作品です。Soranoha はこれらについて著作権その他の権利を有しておらず、主張もしません。青空文庫の「収録ファイルの取り扱い規準」は、著作権の消滅した作品のファイルを、有償無償を問わず自由に複製・再頒布・翻案してよいとしています。"
-         "Most of the underlying texts are Aozora Bunko works whose copyright term has expired and whose rights have therefore lapsed. Soranoha neither holds nor claims any right in them. Aozora Bunko's handling rules allow files for expired works to be copied, redistributed and adapted freely, whether for payment or not.")]
+         "底本の大部分は、著作権保護期間が満了した青空文庫の作品です。Soranohaはこれらについて著作権その他の権利を有しておらず、主張もしません。青空文庫の「収録ファイルの取り扱い規準」に基づき、著作権が満了した作品のファイルは有償・無償を問わず自由に複製・再頒布・翻案できます。"
+         "Most underlying texts are Aozora Bunko works whose copyright term has expired. Soranoha neither holds nor claims any rights in them. Under Aozora Bunko's handling guidelines, files for out-of-copyright works may be freely copied, redistributed and adapted, whether commercially or not.")]
     ;; the second regime. Aozora Bunko has no licence column, so these works
     ;; are identified from the notice their rightsholder wrote into the
     ;; colophon, and that notice is what the standing beside each work records.
     [:p (bilingual
-         "残りは、著作権が存続しており、権利者がクリエイティブ・コモンズ 表示ライセンス（CC BY）の下で青空文庫に公開している作品です。これらも同じく自由に利用できますが、クレジット表示は権利者が付した条件です。どのバージョンのライセンスによるかは、作品ページと TEI ファイルの双方に記載しています。Soranoha が公開するのは、表示のみを条件とするライセンスの作品に限られます。非営利、改変禁止、継承のいずれかを課すライセンスの作品は収録していません。"
-         "The rest are works whose copyright subsists and whose rightsholder publishes them on Aozora Bunko under a Creative Commons Attribution licence. They may be used just as freely, but attribution is a condition their rightsholder set rather than a request. Each work's page and its TEI header name the version of the licence it is under. Soranoha publishes such a work only where attribution is the sole condition: a work under a licence adding NonCommercial, NoDerivatives or ShareAlike is not in the corpus.")]
+         "残りは著作権が存続しており、権利者がクリエイティブ・コモンズ表示ライセンス（CC BY）で青空文庫に公開している作品です。これらも自由に利用できますが、クレジット表示がライセンス上の条件となります。ライセンスのバージョンは作品ページとTEIヘッダーの双方に記載しています。Soranohaは表示のみを条件とする作品を収録し、非営利・改変禁止・継承の条件が付いた作品は収録していません。"
+         "The remaining works are in copyright and published on Aozora Bunko by their rightsholders under a Creative Commons Attribution (CC BY) licence. They may be used just as freely, provided attribution is given as required by the licence. Each work's page and TEI header record the specific licence version. Soranoha includes only attribution-only works; works carrying NonCommercial, NoDerivatives or ShareAlike conditions are excluded.")]
     ;; CC0 can only cover what Soranoha added. In a file whose text is under
     ;; CC BY, the text is not Soranoha's to dedicate, so the paragraph states
     ;; what the waiver covers and what it does not.
     [:p (bilingual
-         "Soranoha 自身の符号化、すなわち TEI マークアップ、プレーンテキストと Markdown への投影、検証レポート、リリースマニフェストは、CC0-1.0 によりパブリックドメインで提供します。符号化に著作権および関連する権利（データベースに関する権利を含む）が生じる範囲では、これを放棄します。この放棄が及ぶのは Soranoha が加えた部分だけです。底本が CC BY の作品では、TEI、プレーンテキスト、Markdown の各ファイルに含まれる本文はそのライセンスの下にとどまり、それらのファイルを利用する際にはクレジット表示の条件が適用されます。"
-         "Soranoha's own encoding, meaning the TEI markup, the plaintext and Markdown projections, the validation reports and the release manifests, is dedicated to the public domain under CC0-1.0. To the extent that copyright and related rights, including database rights, subsist in that encoding, they are waived. The waiver covers only what Soranoha added. For a work under CC BY, the text inside the TEI, plaintext and Markdown files remains under that licence, and its attribution condition applies to any use of those files.")]
+         "Soranohaによる符号化データ（TEIマークアップ、プレーンテキストおよびMarkdownへの変換結果、検証レポート、リリースマニフェスト）は、CC0-1.0によりパブリックドメインに提供します。著作権および関連する権利（データベース権を含む）が生じる範囲において、これをすべて放棄します。この権利放棄はSoranohaが付加した部分にのみ及びます。底本がCC BYの作品では、TEI・プレーンテキスト・Markdown内の本文に元のCC BYライセンスが適用されるため、利用時にはクレジット表示が必要です。"
+         "Soranoha's own encoding—the TEI markup, plaintext and Markdown projections, validation reports and release manifests—is dedicated to the public domain under CC0-1.0, waiving all copyright and related database rights to the extent they arise. This waiver applies only to what Soranoha added: for works under CC BY, the text inside the TEI, plaintext and Markdown files remains under CC BY and requires attribution.")]
     ;; Catalog bibliographic metadata derives from Aozora Bunko under CC BY 4.0;
     ;; catalog structure and Soranoha-authored fields remain CC0.
     [:p (bilingual
-         "目録（catalog.json と catalog.csv）に収めた書誌情報は、青空文庫が CC BY 4.0 で公開している「公開作品情報一覧」に由来します。目録そのものやそれに基づく一覧を再頒布する場合は、出典として青空文庫を表示してください。これは上に述べた作品ごとの権利の状態とは別の話で、本文ではなく書誌データにかかるものです。目録の構造、Soranoha が付した識別子、および底本や検証に関する各項目は Soranoha 自身の符号化であり、CC0-1.0 で提供します。"
-         "The bibliographic data in the catalog (catalog.json and catalog.csv) derives from Aozora Bunko's list of published works, which Aozora Bunko publishes under CC BY 4.0. Credit Aozora Bunko as the source when redistributing the catalog or a listing built from it. This is a separate matter from the per-work standings above: it attaches to the bibliographic data rather than to the texts. The catalog's structure, the identifiers Soranoha assigns, and the fields it records about source editions and validation are Soranoha's own encoding and are under CC0-1.0.")]
+         "目録（catalog.jsonとcatalog.csv）の書誌情報は、青空文庫がCC BY 4.0で公開している「公開作品情報一覧」に由来します。目録やその派生一覧を再頒布する際は、出典として青空文庫を表示してください（これは本文ではなく書誌データに対する条件です）。目録のスキーマ、Soranohaが付与した識別子、および底本・検証に関する追加項目はCC0-1.0で提供します。"
+         "The bibliographic metadata in catalog.json and catalog.csv derives from Aozora Bunko's published catalog (CC BY 4.0). Credit Aozora Bunko when redistributing the catalog or listings derived from it (this obligation applies to the bibliographic metadata, not the texts). The catalog schema, Soranoha identifiers, and validation fields are under CC0-1.0.")]
     ;; Community attribution and textual provenance requests from Aozora Bunko (non-binding).
     [:p (bilingual
-         "青空文庫は義務ではなく二つのことを求めています。作品名・著者・底本・入力者・校正者を記したクレジット表示を削らないこと、そして底本や表記を変更した場合はその記録を添えることです。Soranoha はどちらも行っており、クレジットは各 TEI ファイルの back と各作品ページに、変更の記録は検証レポートと底本との差異に残しています。再頒布される方にも同じ扱いをお願いします。"
-         "Aozora Bunko asks two things without requiring them: that the credit block naming the work, its author, its source edition and the people who keyed and proofread it not be removed, and that a change of source edition or notation come with a record of what changed. Soranoha does both: we keep the credit block in every TEI file's back matter and on every work page, and we publish the record as the validation report and the divergences from the source that accompany each work. We ask the same of anyone redistributing these files.")]
+         "また青空文庫は、作品名・著者・底本・入力者・校正者を記したクレジット表示を残すこと、および底本や表記を変更した際にその記録を添えることを求めています。Soranohaは各TEI文書のback要素と作品ページにクレジットを保持し、検証レポートと底本との差異を公開しています。再頒布の際にも同様の配慮をお願いします。"
+         "Aozora Bunko also asks—without making it a legal condition—that the credit block (work, author, source edition, inputter and proofreader) be retained and that changes to the source edition or notation be documented. Soranoha retains the credit block in each TEI back element and work page, and documents differences in each validation report. We ask redistributors to do the same.")]
 
     ;; Published corpus terms (CC0/CC-BY) are distinct from toolchain licensing (Apache-2.0/MIT).
     [:p (bilingual
-         "公開されたコーパスを再頒布しても、ツールチェーンのライセンス上の義務は生じません。ツールチェーン自体を再頒布する場合には生じます。自作のソースコードは Apache-2.0、分岐した解析器クレートは上流から承継した MIT OR Apache-2.0 です。"
-         "Redistributing the published corpus does not carry the toolchain's obligations. Redistributing the toolchain does: the locally authored source is Apache-2.0, and the forked parser crates carry MIT OR Apache-2.0 as an inherited obligation.")]
+         "公開されたコーパスを再頒布しても、ツールチェーンのライセンス上の義務は生じません。ツールチェーン自体を再頒布する場合にのみ、ソースコードのライセンス（自作部分はApache-2.0、フォークしたパーサークレートは上流から継承したMIT OR Apache-2.0）が適用されます。"
+         "Redistributing the published corpus does not trigger the toolchain's licence obligations. Redistributing the toolchain itself does: locally authored code is Apache-2.0, and the forked parser crates remain under their upstream MIT OR Apache-2.0 terms.")]
 
     [:h2 (bilingual "公開作品に権利をお持ちの方へ" "If you hold rights in a published work")]
     [:p (bilingual
-         "Soranoha が公開するのは、著作権が消滅したと判断した作品と、権利者が表示のみを条件とするライセンスの下で公開している作品だけです。ただし、この規模のコーパスであれば、いずれどれか一つは判断を誤ります。"
-         "Soranoha publishes only works its assessment finds to be out of copyright, and works their rightsholder publishes under a licence whose sole condition is attribution. Over a corpus this size we will eventually get one wrong.")]
+         "Soranohaは、著作権が満了したと判定された作品、および権利者が表示のみを条件とするライセンスで公開している作品のみを収録しています。万一、権利判定に誤りがある場合はご連絡ください。"
+         "Soranoha includes only works assessed as out of copyright or published by their rightsholders under an attribution-only licence. If you hold rights in a published work or find an error in our rights assessment, please contact us.")]
     [:p (bilingual
-         (str "作品識別子（URL に見える " example-identifier " の形）または青空文庫の図書カードと、権利主張の根拠を添えて、"
-              orcid-url " に記載の連絡先までご連絡ください。正式な法的通知の形式による必要はありません。")
-         (str "Write to the address on " orcid-url ", naming the work identifier (the "
-              example-identifier " form, visible in the URL) or the Aozora Bunko card, and the "
-              "basis of the claim. A claim does not need to be a formal legal notice to be acted on."))]
+         (str "作品識別子（URLに含まれる" example-identifier "の形式）または青空文庫の図書カードと、権利主張の根拠を添えて、"
+              orcid-url "に記載の連絡先までご連絡ください。書式は問いません。")
+         (str "Write to the contact address on " orcid-url " with the work identifier (such as "
+              example-identifier " in the URL) or the Aozora Bunko card, along with the "
+              "basis of the claim. Informal notifications are accepted."))]
     ;; the event's own release is the one that removes the work, so a
-    ;; rights holder is not waiting on a corpus release that may be weeks
+    ;; rights holder does not wait for a corpus release that may be weeks
     ;; away; `transact/successor-for-event` builds that manifest
     [:p (bilingual
-         "公開を取り下げる場合は、その理由を記したガバナンスイベントを公開します。イベントの公開それ自体が一つのリリースで、そのリリースでは作品を works[] と目録から外し、根拠となるイベントとともに withdrawn[] に記録します。次の定期のリリースを待たずに公開します。署名済みの履歴は追記しかできないので、過去のリリースはそのまま残ります。"
-         "To withdraw a work, Soranoha publishes a governance event stating why. Publishing it is itself a release. That release omits the work from works[] and from the catalog, and records it in withdrawn[] together with the event the removal rests on. Soranoha publishes such a release as soon as it is needed, rather than at the next corpus release. Nothing can be removed from the signed history, so earlier releases keep the work exactly as they published it.")]
+         "公開を取り下げる場合は、理由を記したガバナンスイベントを含む新しいリリースを即座に公開し、該当作品をworks[]と目録から除外してwithdrawn[]に記録します。追記専用の署名履歴であるため、過去のリリース自体は変更されません。"
+         "To withdraw a work, Soranoha immediately publishes a new release containing a governance event that states the reason, removes the work from works[] and the catalog, and records it in withdrawn[]. Because the signed history is append-only, earlier releases remain unchanged.")]
 
     [:h2 (bilingual "無保証" "No warranty")]
     [:p (bilingual
-         "Soranoha が公開するのは、検証レポートと底本との差異を添えた翻刻であって、翻刻の正確性を保証するものではありません。コーパスは現状有姿で提供します。法律・医療・安全に関わる用途では、各作品の sourceDesc に記録された底本に照らして独自に検証することなく依拠しないでください。"
-         "Soranoha publishes transcriptions with their validation reports and their recorded divergences from the source, not a guarantee of fidelity. The corpus is provided as-is. Do not rely on it for a legal, medical or safety purpose without independent verification against the source edition recorded in each work's sourceDesc.")]]))
+         "Soranohaは検証レポートと底本との差異を添えて翻刻データを公開していますが、内容の完全性や正確性を保証するものではありません。コーパスは現状有姿で提供します。法律・医療・安全に関わる用途では、各作品のsourceDescに記載された底本と必ず照合してください。"
+         "Soranoha publishes transcriptions together with validation reports and recorded source divergences, without any warranty of accuracy. The corpus is provided as-is; do not rely on it for legal, medical or safety purposes without verifying against the source edition named in sourceDesc.")]]))
 
 (def ^:private example-work
   "The work the how-to-cite page is worked through. A literal rather than a
@@ -1188,31 +1272,31 @@
    ;; Citing Soranoha and attributing a work are different obligations, and
    ;; only the second can be a licence condition: CC0 sets none, CC BY does.
    [[:p (bilingual
-         "Soranoha の符号化は CC0 なので、Soranoha の引用はライセンス上の条件ではなく学術上の慣行です。権利者がクリエイティブ・コモンズ 表示ライセンスの下で公開している作品については、その作品のクレジット表示がライセンスの条件であり、作品のページに記載しています。リリースを明示して引用してください。"
-         "Soranoha's encoding is CC0, so citing Soranoha is a scholarly norm rather than a licence condition. For a work its rightsholder publishes under a Creative Commons Attribution licence, attribution of that work is a condition of the licence, stated on the work's page. Cite the release by name.")]
+         "Soranohaの符号化データはCC0のため、コーパスの引用はライセンス上の義務ではなく学術上の慣行です。一方、権利者がCC BYで公開している作品については、作品のクレジット表示がライセンスの条件となります（対象作品のページに明記しています）。引用時はリリースを明記してください。"
+         "Soranoha's encoding is CC0, so citing the corpus is a scholarly convention rather than a licence requirement. For works published under CC BY, attributing the work is a licence condition stated on the work's page. Always cite the specific release.")]
     ;; Release names designate a project stage; citations require the immutable release head.
     (when release-name
       [:p (bilingual
-           (str "コーパス全体の呼び名は " release-name
+           (str "コーパス全体の呼称は" release-name
                 (when maturity (str "（" (:ja maturity) "）"))
-                "ですが、引用に書くのは以下のリリースのハッシュです。"
-                "この呼び名は一つのリリースではなく、この段階のコーパス全体を指します。")
-           (str "The corpus as a whole is called " release-name
-                (when maturity (str ", " (:en maturity)))
-                ", but what a citation carries is the release head below. "
-                "The name stands for the corpus at this stage rather than for "
-                "any one release."))])
+                "です。呼称は単一のリリースではなく現在の開発段階を指すため、引用にはリリースハッシュを使用してください。")
+           (str "The corpus stage is named " release-name
+                (when maturity (str " (" (:en maturity) ")"))
+                ". The name designates a stage rather than a release; citations use the release hash, which identifies the exact snapshot."))])
     ;; Abbreviated 12-char release prefix without trailing ellipsis so the hash resolves directly.
+    [:p {:class "by"} (bilingual "コーパス全体" "The whole corpus")]
     [:p [:code {:class "citation"}
          (str site-name " Aozora Bunko TEI Corpus. Release " (subs head-hex 0 12)
               (when doi (str ". https://doi.org/" doi)))]]
+    [:p (bilingual
+         "個々の作品の引用形式を、現在のリリースと「蜘蛛の糸」を例に示します。各作品のページには、その作品の引用形式を掲載しています。"
+         "Citation forms for one work, shown for this release and 蜘蛛の糸. Every work page provides the same forms filled in for that work.")]
+    [:p {:class "by"} (bilingual "日本語文献用" "For a Japanese bibliography")]
     [:p [:code {:class "citation" :lang "ja"}
          (citation/rendered release example-work)]]
+    [:p {:class "by"} (bilingual "英語文献用" "For an English bibliography")]
     [:p [:code {:class "citation"}
          (citation/rendered-en release example-work)]]
-    [:p (bilingual
-         "上はこのリリースのもので、作品の例は「蜘蛛の糸」です。各作品のページにも、その作品に合わせた同じ形が載っています。それぞれの項目の意味は以下のとおりです。"
-         "Those are this release, with 蜘蛛の糸 as the worked example; every work page carries the same forms for its own work. Each component is explained below.")]
     [:p [:a {:href "/catalog.json"} "/catalog.json"] " · "
      [:a {:href (str "/releases/" head-hex ".json")} (str "/releases/" head-hex ".json")]]]))
 
@@ -1234,10 +1318,10 @@
        "\""))
 
 (defn- search-index
-  "A compact array-of-arrays index: slug, title, reading, byline. Written
-  directly rather than through the protocol canonicalizer, which exists to
-  make signed bytes comparable and has no business shaping a presentation
-  file."
+  "A compact array-of-arrays index: slug, title, reading, byline, and the
+  authors' romanized names. Written directly rather than through the
+  protocol canonicalizer, which exists to make signed bytes comparable and
+  is not applied to a presentation file."
   [head-hex works]
   (str "{\"release\":" (json-escape head-hex) ",\"works\":["
        (string/join
@@ -1247,6 +1331,8 @@
                     "," (json-escape (or (get work "title") ""))
                     "," (json-escape (or (get work "title_reading") ""))
                     "," (json-escape (or (naming/byline work) ""))
+                    "," (json-escape (string/join " " (keep naming/person-name-romaji
+                                                            (naming/authors-of work))))
                     "]"))
              works))
        "]}"))
@@ -1256,7 +1342,7 @@
 
   `:works` is every work they contributed to and `:by-relation` is the same
   works split by the relation the catalog records; both hold a work once and
-  keep catalog order. A catalog can name one person twice for one work,
+  keep catalog order. A catalog can list one person twice for one work,
   holding two relations or repeating one, and neither is a reason to list the
   work twice: the works of a person are works, not contributor rows.
 
@@ -1285,8 +1371,8 @@
   "Every browse file for one release, as a sequence of `[path bytes]` pairs.
 
   Deterministic: the same manifest, catalog, events and TEI bytes in, the
-  same pairs out in the same order, which is what lets the exporter's reuse
-  check treat these files exactly like chain content.
+  same pairs out in the same order, so the exporter's reuse check treats
+  these files exactly like chain content.
 
   A sequence rather than a map because of the reading pages. There is one per
   work, each holding a whole rendered text, and the corpus is large enough
@@ -1294,9 +1380,9 @@
   serving tree costs on disk. The caller consumes them one at a time and
   writes each out; nothing here holds a page after it has been handed over.
 
-  `tei` is a function from slug to that work's published TEI bytes. It is
-  what makes a reading page possible without a second copy of the text: the
-  bytes it returns are the artifact the manifest names and the export has
+  `tei` is a function from slug to that work's published TEI bytes. It
+  allows a reading page without a second copy of the text: the bytes it
+  returns are the artifact the manifest references and the export has
   already written.
 
   `manifest-seq` is a function of no arguments returning the chain newest
@@ -1304,7 +1390,7 @@
   is. A published manifest is about nine megabytes at the current corpus, and
   three places here read the chain, so a realized sequence would be held for
   the whole export and would cost the chain's length times that. Each caller
-  asks for its own sequence, walks it once and lets it go, which bounds the
+  requests its own sequence, walks it once and releases it, which bounds the
   chain's contribution to what one manifest costs."
   [{:keys [head-hex manifest-seq catalog events tei doi release-name maturity]}]
   (let [release {:head-hex head-hex :doi doi}
@@ -1355,7 +1441,7 @@
                              ndc-classes)))]
 
      ;; the project's own documentation, rendered from the repository files it
-     ;; is reviewed in, and the files those documents send a reader to
+     ;; is reviewed in, and the files those documents link to
      (map (fn [entry] (page (str (:route entry) ".html") (document-page entries entry)))
           entries)
 
@@ -1403,7 +1489,7 @@
                          (reading/render (String. ^bytes (tei slug) "UTF-8"))))]))
              works)
 
-     ;; then the withdrawn works, which no longer have one
+     ;; then the withdrawn works, which get a withdrawal page and no reading page
      (let [gone (remove #(contains? by-slug (get % "slug")) withdrawn)
            last-release (delay (last-release-of manifest-seq (map #(get % "slug") gone)))]
        (map (fn [{:strs [slug event]}]

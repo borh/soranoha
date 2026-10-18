@@ -1,7 +1,7 @@
 (ns soranoha.za.naming-test
   "Download filenames are a rendering of the signed catalog, so their contract
   is the one the catalog cannot carry: a name that identifies the work, never
-  collides, survives a filesystem, and is the same on every activation."
+  collides, is accepted by a filesystem, and is the same on every activation."
   (:require [clojure.string :as string]
             [clojure.test :refer [deftest is testing]]
             [soranoha.snh.schema :as schema]
@@ -13,7 +13,7 @@
   The serving configuration is the one layer that cannot read
   `naming/artifact-kinds`, so it is read here instead: named matchers map to
   the paths they match, and a matcher counts only once a header directive
-  names it."
+  references it."
   []
   (let [text (slurp "config/caddy/Caddyfile")
         matchers (into {} (map (fn [[_ matcher paths]]
@@ -22,12 +22,12 @@
         typed (map second (re-seq #"(?m)^\s*header\s+@(\S+)\s+Content-Type" text))]
     (into #{} (mapcat matchers) typed)))
 
-(deftest every-layer-that-promises-an-artifact-promises-the-same-four
-  ;; A release was assembled carrying three of these four types while the
-  ;; manifest schema, the serving configuration and every work page already
-  ;; promised four. Each layer stated the set on its own and nothing compared
-  ;; them, so the release verified, published and served a route that 404ed.
-  (testing "the extension table names an extension for each type and no other"
+(deftest every-layer-that-lists-artifact-types-lists-the-same-four
+  ;; The manifest schema, the serving configuration, every work page and the
+  ;; extension table each state the set of types. Without this comparison a
+  ;; release carrying three of the four would verify, publish and serve a
+  ;; route that returns 404.
+  (testing "the extension table gives an extension for each type and no other"
     (is (= (set naming/artifact-kinds) (set (keys naming/extensions)))))
 
   (testing "the manifest schema pins exactly these types, in this order"
@@ -58,14 +58,14 @@
    "title" "作品"
    "contributors" (vec contributors)})
 
-(deftest a-filename-names-the-work-it-holds
+(deftest a-filename-identifies-the-work-it-holds
   (testing "the decided shape: author, Aozora's own stem, then the identifier"
     (is (= "Shiraki_Shizu-sanjusanno_shi-000002_000012.xml"
            (naming/filename (work "sanjusanno_shi" "000002_000012"
                                   (person "000012" "白木" "しづ" "Shiraki" "Shizu"))
                             "tei"))))
 
-  (testing "each artifact type gets the extension its bytes deserve"
+  (testing "each artifact type gets the extension for its bytes"
     (let [w (work "kumono_ito" "000092_000879"
                   (person "000879" "芥川" "龍之介" "Akutagawa" "Ryunosuke"))]
       (is (= ["Akutagawa_Ryunosuke-kumono_ito-000092_000879.xml"
@@ -150,7 +150,7 @@
                                   (person "000010" "試験" nil "Shiken" nil))
                             "tei")))))
 
-(deftest bulk-archive-paths-say-what-they-hold
+(deftest bulk-archive-paths-state-what-they-hold
   (is (= "bulk/soranoha-tei.zip" (naming/corpus-bundle-path "tei")))
   (is (= "bulk/soranoha-plaintext.zip" (naming/corpus-bundle-path "plaintext")))
   (is (= "bulk/ndc/soranoha-ndc-9-tei.zip" (naming/ndc-bundle-path "9" "tei")))

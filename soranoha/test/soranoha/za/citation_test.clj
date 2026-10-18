@@ -1,7 +1,7 @@
 (ns soranoha.za.citation-test
   "A citation is the one thing a reader takes away from this site and pastes
-  somewhere it cannot be checked against the source. So the tests are about
-  what each form must survive: an importer that parses it, a bibliography
+  somewhere it cannot be checked against the source. So the tests cover the
+  uses each form must support: an importer that parses it, a bibliography
   built from it, and a later reader trying to get back to the exact bytes."
   (:require [charred.api :as json]
             [clojure.string :as string]
@@ -59,7 +59,7 @@
     (is (not (contains? (citation/csl-json-value pre kumo) "DOI")))
     (is (not (string/includes? (citation/biblatex pre kumo) "doi")))
     (is (not (string/includes? (citation/coins pre kumo) "info:doi")))
-    (testing "the release is still named, because that part is never optional"
+    (testing "the release is still stated, because that part is never optional"
       (is (string/includes? (citation/biblatex pre kumo) "version = {d"))
       (is (string/includes? (citation/biblatex pre kumo)
                             "addendum = {Release dddddddddddd},")))))
@@ -78,16 +78,16 @@
     (testing "the author is a structured name, not a literal"
       (is (= [{"family" "芥川" "given" "龍之介"}] (get record "author"))))
 
-    (testing "the identifier is a field a reader can act on, not buried in a note"
+    (testing "the identifier is a field a reader can use, not inside a note"
       (is (= "000092_000879" (get record "archive_location")))
       (is (= citation/corpus-name (get record "archive"))))
 
-    (testing "and it survives being written and read back as JSON"
+    (testing "and it is unchanged when written and read back as JSON"
       (let [round (json/read-json (json/write-json-str record))]
         (is (= "10.5281/zenodo.1234567" (get round "DOI")))
         (is (= 1971 (ffirst (get (get round "issued") "date-parts"))))))))
 
-(deftest biblatex-names-the-collection-in-fields-a-style-will-print
+(deftest biblatex-states-the-collection-in-fields-a-style-will-print
   (let [entry (citation/biblatex release kumo)]
     (is (string/starts-with? entry "@incollection{soranoha-000092_000879,"))
     (is (string/includes? entry "author = {芥川, 龍之介},"))
@@ -119,7 +119,7 @@
 
 (deftest the-release-reaches-the-bibliography-and-not-only-the-file
   ;; A field the .bib carries and no style prints is not a citation that
-  ;; names the release. The whole hash stays for biber and Zotero, which
+  ;; identifies the release. The whole hash stays for biber and Zotero, which
   ;; import it, and the short name goes where the driver will print it.
   (let [fields (entry-fields (citation/biblatex release kumo))
         printed (vals (select-keys fields printed-by-the-incollection-driver))]
@@ -134,7 +134,7 @@
     (is (= "The Spider's Thread" (get fields "origtitle")))
     (is (some #(string/includes? % "原題: The Spider's Thread") printed)
         "no field a bibliography style prints carries the original title")
-    (testing "and a work that was not translated says nothing about one"
+    (testing "and a work that was not translated states nothing about one"
       (is (not (string/includes? (citation/biblatex release kumo) "原題"))))))
 
 (deftest biblatex-escapes-what-tex-would-otherwise-interpret
@@ -163,7 +163,7 @@
 
 (deftest the-first-source-edition-is-the-one-cited
   ;; a work can record two 底本; the transcription was made from the first,
-  ;; and a citation names one book
+  ;; and a citation cites one book
   (is (not (string/includes? (citation/rendered release kumo) "無視される")))
   (is (= "芥川龍之介全集　第三巻"
          (get (citation/csl-json-value release kumo) "container-title"))))
@@ -175,7 +175,7 @@
                     (assoc kumo "source_editions"
                            [{"title" "本" "first_edition_year" recorded}]))
                    (get "issued")))]
-    (testing "the shapes Aozora actually records"
+    (testing "the shapes Aozora records"
       (is (= {"date-parts" [[1981]]} (year "1981（昭和56）年3月20日")))
       (is (= {"date-parts" [[1971]]} (year "1971(昭和46)年11月30日改版")))
       (is (= {"date-parts" [[2015]]} (year "2015（平成27）年4月16日第1刷")))
@@ -211,7 +211,7 @@
     (testing "校訂 has no CSL counterpart, so it is not promoted to editor"
       (is (nil? (get record "editor")))
       (is (= [{"family" "校" "given" "訂"}] (get record "contributor"))))
-    (testing "BibLaTeX says it with a word from its own closed set of roles"
+    (testing "BibLaTeX states it with a word from its own closed set of roles"
       (is (string/includes? entry "editora = {校, 訂},"))
       (is (string/includes? entry "editoratype = {reviser},")))))
 

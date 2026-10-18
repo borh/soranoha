@@ -11,7 +11,7 @@
   (is (= "kumono_ito" (stem "000092_000879" "kumono_ito.txt")))
   (is (= "kumono_ito" (stem "000092_000879" "files/kumono_ito.txt")))
   (is (= "ippon'ashino_heitai" (stem "x" "ippon'ashino_heitai.txt"))
-      "Hepburn's n' disambiguation is a word boundary and survives"))
+      "Hepburn's n' disambiguation is a word boundary and is retained"))
 
 (deftest an-archive-stem-outside-the-catalogs-character-set-is-folded
   (testing "a space is the word boundary these names otherwise write as an underscore"
@@ -26,8 +26,8 @@
 
 (deftest a-stem-that-cannot-be-folded-is-refused-by-name
   ;; The whole catalog is schema-checked at the boundary, which reports a
-  ;; position in the works array. A stem this cannot rescue is named with its
-  ;; slug here instead, while the work it came from is still in hand.
+  ;; position in the works array. A stem the folding cannot repair is reported
+  ;; with its slug here instead, while the work it came from is available.
   (let [failure (try (stem "000001_000001" "蜘蛛の糸.txt")
                      (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :archive-stem-outside-catalog-character-set (:reason failure)))
@@ -35,10 +35,10 @@
     (is (= "蜘蛛の糸" (:stem failure)))))
 
 (deftest one-person-in-two-relations-is-two-entries-ordered-by-the-pair
-  (testing "the entry's identity is the pair, so both relations survive and sort"
+  (testing "the entry's identity is the pair, so both relations are kept and sorted"
     ;; 海潮音 is Ueda Bin's, as its 著者 and as its 翻訳者 both. Fifteen works
     ;; in the corpus record one person in two relations; keying on the person
-    ;; refused every one of them.
+    ;; would reject every one of them.
     (let [entry (#'catalog/work-entry
                  "002259_000235" (apply str (repeat 64 "a")) "public-domain"
                  {"work" {"title" "海潮音" "orthographic_style" "旧字旧仮名"
@@ -59,7 +59,7 @@
 (deftest an-entry-carries-the-standing-the-work-is-published-under
   ;; A client selecting works by their terms reads this column. Without it the
   ;; only published copy of the standing is inside each work's TEI header, so
-  ;; the question costs one file per work instead of one file.
+  ;; the question requires reading one file per work instead of one file.
   (testing "the standing selection admitted the work under reaches the catalog"
     (doseq [standing ["public-domain" "CC-BY-2.1-JP" "CC-BY-4.0"]]
       (is (= standing
@@ -74,11 +74,11 @@
                    "shokuhin.txt" nil)
                   "rights"))))))
 
-(deftest an-archive-with-bytes-after-its-end-says-so-on-the-entry
-  ;; unzip and Python's zipfile refuse 058100_001505's archive. The bundle
+(deftest an-archive-with-bytes-after-its-end-is-marked-on-the-entry
+  ;; unzip and Python's zipfile reject 058100_001505's archive. The bundle
   ;; reader retries at an earlier end-of-central-directory record and the
-  ;; members come out whole, so nothing published is wrong; what a reader
-  ;; verifying against the source meets is a refusal with no explanation.
+  ;; members are read whole, so nothing published is wrong; what a reader
+  ;; verifying against the source meets is a rejection with no explanation.
   (let [entry #(#'catalog/work-entry
                 "058100_001505" (apply str (repeat 64 "a")) "public-domain"
                 {"work" {"title" "試験" "orthographic_style" "新字新仮名"

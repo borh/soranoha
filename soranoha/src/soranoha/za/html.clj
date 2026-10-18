@@ -1,7 +1,7 @@
 (ns soranoha.za.html
   "Hiccup-style vectors to an HTML5 string.
 
-  Small on purpose. The browse layer is presentation over already-verified
+  The browse layer is presentation over already-verified
   bytes, and a template engine would put a dependency, a cache and an
   execution model between the exporter and files it must be able to produce
   byte-identically on every activation. Rendering here is a pure function of
@@ -12,11 +12,10 @@
   content. Corpus metadata is upstream data, and an entity in a title must
   reach the reader as an entity rather than as markup.
 
-  Replicant was measured against this namespace and rejected on that last
-  point: `replicant.string/render` 2026.07.1 emits a double quote as `&#39;`,
-  which is an apostrophe, in both attribute values and text content. A corpus
-  of Japanese literature carries quotation marks, and a renderer that turns
-  one character into another is not usable here whatever else it offers."
+  `replicant.string/render` 2026.07.1 does not meet that requirement: it
+  emits a double quote as `&#39;`, which is an apostrophe, in both attribute
+  values and text content, and a corpus of Japanese literature carries
+  quotation marks."
   (:require [clojure.string :as string]))
 
 (def ^:private void-elements

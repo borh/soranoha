@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
-# Build a browsable preview of the public serving tree and serve it locally.
-#
-# Two steps, both on the real publication paths: `soranoha-kernel build` over a
-# small subset of the pinned corpus, then soranoha.dev.site-preview, which signs
-# a throwaway local chain with the checked-in conformance fixture keys and
-# exports it through soranoha.za.serve. Caddy then serves that export through
-# the same config file the deployment uses.
-#
-# Not a release. The keys are the public fixture pair, the assessment snapshot
-# is asserted rather than evaluated, and the chain lives under the work
-# directory with no relationship to the published lineage. It exists so a page
-# can be looked at before there is a release to look at.
+# Build and locally serve a browsable preview of the public serving tree.
+# Uses fixture signing keys, an asserted assessment snapshot, and a temporary chain.
 set -euo pipefail
 
 works="${1:-8}"
@@ -24,7 +14,7 @@ if [[ -z "$corpus" ]]; then
 	exit 2
 fi
 
-# a stale run under a rebuilt tree would export bytes no current code produced
+# Clean artifacts from prior preview runs.
 rm -rf "$work_dir/run" "$work_dir/chain" "$work_dir/tree"
 mkdir -p "$work_dir"
 

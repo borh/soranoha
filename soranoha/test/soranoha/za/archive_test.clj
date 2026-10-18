@@ -1,6 +1,6 @@
 (ns soranoha.za.archive-test
   "Archival-observation acceptance at the CLI boundary: a filesystem copy
-  of the origin stands in as the archived view and is the sole read
+  of the origin serves as the archived view and is the sole read
   source. A readable view always yields a report (success or failed with
   the verifier's reason); an unreadable view throws: a failure to
   perform the observation, never an observation."
@@ -51,7 +51,7 @@
         (is (= :failed (:result failed)))
         (is (= :commit-missing (:reason failed)))))
 
-    (testing "only the concrete lowercase commit id names the observation:
+    (testing "only the concrete lowercase commit id identifies the observation:
       aliases and revision expressions are refused before any read"
       (doseq [not-an-identity [(str commit "^{commit}")
                                (str/upper-case commit)
