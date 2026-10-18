@@ -38,11 +38,7 @@ TEI retains it as back matter.
 
 ## The pipeline
 
-```
-Aozora Bunko ZIP  →  primary text  →  AAT  →  parser IR  →  TEI  →  plaintext
-                                                          →  Markdown
-                                                          →  validation report
-```
+![The pipeline](assets/pipeline.svg)
 
 The first three steps are the Rust converter: it lexes Aozora Bunko notation
 into an annotated syntax tree (AAT), then maps that to a parser intermediate
@@ -50,7 +46,8 @@ representation recording byte spans in the decoded source for every node.
 The Clojure kernel combines the parser IR with catalog metadata to produce TEI,
 and projects the three remaining artifacts from the TEI representation.
 
-You can run it yourself from a checkout; see
+You can run it yourself from a checkout of the
+[Soranoha repository on GitHub](https://github.com/borh/soranoha); see
 [the development guide](development.md) for the development shell.
 
 ## The header
@@ -481,8 +478,9 @@ reading policy, and hashed into the same signed manifest:
 
 ```python
 import urllib.request
-body = urllib.request.urlopen(
-    "https://soranoha.org/works/000092_000879/plaintext").read().decode("utf-8")
+
+url = "https://soranoha.org/works/000092_000879/plaintext"
+body = urllib.request.urlopen(url).read().decode("utf-8")
 ```
 
 ## Where to go next

@@ -3,9 +3,6 @@
 Terminology used throughout Soranoha for corpus artifacts, release records,
 and encoding concepts.
 
-For internal names of parser and rendering behavior, see
-[parser and rendering invariants](parser-invariants.md).
-
 ## admission
 
 The decision to include a work in a release. A work is admitted when its

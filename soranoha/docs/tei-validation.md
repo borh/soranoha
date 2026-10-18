@@ -5,7 +5,8 @@ validation layers: Relax NG validates XML structure, while Schematron enforces
 semantic constraints such as nonempty ruby readings, resolved local references,
 header metadata, and preservation-record shape. The generated
 [RNG](../schemas/tei-profile.rng) and [Schematron](../schemas/tei-profile.sch)
-are derived from that ODD.
+are derived from that ODD. Where this page and the ODD disagree, the ODD is
+authoritative.
 
 The `tei-validation.json` output records three layers, not two. `relax_ng` and
 `schematron` are the profile's; `well_formed_xml` is the serializer's own
@@ -17,39 +18,17 @@ and this flag apply the same test, so they always agree. Its profile identity
 is the ODD hash. Toolchain metadata binds the exact ODD, RNG, and Schematron
 hashes, with generator identity from
 [tei-profile-generation.json](../schemas/tei-profile-generation.json).
-Generation metadata whose hashes disagree with the supplied profile is rejected.
-Custom profiles may omit generator metadata; omitted fields are not emitted as
-null placeholders.
 
-Validation results accompany the published TEI under the existing include-and-flag
-policy. A schema pass establishes conformance to the profile. Source fidelity is
-recorded separately by the independent
-[source-accountability report](source-accountability.md), which records lexical
-source occurrences and supports explicit interpretation claim accounting, and
-admission is controlled by assessment evaluation.
+A work with findings is published anyway, with its report beside it. Passing
+the schema means the file conforms to the profile. It does not mean the
+conversion kept every source marker; that is what
+[source accountability](source-accountability.md) reports. And it does not
+admit the work; [assessment evaluation](assessment-evaluation.md) does.
 
-The pinned generation recipe uses TEI P5 4.11.0 and TEI Stylesheets 7.60.0 with
-Saxon-HE. Run from the repository root after editing the ODD:
-
-```sh
-nix run .#regenerate-tei-profile
-just evidence-gate
-```
-
-`regenerate-tei-profile` rewrites the RNG, the Schematron and
-`tei-profile-generation.json` in place; `evidence-gate` runs the drift check
-and the test suite for the current system, so neither step specifies a platform.
-The prose an edit changes determines which hashes change. A `remarks` block
-or a `constraintSpec` description is not copied into either generated file, so
-editing one changes `odd_hash` alone; an `attDef` description is copied into the
-Relax NG as documentation, so editing one changes `rng_hash` as well.
-
-The drift check compares generated artifacts and their provenance with the
-checked-in profile. Runtime validation uses Jing for Relax NG and ph-schematron's
-XSLT backend for Schematron. Schematron rule IDs are `snh-*` and are published
-in each work's `tei-validation.json`. A Relax NG failure is also a finding, but its
-`rule_id` is the constant `relax-ng` rather than an `snh-*` name, because the
-grammar reports a structural violation without a named rule; a consumer that
-filters on the `snh-` prefix drops those. The
+Runtime validation uses Jing for Relax NG and ph-schematron's XSLT backend for
+Schematron. Schematron rule IDs are `snh-*`. A Relax NG failure is also a
+finding, but its `rule_id` is the constant `relax-ng` rather than an `snh-*`
+name, because the grammar reports a structural violation without a named rule;
+a consumer that filters on the `snh-` prefix drops those. The
 [extension vocabulary](tei-vocabulary.md) documents the `snh-*` identifiers
 alongside the `snh:` attributes they constrain.

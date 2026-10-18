@@ -1,0 +1,160 @@
+<svg viewBox="0 0 880 216" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-title pipeline-desc">
+  <title id="pipeline-title">Soranoha Publication Pipeline</title>
+  <desc id="pipeline-desc">Conceptual pipeline showing Aozora Bunko ZIP conversion through the Rust converter to TEI, and projection into plaintext, Markdown, and validation reports by the Clojure kernel.</desc>
+
+  <style>
+    :root {
+      --bg: #f5fbf9;
+      --ink: #152a28;
+      --muted: #4a6a66;
+      --rule: #bfdcd5;
+      --panel: #e2f0ed;
+      --sky: #dcebf4;
+      --field: #ffffff;
+      --link: #15607f;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1c1a;
+        --ink: #e4efec;
+        --muted: #9fbab5;
+        --rule: #33504b;
+        --panel: #1a2b28;
+        --sky: #182a36;
+        --field: #142321;
+        --link: #8ac4e0;
+      }
+    }
+    .bg {
+      fill: var(--bg);
+    }
+    .stage-label {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      fill: var(--muted);
+    }
+    .stage-bracket {
+      fill: none;
+      stroke: var(--rule);
+      stroke-width: 0.8;
+    }
+    .connector {
+      stroke: var(--muted);
+      stroke-width: 1.2;
+      fill: none;
+    }
+    .connector-focal {
+      stroke: var(--link);
+      stroke-width: 1.3;
+      fill: none;
+    }
+    .node-source {
+      fill: var(--panel);
+      stroke: var(--rule);
+      stroke-width: 1;
+      rx: 3px;
+    }
+    .node-box {
+      fill: var(--field);
+      stroke: var(--rule);
+      stroke-width: 1;
+      rx: 3px;
+    }
+    .node-focal {
+      fill: var(--sky);
+      stroke: var(--link);
+      stroke-width: 1.4;
+      rx: 3px;
+    }
+    .node-text {
+      font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", Georgia, serif;
+      font-size: 13px;
+      font-weight: 500;
+      fill: var(--ink);
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .node-focal-text {
+      font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", Georgia, serif;
+      font-size: 14px;
+      font-weight: 600;
+      fill: var(--link);
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .arrow-fill {
+      fill: var(--muted);
+    }
+    .arrow-focal-fill {
+      fill: var(--link);
+    }
+  </style>
+
+  <defs>
+    <marker id="pipeline-arrow" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+      <polygon class="arrow-fill" points="0 0.5, 6 3, 0 5.5"/>
+    </marker>
+    <marker id="pipeline-arrow-focal" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+      <polygon class="arrow-focal-fill" points="0 0.5, 6 3, 0 5.5"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="100%" height="100%"/>
+
+  <text class="stage-label" x="378" y="24" text-anchor="middle">Rust converter</text>
+  <path class="stage-bracket" d="M 204,38 V 34 H 552 V 38"/>
+
+  <text class="stage-label" x="720" y="24" text-anchor="middle">Clojure kernel</text>
+  <path class="stage-bracket" d="M 592,38 V 34 H 848 V 38"/>
+
+  <line class="connector" x1="164" y1="118" x2="204" y2="118" marker-end="url(#pipeline-arrow)"/>
+  <line class="connector" x1="312" y1="118" x2="352" y2="118" marker-end="url(#pipeline-arrow)"/>
+  <line class="connector" x1="424" y1="118" x2="464" y2="118" marker-end="url(#pipeline-arrow)"/>
+  <line class="connector-focal" x1="552" y1="118" x2="592" y2="118" marker-end="url(#pipeline-arrow-focal)"/>
+
+  <path class="connector" d="M 668,109 H 676 Q 684,109 684,101 V 78 Q 684,70 692,70 H 712" marker-end="url(#pipeline-arrow)"/>
+  <line class="connector" x1="668" y1="118" x2="712" y2="118" marker-end="url(#pipeline-arrow)"/>
+  <path class="connector" d="M 668,127 H 684 Q 692,127 692,135 V 158 Q 692,166 700,166 H 712" marker-end="url(#pipeline-arrow)"/>
+
+  <g>
+
+    <rect class="node-source" x="28" y="100" width="136" height="36"/>
+    <text class="node-text" x="96" y="118">Aozora Bunko ZIP</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="204" y="100" width="108" height="36"/>
+    <text class="node-text" x="258" y="118">primary text</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="352" y="100" width="72" height="36"/>
+    <text class="node-text" x="388" y="118">AAT</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="464" y="100" width="88" height="36"/>
+    <text class="node-text" x="508" y="118">parser IR</text>
+  </g>
+
+  <g>
+    <rect class="node-focal" x="592" y="100" width="76" height="36"/>
+    <text class="node-focal-text" x="630" y="118">TEI</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="712" y="52" width="136" height="36"/>
+    <text class="node-text" x="780" y="70">plaintext</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="712" y="100" width="136" height="36"/>
+    <text class="node-text" x="780" y="118">Markdown</text>
+  </g>
+
+  <g>
+    <rect class="node-box" x="712" y="148" width="136" height="36"/>
+    <text class="node-text" x="780" y="166">validation report</text>
+  </g>
+</svg>

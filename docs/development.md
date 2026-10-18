@@ -1,6 +1,7 @@
 # Development
 
-This is the canonical monorepo for the conversion and validation system. Readers
+This is the canonical monorepo for the conversion and validation system,
+developed and maintained by Bor Hodošček at [github.com/borh/soranoha](https://github.com/borh/soranoha). Readers
 of the corpus are directed to [start here](start-here.md), [a worked example](worked-example.md)
 and the [glossary](user-glossary.md) instead; this document is for people who
 build or change the system.
@@ -14,7 +15,8 @@ build or change the system.
   (`1a4f864603970983719655aa4af4525958ac2d38`, MIT or Apache-2.0).
 - `soranoha/`: publication kernel, TEI/plaintext conversion, record schemas,
   validation, and the snh protocol, including
-  [assessment evaluation](../soranoha/docs/assessment-evaluation.md).
+  [assessment evaluation](../soranoha/docs/assessment-evaluation.md) and the
+  [operator runbook](../soranoha/docs/assessment-runbook.md).
 
 ## Shell and gates
 
@@ -61,6 +63,44 @@ separate from runtime dependencies and publication toolchain identities.
 `nix run .#soranoha-replay` measures cold-cache builds and consecutive source
 revisions with the production stages and delta oracle. See
 [performance measurements](performance.md) for the command and timing scope.
+
+## Building and reviewing exports
+
+To build the full export artifacts for a corpus checkout without publishing them:
+
+```sh
+nix run .#soranoha-kernel -- build \
+  --root "$BUILD_STORE" \
+  --aozora-root "$CORPUS_CHECKOUT" \
+  --assets-root "$PWD/soranoha" \
+  --out "$EXPORT_DIR"
+```
+
+Each work directory in `$EXPORT_DIR` contains `tei.xml`, `plain.txt`, `text.md`,
+`tei-validation.json`, `plaintext-projection.json`, `markdown-projection.json`,
+`source-accountability.json`, and `interpretation-coverage.json`. A top-level
+`build.json` records artifact hashes and build results. Omitting `--out` retains
+outputs in the computation store. Building exports does not publish them or accept
+an assessment.
+
+## Regenerating the TEI profile
+
+The pinned recipe uses TEI P5 4.11.0 and TEI Stylesheets 7.60.0 with Saxon-HE.
+After editing the ODD:
+
+```sh
+nix run .#regenerate-tei-profile
+just evidence-gate
+```
+
+`regenerate-tei-profile` rewrites the RNG, the Schematron and
+`soranoha/schemas/tei-profile-generation.json` in place. `evidence-gate` runs
+the drift check, which compares the generated artifacts and their provenance
+with the checked-in profile, and then the test suite. Which hashes change
+depends on the prose edited: a `remarks` block or a `constraintSpec`
+description is copied into neither generated file, so it changes `odd_hash`
+alone; an `attDef` description is copied into the Relax NG as documentation,
+so it changes `rng_hash` as well.
 
 ## Source identity
 

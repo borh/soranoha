@@ -1,73 +1,43 @@
-# Source accountability and validation
+# Source accountability
 
-`source-accountability.json` records lexical occurrences found directly in the
-retained source. It binds the original bytes, decoded UTF-8 text and coverage
-matrix by hash. Each occurrence retains its exact spelling, decoded byte span,
-source region and recognized syntax families. Editorial legend examples remain
-visible as front matter. Unrecognized markers and lossy decoding remain explicit.
+Aozora Bunko marks up its texts with its own notation: `《》` for ruby,
+`※［＃...］` for characters that could not be typed, `［＃...］` for layout and
+emphasis. Source accountability answers one question: how much of that
+notation did the conversion account for? It does not cover rights, which
+[assessment evaluation](assessment-evaluation.md) does, or whether the TEI is
+valid, which [TEI validation](tei-validation.md) does.
 
-This scanner runs independently of the parser. Its stage identity binds the
-scanner executable and matrix; changes confined to the parser stage do not
-invalidate its evidence. Changes to shared scanner dependencies can invalidate it.
-The native command is `ab-source-inventory --source source.txt --matrix matrix.toml
---output-json accountability.json`. The publication wrapper supplies
-`AB_SOURCE_INVENTORY_BIN` and `AB_AOZORA_SYNTAX_MATRIX`.
+## Two reports
 
-Lexical recognition does not establish a correct interpretation. Interpreter
-claims describe what the parser recognized; missing claims remain
-unaccounted. Neither source preservation nor an empty problem list proves semantic
-coverage. Source conformance tests exercise expected values and annotation
-placement for specific examples. TEI profile validation checks the exported
-XML against the profile. These are separate kinds of evidence.
+The build writes two reports for every work, beside the exported TEI:
 
-A report about one edition does not compare its exported values independently
-against every source construction. Conformance tests support the examples they
-exercise; structural validation and interpreter claims are not equivalent to a
-per-edition source/export fidelity certificate.
+- `source-accountability.json` lists every piece of notation in the source
+  text. A scanner that does not use the parser finds them by matching the text
+  against a table of Aozora syntax. For each one it records the exact spelling,
+  the byte span in the decoded UTF-8 text, the region of the file it sits in,
+  and the syntax families it matched. Markers the table does not recognise, and
+  text the decoder could not decode, are listed as well.
+- `interpretation-coverage.json` compares that list with what the parser
+  claims to have interpreted. A claim counts only when it covers the same byte
+  span as a scanned occurrence and a compatible family. For each family the
+  report counts occurrences as `interpreter_claimed`, `unaccounted` or
+  `outside_claim_vocabulary`, and it lists in full every occurrence with an
+  unaccounted or unclassified part.
 
-`interpretation-coverage.json` joins this lexical evidence to explicit native
-interpretation facts. Family counts distinguish `interpreter_claimed` from
-`unaccounted` and from `outside_claim_vocabulary`; a claimed occurrence has at
-least one explicit compatible aspect, not necessarily every aspect. Each claim
-must match the exact span and a compatible family of an independently scanned
-occurrence or nested component.
-Nested markers retain their own component spans. Source apparatus is kept
-separate. Lossy decoding prevents positive claim accounting. Reported
-interpretation problems retain their original influence bounds alongside positive
-claims. A positive claim is not evidence that an overlapping or document-wide
-problem has been resolved.
+Because the scanner does not use the parser, a change to the parser cannot
+alter the list its claims are compared with.
 
-The report states the counts and lists the exceptions. `families` and
-`interpretation_problems` cover every occurrence; `occurrence_count` and
-`unclassified_occurrence_count` give the totals; `unaccounted_occurrences` holds,
-whole, each occurrence with an unaccounted family or unclassified syntax in the
-outer marker or a nested component. Valid partial claims remain in the report;
-they do not remove unclassified components from that list. Each containing occurrence is counted
-once, regardless of how many components are unclassified.
+## What the reports do not show
 
-Families incompatible with every interpretation fact for their marker kind are
-counted under `outside_claim_vocabulary`, rather than `unaccounted`. They do not
-by themselves cause an occurrence to be listed; unclassified components still do.
+The counts show that a marker was recognised, not that it was converted
+correctly. Correctness is checked by conformance tests on specific examples and
+by schema validation. An empty list of unaccounted occurrences therefore does
+not mean the conversion is complete. Where the parser reports a problem over a
+span, a claim over the same span does not cancel it; the problem stays in the
+published TEI as an `interpretation-problem` note.
 
-## Review exports
-
-From the repository root, set these variables to absolute paths. The corpus must
-be a clean Git checkout and the export directory must not exist:
-
-```sh
-nix run .#soranoha-kernel -- build \
-  --root "$BUILD_STORE" \
-  --aozora-root "$CORPUS_CHECKOUT" \
-  --assets-root "$PWD/soranoha" \
-  --out "$EXPORT_DIR"
-```
-
-Each work directory contains `tei.xml`, `plain.txt`, `text.md`,
-`tei-validation.json`, `plaintext-projection.json`, `markdown-projection.json`,
-`source-accountability.json` and `interpretation-coverage.json`. A top-level
-`build.json` records artifact hashes and build results. Omitting `--out` retains
-outputs in the computation store. Building exports does not publish them or accept
-an assessment.
+Both reports stay with the build. They are not published with the work; of
+the build's reports, only `tei-validation.json` is.
 
 ## Exported representations
 
@@ -122,6 +92,3 @@ XML is indented for inspection while mixed content preserves lexical whitespace.
   combined with a line-scoped foot offset. Bare `下付き` maps to
   `baseline-lowered` (distinct from `下付き小文字`) and `指数` maps to `exponent`
   while keeping the target glyphs unchanged in plaintext and Markdown.
-
-Validation provenance binds the ODD, RNG and Schematron hashes through
-`schemas/tei-profile-generation.json`. See [TEI validation](tei-validation.md).

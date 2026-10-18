@@ -127,7 +127,7 @@
     (testing "the entry point and each index exist as ordinary files"
       (doseq [path ["index.html" "authors/index.html" "titles/index.html"
                     "ndc/index.html" "rights.html" "citation.html" "history.html"
-                    "style.css" "search.js" "search-index.json"]]
+                    "docs.html" "style.css" "favicon.svg" "search.js" "search-index.json"]]
         (is (contains? pages path) path)))
 
     (testing "so is every document, and every file the documents link to"
@@ -404,9 +404,8 @@
         (is (string/includes? vocabulary "href=\"/accountability\"")
             "and the other documents are reachable from each one"))
       (let [glossary (page pages "glossary.html")]
-        (is (string/includes? glossary "docs/parser-invariants.md")
-            "a document kept in the repository is named as a path, not linked")
-        (is (string/includes? glossary "docs/design/snh-protocol-v1.md"))))
+        (is (string/includes? glossary "docs/design/snh-protocol-v1.md")
+            "a document kept in the repository is shown as a path, not linked")))
 
     (testing "the landing page lists every served document"
       (let [landing (page pages "index.html")]
@@ -580,3 +579,35 @@
       (is (string/includes? html "<dd>ああ固い氷を破つて「新しき欲情」1922年4月刊</dd><dd>婦人と雨「新しき欲情」1922年4月刊</dd>")))
     (testing "and the reader is never shown the separator the catalog used"
       (is (not (string/includes? html "&lt;br&gt;"))))))
+
+(deftest pages-carry-favicon-and-bilingual-titles-test
+  (let [works [(work "000092_000879" "蜘蛛の糸" "くものいと")]
+        all-pages (pages (inputs works))]
+    (testing "favicon is served and referenced in head"
+      (is (contains? all-pages "favicon.svg"))
+      (is (string/includes? (page all-pages "favicon.svg") "<svg"))
+      (is (string/includes? (page all-pages "index.html")
+                            "<link href=\"/favicon.svg\" rel=\"icon\" type=\"image/svg+xml\">")))
+    (testing "head title tags are bilingual Japanese first with English where distinct"
+      (is (string/includes? (page all-pages "index.html")
+                            "<title>青空文庫TEIコーパス / Aozora Bunko TEI corpus — Soranoha</title>"))
+      (is (string/includes? (page all-pages "authors/index.html")
+                            "<title>著者一覧 / Authors — Soranoha</title>"))
+      (is (string/includes? (page all-pages "titles/index.html")
+                            "<title>作品名から探す / Titles by reading — Soranoha</title>"))
+      (is (string/includes? (page all-pages "titles/ka.html")
+                            "<title>作品名 か行 / Titles: Ka-row — Soranoha</title>"))
+      (is (string/includes? (page all-pages "ndc/index.html")
+                            "<title>NDC分類から探す / By NDC class — Soranoha</title>"))
+      (is (string/includes? (page all-pages "rights.html")
+                            "<title>権利について / Rights and licensing — Soranoha</title>"))
+      (is (string/includes? (page all-pages "citation.html")
+                            "<title>引用のしかた / Citing Soranoha — Soranoha</title>"))
+      (is (string/includes? (page all-pages "history.html")
+                            "<title>リリースの履歴 / Release history — Soranoha</title>"))
+      (is (string/includes? (page all-pages "docs.html")
+                            "<title>解説一覧 / Documentation — Soranoha</title>"))
+      (is (string/includes? (page all-pages "works/000092_000879/index.html")
+                            "<title>蜘蛛の糸 — Soranoha</title>"))
+      (is (string/includes? (page all-pages "works/000092_000879/read.html")
+                            "<title>蜘蛛の糸（本文） / Read: 蜘蛛の糸 — Soranoha</title>")))))

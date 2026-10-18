@@ -89,7 +89,7 @@
     ;; keeps a second value under the first; auto-placement would put it in
     ;; the term column
     "dl.facts dt { grid-column: 1; color: var(--muted); font-size: .9rem; }"
-    "dl.facts dd { grid-column: 2; margin: 0; }"
+    "dl.facts dd { grid-column: 2; margin: 0; overflow-wrap: anywhere; }"
     "ul.works, ul.plain { list-style: none; padding: 0; }"
     "ul.works li { padding-block: .35rem; border-block-end: 1px solid var(--rule); }"
     "ul.works li.empty { color: var(--muted); }"
@@ -118,38 +118,52 @@
     "#results:empty { display: none; }"
     ;; the copy button sits beside the value it copies, in the muted colour
     ;; until hovered or focused, so it is subordinate to the text it copies
-    "button.copy { margin-inline-start: .5em; padding: .1em .5em; font: inherit;"
-    "  font-size: .75em; line-height: 1.6; color: var(--muted); cursor: pointer;"
+    "button.copy { margin-inline-start: .4em; padding: .2em .3em; font: inherit;"
+    "  color: var(--muted); cursor: pointer;"
     "  background: var(--bg); border: 1px solid var(--rule); border-radius: 3px;"
-    "  vertical-align: middle; }"
+    "  vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; }"
+    "button.copy svg { display: block; inline-size: 14px; block-size: 14px; }"
     "button.copy:hover, button.copy:focus-visible { color: var(--ink);"
     "  background: var(--panel); }"
     "button.copy.done { color: var(--link); border-color: var(--link); }"
-    ;; beside a short value the button sits inline, but these two are blocks
-    ;; the full width of the column, so the button goes under the block it
-    ;; copies and against its trailing edge, so it is visually attached to
-    ;; that block
-    "pre + button.copy, code.citation + button.copy { display: block;"
-    "  inline-size: fit-content; margin-block: .4rem 0; margin-inline: auto 0; }"
+    ;; a code box embeds the copy button in its top-right corner
+    ".code-box { position: relative; margin-block: 1rem; }"
+    ".code-box pre, .code-box code.citation { margin: 0; padding-inline-end: 2.8rem;"
+    "  white-space: pre-wrap; overflow-wrap: anywhere; }"
+    ".code-box button.copy { position: absolute; inset-block-start: .4rem; inset-inline-end: .4rem;"
+    "  margin: 0; padding: .35em; text-align: center; }"
+    "details.bibtex .code-box { margin-block: .5rem 0; }"
     "@media (max-width: 32rem) { dl.facts { grid-template-columns: 1fr; }"
     "  dl.facts dd { grid-column: 1; margin-inline-start: 1rem; } ul.cols { columns: 1; } }"
 
     ;; the documentation pages. Prose the project wrote, so unlike the reading
     ;; view these are ordinary elements and take ordinary rules.
     "main.doc h3 { font-size: 1.05rem; margin-block: 1.5rem .5rem; }"
-    "main.doc table { border-collapse: collapse; inline-size: 100%; font-size: .9rem;"
-    "  margin-block: 1rem; }"
+    "main.doc table { border-collapse: collapse; inline-size: 100%; max-inline-size: 100%;"
+    "  font-size: .9rem; margin-block: 1rem; }"
     "@media (max-width: 40rem) { main.doc table { display: block; overflow-x: auto; } }"
     "main.doc th, main.doc td { border: 1px solid var(--rule); padding: .3rem .5rem;"
     "  text-align: start; vertical-align: top; }"
     "main.doc th { background: var(--sky); }"
     "main.doc pre { background: var(--panel); padding: .6rem .8rem; border-radius: 3px;"
-    "  overflow-x: auto; font-size: .85rem; line-height: 1.5; }"
-    "main.doc pre code { font-size: 1em; overflow-wrap: normal; }"
+    "  font-size: .85rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }"
+    "main.doc pre code { font-size: 1em; }"
+    ".tok-c { color: var(--muted); font-style: italic; }"
+    ".tok-tag { color: var(--link); font-weight: 500; }"
+    ".tok-attr { color: var(--muted); }"
+    ".tok-str { color: #1c6d59; }"
+    ".tok-kw { color: var(--link); font-weight: 500; }"
+    ".tok-fn { color: #23586e; }"
+    ".tok-num { color: #824729; }"
+    ".tok-meta { color: var(--muted); }"
+    "@media (prefers-color-scheme: dark) {"
+    "  .tok-str { color: #5bc4a0; } .tok-fn { color: #6db2d6; } .tok-num { color: #d68965; } }"
     "main.doc blockquote { margin-block: 1rem; margin-inline: 0; padding-inline-start: 1rem;"
     "  border-inline-start: 3px solid var(--rule); color: var(--muted); }"
-    "nav.siblings { margin-block-start: 3rem; border-block-start: 1px solid var(--rule);"
+    "main.doc img { max-inline-size: 100%; block-size: auto; display: block; margin-block: 1.5rem; }"
+    "nav.siblings { display: block; margin-block-start: 3rem; border-block-start: 1px solid var(--rule);"
     "  padding-block-start: 1rem; font-size: .9rem; }"
+    "nav.siblings p { margin-block: .5rem; }"
 
     ;; the reading view. Everything below styles TEI that has been projected
     ;; into HTML by soranoha.za.reading; the class names are that projection's
@@ -335,8 +349,9 @@
    ["(function () {"
     "  var clip = navigator.clipboard;"
     "  if (!clip || !document.querySelectorAll) { return; }"
-    "  var ja = document.documentElement.lang === 'ja';"
-    "  var idle = ja ? 'コピー' : 'Copy', done = ja ? 'コピーしました' : 'Copied';"
+    "  var idleIcon = '<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"/><path d=\"M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5\"/></svg>';"
+    "  var doneIcon = '<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"3.5 8.5 6.5 11.5 12.5 4.5\"/></svg>';"
+    "  var idleLabel = 'コピー / Copy', doneLabel = 'コピーしました / Copied';"
     "  function attach(node, text) {"
     "    var anchor = node.parentNode;"
     "    if (!anchor) { return; }"
@@ -344,23 +359,34 @@
     "    var button = document.createElement('button'), timer = null;"
     "    button.type = 'button';"
     "    button.className = 'copy';"
-    "    button.textContent = idle;"
-    "    button.setAttribute('aria-label', idle);"
+    "    button.innerHTML = idleIcon;"
+    "    button.setAttribute('aria-label', idleLabel);"
+    "    button.title = idleLabel;"
     "    button.addEventListener('click', function () {"
     "      clip.writeText(text).then(function () {"
     "        if (timer) { clearTimeout(timer); }"
-    "        button.textContent = done;"
-    "        button.setAttribute('aria-label', done);"
+    "        button.innerHTML = doneIcon;"
+    "        button.setAttribute('aria-label', doneLabel);"
+    "        button.title = doneLabel;"
     "        button.classList.add('done');"
     "        timer = setTimeout(function () {"
-    "          button.textContent = idle;"
-    "          button.setAttribute('aria-label', idle);"
+    "          button.innerHTML = idleIcon;"
+    "          button.setAttribute('aria-label', idleLabel);"
+    "          button.title = idleLabel;"
     "          button.classList.remove('done');"
     "          timer = null;"
     "        }, 1500);"
     "      });"
     "    });"
-    "    anchor.insertBefore(button, node.nextSibling);"
+    "    if (node.tagName === 'PRE' || (node.classList && node.classList.contains('citation'))) {"
+    "      var wrap = document.createElement('div');"
+    "      wrap.className = 'code-box';"
+    "      anchor.insertBefore(wrap, node);"
+    "      wrap.appendChild(node);"
+    "      wrap.appendChild(button);"
+    "    } else {"
+    "      anchor.insertBefore(button, node.nextSibling);"
+    "    }"
     "  }"
     "  var nodes = document.querySelectorAll('pre, code.citation, code.value'), i;"
     "  for (i = 0; i < nodes.length; i++) {"
@@ -368,16 +394,59 @@
     "  }"
     "})();"]))
 
+(def ^:private favicon-svg
+  "A leaf (葉) against sky (空), in the site palette for both colour schemes."
+  (string/join
+   "\n"
+   ["<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">"
+    "  <defs>"
+    "    <linearGradient id=\"leafGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">"
+    "      <stop offset=\"0%\" stop-color=\"#2ca17d\"/>"
+    "      <stop offset=\"100%\" stop-color=\"#145241\"/>"
+    "    </linearGradient>"
+    "    <linearGradient id=\"skyGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">"
+    "      <stop offset=\"0%\" stop-color=\"#2a8eb6\"/>"
+    "      <stop offset=\"100%\" stop-color=\"#135b79\"/>"
+    "    </linearGradient>"
+    "  </defs>"
+    "  <style>"
+    "    .bg { fill: #f5fbf9; }"
+    "    .leaf { fill: url(#leafGrad); }"
+    "    .sky { fill: url(#skyGrad); }"
+    "    .vein { stroke: #f5fbf9; stroke-width: 1.5; stroke-linecap: round; fill: none; }"
+    "    .vein-sub { stroke: #f5fbf9; stroke-width: 1.2; stroke-linecap: round; opacity: 0.8; }"
+    "    @media (prefers-color-scheme: dark) {"
+    "      .bg { fill: #0f1c1a; }"
+    "      .vein, .vein-sub { stroke: #0f1c1a; }"
+    "    }"
+    "  </style>"
+    "  <rect class=\"bg\" width=\"32\" height=\"32\" rx=\"7\"/>"
+    "  <path class=\"leaf\" d=\"M 5 27 C 5 15, 14 5, 27 5 C 23 15, 16 22, 5 27 Z\"/>"
+    "  <path class=\"sky\" d=\"M 5 27 C 16 22, 23 15, 27 5 C 28 17, 19 26, 5 27 Z\"/>"
+    "  <path class=\"vein\" d=\"M 4 28 C 12 21, 19 14, 27 5\" fill=\"none\"/>"
+    "  <line class=\"vein-sub\" x1=\"12\" y1=\"20\" x2=\"8\" y2=\"17\"/>"
+    "  <line class=\"vein-sub\" x1=\"16\" y1=\"16\" x2=\"11\" y2=\"12\"/>"
+    "  <line class=\"vein-sub\" x1=\"20\" y1=\"12\" x2=\"16\" y2=\"8\"/>"
+    "</svg>"]))
+
 (defn- bilingual
   "Japanese label with its English counterpart marked as English, so a screen
   reader and a translation tool both get the language right."
   [ja en]
   (list ja " " [:span {:class "en" :lang "en"} (str "/ " en)]))
 
+(defn- bilingual-title
+  "The `title` element's text: Japanese, then the English when it differs."
+  [ja en]
+  (if (and (seq ja) (seq en) (not= ja en))
+    (str ja " / " en)
+    (or ja en "")))
+
 (defn- head-nodes [title]
   [[:meta {:charset "utf-8"}]
    [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
    [:title (str title " — " site-name)]
+   [:link {:rel "icon" :type "image/svg+xml" :href "/favicon.svg"}]
    [:link {:rel "stylesheet" :href "/style.css"}]])
 
 (defn- chrome
@@ -394,15 +463,21 @@
        [:a {:href "/ndc/"} (bilingual "分類" "NDC")]
        [:a {:href "/rights"} (bilingual "権利" "Rights")]
        [:a {:href "/citation"} (bilingual "引用" "Citation")]
-       [:a {:href "/start-here"} (bilingual "解説" "Docs")]]]
+       [:a {:href "/docs"} (bilingual "解説" "Docs")]]]
      (into [:main (cond-> {} main-class (assoc :class main-class))] body)
      [:footer
       [:p (bilingual
            "本文は青空文庫の収録作品で、符号化データはCC0 1.0で提供しています。作品ごとの権利の状態は各作品のページに記載しています。公開マニフェストは電子署名されており、各ファイルのハッシュ値を記録しています。本サイトはその署名済みの内容を表示しています。"
            "Texts are works from Aozora Bunko; the encoding is CC0 1.0. Each work's page states the rights standing of that work. The release manifest is signed and records the hash of every file; this site displays the signed content.")]
+      [:p {:class "editor"}
+       (bilingual "編纂：Bor Hodošček（大阪大学）"
+                  "Editor: Bor Hodošček (The University of Osaka)")
+       " · "
+       [:a {:href orcid-url :rel "external"} "ORCID"]]
       [:p [:a {:href "/catalog.json"} "/catalog.json"] " · "
        [:a {:href "/releases/HEAD"} "/releases/HEAD"] " · "
-       [:a {:href "https://www.aozora.gr.jp/"} "青空文庫"]]]
+       [:a {:href "https://github.com/borh/soranoha" :rel "external"} "GitHub"] " · "
+       [:a {:href "https://www.aozora.gr.jp/" :rel "external"} "青空文庫"]]]
      [:script {:src "/copy.js"}]])))
 
 ;; Personal names, bylines and download filenames are rendered by
@@ -410,17 +485,17 @@
 ;; the name inside a ZIP must agree.
 
 (def ^:private kana-rows
-  [["a" "あ行" "あいうえおぁぃぅぇぉゔ"]
-   ["ka" "か行" "かきくけこがぎぐげごゕゖ"]
-   ["sa" "さ行" "さしすせそざじずぜぞ"]
-   ["ta" "た行" "たちつてとだぢづでどっ"]
-   ["na" "な行" "なにぬねの"]
-   ["ha" "は行" "はひふへほばびぶべぼぱぴぷぺぽ"]
-   ["ma" "ま行" "まみむめも"]
-   ["ya" "や行" "やゆよゃゅょ"]
-   ["ra" "ら行" "らりるれろ"]
-   ["wa" "わ行" "わをんゎ"]
-   ["other" "その他" ""]])
+  [["a" "あ行" "A-row" "あいうえおぁぃぅぇぉゔ"]
+   ["ka" "か行" "Ka-row" "かきくけこがぎぐげごゕゖ"]
+   ["sa" "さ行" "Sa-row" "さしすせそざじずぜぞ"]
+   ["ta" "た行" "Ta-row" "たちつてとだぢづでどっ"]
+   ["na" "な行" "Na-row" "なにぬねの"]
+   ["ha" "は行" "Ha-row" "はひふへほばびぶべぼぱぴぷぺぽ"]
+   ["ma" "ま行" "Ma-row" "まみむめも"]
+   ["ya" "や行" "Ya-row" "やゆよゃゅょ"]
+   ["ra" "ら行" "Ra-row" "らりるれろ"]
+   ["wa" "わ行" "Wa-row" "わをんゎ"]
+   ["other" "その他" "Other" ""]])
 
 (defn- hiragana
   "Katakana folded to hiragana so one reading form keys the index."
@@ -433,7 +508,7 @@
 (defn- kana-row-key [work]
   (let [reading (get work "title_reading")
         head (when-not (string/blank? reading) (first (hiragana reading)))]
-    (or (some (fn [[key _ members]]
+    (or (some (fn [[key _ _ members]]
                 (when (and head (string/includes? members (str head))) key))
               kana-rows)
         "other")))
@@ -536,6 +611,14 @@
                   works)))
      [:p (bilingual "該当する作品はありません。" "No works here.")])))
 
+(defn- person-order
+  "Sort key for a person: romanised name, then Japanese name, then id. A
+  person with no romanised name sorts after every person who has one."
+  [person]
+  [(or (naming/person-name-romaji person) "\uFFFF")
+   (or (naming/person-name-ja person) "")
+   (get person "person_id")])
+
 (defn- author-groups
   "`works` grouped under their authors, as a library shelf is: one heading
   per author set, in the order of the author index, each with the works in
@@ -546,11 +629,7 @@
         order (fn [[ids group]]
                 (if (empty? ids)
                   [1]
-                  [0 (mapv (fn [person]
-                             [(or (naming/person-name-romaji person) "￿")
-                              (or (naming/person-name-ja person) "")
-                              (get person "person_id")])
-                           (naming/authors-of (first group)))]))]
+                  [0 (mapv person-order (naming/authors-of (first group)))]))]
     (for [[_ group] (sort-by order groups)
           :let [authors (naming/authors-of (first group))]]
       (list
@@ -585,7 +664,6 @@
               paths))
    [:p (bilingual
         (str "各ZIPの直下には、識別子・作品名・著者・底本・初出・分類・リリースなどを収めたcatalog.csvが入っています。"
-             "表計算ソフトでそのまま開いて文献表を作成できます。"
              "引用には識別子・底本ハッシュ・リリースの列を使ってください（ファイル名は便宜上のものです）。")
         (str "Every archive includes catalog.csv at its root with columns for identifier, "
              "title, author, source edition, first publication, class and release. "
@@ -624,16 +702,46 @@
   reach the rest without going back to the landing page."
   [entries current]
   [:nav {:class "siblings"}
-   [:p (bilingual "ほかの解説：" "Other documents:")]
-   [:p (interpose
-        " · "
-        (for [{:keys [route ja en]} entries
-              :when (not= route current)]
-          [:a {:href (str "/" route)} (bilingual ja en)]))]])
+   [:p (bilingual "ほかの解説：" "Other documents:")
+    " "
+    (interpose
+     " · "
+     (for [{:keys [route ja en]} entries
+           :when (not= route current)]
+       [:a {:href (str "/" route)} (bilingual ja en)]))]
+   [:p [:a {:href "/docs"} (bilingual "解説一覧" "All documents")]]])
+
+(def ^:private document-groups
+  [[:guide "入門" "Guides"]
+   [:encoding "符号化の仕様" "Encoding"]
+   [:evidence "検証と収録基準" "Validation and assessment"]])
+
+(defn- docs-index-page
+  "Every served document under its `:group` heading, then the rights and
+  citation pages."
+  [entries]
+  (chrome
+   (bilingual-title "解説一覧" "Documentation")
+   {:main-class "doc"}
+   (concat
+    [[:h1 (bilingual "解説一覧" "Documentation")]]
+    (for [[group group-ja group-en] document-groups
+          :let [members (filter #(= group (:group %)) entries)]
+          :when (seq members)]
+      [:section
+       [:h2 (bilingual group-ja group-en)]
+       [:ul {:class "plain"}
+        (for [{:keys [route ja en]} members]
+          [:li [:a {:href (str "/" route)} (bilingual ja en)]])]])
+    [[:section
+      [:h2 (bilingual "権利と引用" "Rights and citation")]
+      [:ul {:class "plain"}
+       (for [{:keys [route ja en]} docs/generated]
+         [:li [:a {:href (str "/" route)} (bilingual ja en)]])]]])))
 
 (defn- document-page [entries {:keys [route path text ja en]}]
   (chrome
-   ja
+   (bilingual-title ja en)
    {:main-class "doc"}
    (concat [[:h1 (bilingual ja en)]]
            (markdown/render {:text text
@@ -655,7 +763,7 @@
 
 (defn- landing [head-hex works withdrawn-count release-name maturity entries]
   (chrome
-   "青空文庫TEIコーパス"
+   (bilingual-title "青空文庫TEIコーパス" "Aozora Bunko TEI corpus")
    [[:h1 (bilingual "青空文庫TEIコーパス" "Aozora Bunko TEI corpus")]
     [:p (bilingual
          (str "青空文庫の作品をTEI P5に変換し、ハッシュ値で識別できる署名付きリリースとして公開しています。"
@@ -711,22 +819,23 @@
           "See Start here for an overview of encoding policy, identifiers, and assessment criteria.")]
      [:ul {:class "cols plain"}
       (for [{:keys [route ja en]} entries]
-        [:li [:a {:href (str "/" route)} (bilingual ja en)]])]]
+        [:li [:a {:href (str "/" route)} (bilingual ja en)]])]
+     [:p [:a {:href "/docs"} (bilingual "解説一覧" "All documents")]]]
 
     [:section
      [:h2 (bilingual "権利と引用" "Rights and citation")]
      [:p (bilingual
           "底本とした作品は、著作権の保護期間が満了しているか、または権利者がクリエイティブ・コモンズ表示ライセンス（CC BY）で公開しているものです。Soranohaの符号化データはCC0 1.0で提供しています。作品ごとの権利状態は各作品のページとcatalog.jsonに記載しています。"
           "Each underlying work is either out of copyright or published by its rightsholder under a Creative Commons Attribution licence; Soranoha's encoding is CC0 1.0. Each work's page and catalog.json record each work's standing.")]
-     [:p [:a {:href "/rights"} (bilingual "権利について" "Rights statement")] " · "
-      [:a {:href "/citation"} (bilingual "引用のしかた" "How to cite")]]]
+     [:p [:a {:href "/rights"} (bilingual "権利について" "Rights and licensing")] " · "
+      [:a {:href "/citation"} (bilingual "引用のしかた" "Citing Soranoha")]]]
 
     (release-note head-hex (count works))
     [:script {:src "/search.js"}]]))
 
 (defn- author-index [people]
   (chrome
-   "著者一覧"
+   (bilingual-title "著者一覧" "Authors")
    [[:h1 (bilingual "著者一覧" "Authors")]
     [:p (bilingual
          (str "このリリースの収録作品に関わる人物は" (count people) "名です（ローマ字表記の頭文字順）。")
@@ -739,7 +848,7 @@
 
 (defn- author-page [{:keys [label romaji person-id person]} entries]
   (chrome
-   label
+   (bilingual-title label romaji)
    [[:h1 label]
     (when romaji [:p {:class "reading" :lang "ja-Latn"} romaji])
     [:dl {:class "facts"}
@@ -757,28 +866,28 @@
 
 (defn- title-index [rows]
   (chrome
-   "作品名から探す"
+   (bilingual-title "作品名から探す" "Titles by reading")
    [[:h1 (bilingual "作品名から探す" "Titles by reading")]
     [:p (bilingual
          "作品名の読みの頭文字で分類しています。読みの記録がない作品は「その他」に入ります。"
          "Grouped by the first kana of the title reading; works with no recorded reading fall under その他.")]
     (into [:ul {:class "cols"}]
-          (map (fn [{:keys [key label count*]}]
-                 [:li [:a {:href (str "/titles/" key)} label]
+          (map (fn [{:keys [key label en count*]}]
+                 [:li [:a {:href (str "/titles/" key)} (bilingual label en)]
                   [:span {:class "by"} (str " (" count* ")")]])
                rows))]))
 
-(defn- title-row-page [label works]
+(defn- title-row-page [{:keys [label en]} works]
   (chrome
-   (str "作品名 " label)
-   [[:h1 label]
+   (bilingual-title (str "作品名 " label) (str "Titles: " en))
+   [[:h1 (bilingual label en)]
     [:p (bilingual (str "全" (count works) "作品（読みの順）。")
                    (str (count works) " works, ordered by reading."))]
     (work-list works)]))
 
 (defn- ndc-index [classes]
   (chrome
-   "NDC分類から探す"
+   (bilingual-title "NDC分類から探す" "By NDC class")
    [[:h1 (bilingual "NDC分類から探す" "By NDC class")]
     [:p (bilingual
          "日本十進分類法（NDC）の第一次区分です。分類のない作品と児童書のK記号は「その他」にまとめています。"
@@ -790,10 +899,13 @@
                classes))]))
 
 (defn- ndc-class-page [{:keys [key ja en]} works]
-  (let [subclasses (ndc-subclasses works)]
+  (let [subclasses (ndc-subclasses works)
+        page-title (if (= key "other")
+                     (bilingual-title ja en)
+                     (bilingual-title (str "NDC " key " " ja) (str "NDC " key " " en)))]
     (chrome
-     (str "NDC " key " " ja)
-     [[:h1 (bilingual (str key " " ja) en)]
+     page-title
+     [[:h1 (if (= key "other") (bilingual ja en) (bilingual (str key " " ja) en))]
       [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
       (when (seq subclasses)
         [:section
@@ -813,18 +925,21 @@
             naming/bulk-artifact-types))])))
 
 (defn- ndc-subclass-page [{:keys [key class-key ja en]} works]
-  (chrome
-   (str "NDC " key)
-   [[:h1 (str "NDC " key)]
-    [:p {:class "reading"}
-     [:a {:href (str "/ndc/" class-key)} (bilingual (str class-key " " ja) en)]]
-    [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
-    (author-groups works)
-    (bulk-section
-     (str "この細目の" (count works) "作品を一括取得できます。")
-     (str "All " (count works) " works in this subclass, in one archive.")
-     (map (juxt #(naming/ndc-bundle-path key %) identity)
-          naming/bulk-artifact-types))]))
+  (let [page-title (if (and ja en)
+                     (bilingual-title (str "NDC " key " " ja) (str "NDC " key " " en))
+                     (str "NDC " key))]
+    (chrome
+     page-title
+     [[:h1 (str "NDC " key)]
+      [:p {:class "reading"}
+       [:a {:href (str "/ndc/" class-key)} (bilingual (str class-key " " ja) en)]]
+      [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
+      (author-groups works)
+      (bulk-section
+       (str "この細目の" (count works) "作品を一括取得できます。")
+       (str "All " (count works) " works in this subclass, in one archive.")
+       (map (juxt #(naming/ndc-bundle-path key %) identity)
+            naming/bulk-artifact-types))])))
 
 (defn- source-edition-line
   "One 底本, shown the way Aozora Bunko recorded it. 初版発行年 is a free-form
@@ -892,8 +1007,8 @@
                   (bilingual "著作権の存続期間が満了しています。"
                              "The copyright term has expired."))]))
        (when-not (string/blank? card_url)
-         (list [:dt (bilingual "青空文庫" "Aozora Bunko card")]
-               [:dd [:a {:href card_url} card_url]]))
+         (list [:dt (bilingual "青空文庫の図書カード" "Aozora Bunko card")]
+               [:dd [:a {:href card_url :rel "external"} card_url]]))
        [:dt (bilingual "識別子" "Identifier")]
        [:dd [:code {:class "value"} slug]]
        [:dt (bilingual "底本ハッシュ" "Source hash")]
@@ -945,7 +1060,8 @@
                  "served at stable URLs formed from the identifier and artifact type:"))]
        [:p (->> naming/artifact-kinds
                 (map (fn [artifact-type]
-                       [:code {:class "value"} (str "/works/" slug "/" artifact-type)]))
+                       (let [href (str "/works/" slug "/" artifact-type)]
+                         [:a {:href href} [:code {:class "value"} href]])))
                 (interpose " · "))]]
 
       [:section
@@ -979,7 +1095,7 @@
        ;; site-specific configuration, and `genre=bookitem` makes it save the
        ;; work as a section of its 底本 rather than as a book of its own.
        [:span {:class "Z3988" :title (citation/coins release work)}]
-       [:p [:a {:href "/citation"} (bilingual "引用のしかた" "How to cite")]]]
+       [:p [:a {:href "/citation"} (bilingual "引用のしかた" "Citing Soranoha")]]]
 
       (release-note head-hex nil)])))
 
@@ -992,7 +1108,7 @@
   (let [{:keys [head-hex]} release
         {:strs [slug title title_reading]} work]
     (chrome
-     title
+     (bilingual-title (str title "（本文）") (str "Read: " title))
      {:main-class "read"}
      [[:h1 title]
       (when-not (string/blank? title_reading)
@@ -1041,11 +1157,11 @@
        ;; is the page a reader is on when they reach for their reference
        ;; manager
        [:span {:class "Z3988" :title (citation/coins release work)}]
-       [:p [:a {:href "/citation"} (bilingual "引用のしかた" "How to cite")]]]])))
+       [:p [:a {:href "/citation"} (bilingual "引用のしかた" "Citing Soranoha")]]]])))
 
 (defn- withdrawn-page [slug {:strs [reason_code statement]} last-release]
   (chrome
-   (str slug " — 取り下げ")
+   (bilingual-title (str slug " — 取り下げ") (str slug " — Withdrawn"))
    [[:h1 (bilingual "取り下げられた作品" "Withdrawn work")]
     [:p [:code slug]]
     [:dl {:class "facts"}
@@ -1063,7 +1179,7 @@
     (when last-release
       [:p (bilingual "最後に収録されたリリース：" "Last release that contained it:")
        " " [:a {:href (str "/releases/" last-release ".json")} [:code last-release]]])
-    [:p [:a {:href "/rights"} (bilingual "権利について" "Rights statement")]]]))
+    [:p [:a {:href "/rights"} (bilingual "権利について" "Rights and licensing")]]]))
 
 (defn- covered-range
   "The upstream revisions a release covers. A release is minted when the
@@ -1130,7 +1246,7 @@
   corpus, which would read as a release that added everything at once."
   [manifest-seq events]
   (chrome
-   "リリースの履歴"
+   (bilingual-title "リリースの履歴" "Release history")
    {:main-class "doc"}
    [[:h1 (bilingual "リリースの履歴" "Release history")]
     [:p (bilingual
@@ -1189,11 +1305,11 @@
   The page stands on its own without it: a reader who followed
   `rights.statement_url` out of a detached TEI file has to find the answer
   here, not a forwarding address."
-  [{:keys [ja source]} title lead]
+  [{:keys [ja en source]} lead]
   (chrome
-   ja
+   (bilingual-title ja en)
    {:main-class "doc"}
-   (concat [[:h1 (bilingual ja title)]] lead
+   (concat [[:h1 (bilingual ja en)]] lead
            [[:p {:class "by"}
              (bilingual (str "背景と詳細はリポジトリの" source "にあります。")
                         (str "Background and detail are in " source
@@ -1211,7 +1327,6 @@
 (defn- rights-page [document standings {:strs [encoding statement_url]}]
   (generated-page
    document
-   "Rights and licensing"
    [[:p (bilingual
          "複製、再頒布、翻案、翻訳、情報解析、公衆送信はいずれも、営利・非営利を問わず自由に行えます。許諾や対価は不要です。ほとんどの作品では、クレジット表示はお願いであって利用の条件ではありません。権利者がクリエイティブ・コモンズ表示ライセンス（CC BY）で公開している作品に限り、クレジット表示はそのライセンスの条件です。各作品の権利状態は作品ページに記載しています。"
          "You may copy, redistribute, adapt, translate, mine and republish everything here, commercially or not, without permission or fee. For almost every work, attribution is requested rather than required. For works published by their rightsholder under a Creative Commons Attribution licence, attribution is a condition of that licence. Each work page states which applies.")]
@@ -1269,9 +1384,9 @@
          "Soranohaは、著作権が満了したと判定された作品、および権利者が表示のみを条件とするライセンスで公開している作品のみを収録しています。万一、権利判定に誤りがある場合はご連絡ください。"
          "Soranoha includes only works assessed as out of copyright or published by their rightsholders under an attribution-only licence. If you hold rights in a published work or find an error in our rights assessment, please contact us.")]
     [:p (bilingual
-         (str "作品識別子（URLに含まれる" example-identifier "の形式）または青空文庫の図書カードと、権利主張の根拠を添えて、"
-              orcid-url "に記載の連絡先までご連絡ください。書式は問いません。")
-         (str "Write to the contact address on " orcid-url " with the work identifier (such as "
+         (str "作品識別子（URLに含まれる" example-identifier "の形式）または青空文庫の図書カードと、権利主張の根拠を添えて、管理責任者のBor Hodošček（"
+              orcid-url "）までご連絡ください。書式は問いません。")
+         (str "Write to the maintainer, Bor Hodošček (" orcid-url "), with the work identifier (such as "
               example-identifier " in the URL) or the Aozora Bunko card, along with the "
               "basis of the claim. Informal notifications are accepted."))]
     ;; the event's own release is the one that removes the work, so a
@@ -1307,7 +1422,6 @@
 (defn- citation-page [document {:keys [head-hex doi] :as release} release-name maturity]
   (generated-page
    document
-   "Citing Soranoha"
    ;; Citing Soranoha and attributing a work are different obligations, and
    ;; only the second can be a licence condition: CC0 sets none, CC BY does.
    [[:p (bilingual
@@ -1325,7 +1439,7 @@
     ;; Abbreviated 12-char release prefix without trailing ellipsis so the hash resolves directly.
     [:p {:class "by"} (bilingual "コーパス全体" "The whole corpus")]
     [:p [:code {:class "citation"}
-         (str site-name " Aozora Bunko TEI Corpus. Release " (subs head-hex 0 12)
+         (str "Hodošček, Bor. " site-name " Aozora Bunko TEI Corpus. Release " (subs head-hex 0 12)
               (when doi (str ". https://doi.org/" doi)))]]
     [:p (bilingual
          "個々の作品の引用形式を、現在のリリースと「蜘蛛の糸」を例に示します。各作品のページには、その作品の引用形式を掲載しています。"
@@ -1448,6 +1562,7 @@
         by-route (into {} (map (juxt :route identity)) docs/generated)]
     (concat
      [(page "style.css" stylesheet)
+      (page "favicon.svg" favicon-svg)
       (page "search.js" search-js)
       (page "copy.js" copy-js)
       (page "search-index.json" (search-index head-hex works))
@@ -1457,21 +1572,19 @@
                                        (get head "rights")))
       (page "citation.html" (citation-page (by-route "citation") release release-name maturity))
       (page "history.html" (history-page manifest-seq events))
+      (page "docs.html" (docs-index-page entries))
 
       (page "authors/index.html"
             (author-index (mapv (fn [[id {:keys [person works]}]]
                                   {:person-id id
                                    :label (naming/person-label person)
                                    :count* (count works)})
-                                (sort-by (fn [[id {:keys [person]}]]
-                                           [(or (naming/person-name-romaji person) "￿")
-                                            (or (naming/person-name-ja person) "")
-                                            id])
+                                (sort-by (fn [[_ {:keys [person]}]] (person-order person))
                                          people-index))))
 
       (page "titles/index.html"
-            (title-index (mapv (fn [[key label _]]
-                                 {:key key :label label :count* (count (get by-kana key))})
+            (title-index (mapv (fn [[key label en _]]
+                                 {:key key :label label :en en :count* (count (get by-kana key))})
                                kana-rows)))
 
       (page "ndc/index.html"
@@ -1497,9 +1610,9 @@
                                                      #(vec (sort-by reading-key %)))))))
           people-index)
 
-     (map (fn [[key label _]]
+     (map (fn [[key label en _]]
             (page (str "titles/" key ".html")
-                  (title-row-page label (vec (sort-by reading-key (get by-kana key))))))
+                  (title-row-page {:label label :en en} (vec (sort-by reading-key (get by-kana key))))))
           kana-rows)
 
      (map (fn [[key ja en]]

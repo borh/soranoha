@@ -233,7 +233,7 @@
         (doseq [path ["/" "/authors/" "/titles/" "/ndc/" "/rights" "/citation"
                       "/history" "/ns/tei" "/start-here" "/example" "/glossary"
                       "/identifiers" "/validation" "/accountability"
-                      "/assessment" "/annotation-layers"
+                      "/assessment" "/annotation-layers" "/docs" "/favicon.svg"
                       "/schemas/tei-profile.odd"
                       "/schemas/person-record.schema.json"
                       "/license/cc0-1.0.txt"

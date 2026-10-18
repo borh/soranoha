@@ -8,7 +8,7 @@
   parser, its own escaping rules and its own version to a tree that is checked
   byte for byte. The subset covers what the documents use: ATX
   headings, paragraphs, fenced code, pipe tables, bullet lists, blockquotes,
-  and inline code, links, autolinks, bold and italic. There are no images, no
+  images, and inline code, links, autolinks, bold and italic. There are no
   ordered lists, no raw HTML blocks and no reference links in any served
   document.
 
@@ -89,7 +89,7 @@
 (def ^:private inline-pattern
   ;; Code spans first: their content is literal, so nothing inside one may be
   ;; reinterpreted as a link or as emphasis.
-  #"`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|<(https?://[^>\s]+)>|\*\*([^*]+)\*\*|\*([^*]+)\*")
+  #"`([^`]+)`|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|<(https?://[^>\s]+)>|\*\*([^*]+)\*\*|\*([^*]+)\*")
 
 (defn- inline
   "Parse one run of text into hiccup. `link` resolves a Markdown link target to
@@ -101,13 +101,14 @@
         (let [start (.start matcher)
               end (.end matcher)
               before (subs text cursor start)
-              [_ code label target autolink bold italic] (re-groups matcher)
+              [_ code img-alt img-target label target autolink bold italic] (re-groups matcher)
               ;; A code span's content is literal; everything else may nest,
               ;; and the documents do nest, as in a link whose label is a path
               ;; in backticks. Recursion terminates because the inner text is
               ;; strictly shorter than the match that produced it.
               node (cond
                      code [:code code]
+                     img-target [:img {:src (:href (link img-target)) :alt img-alt}]
                      label (let [resolved (link target)
                                  shown (inline label link)]
                              (cond
@@ -139,15 +140,85 @@
 
 (declare blocks)
 
+(def ^:private xml-token-pattern
+  #"(?s)<!--.*?-->|<\?.*?\?>|</?[\w:.-]+|/?>|\s+|[\w:.-]+(?=\s*=)|\"[^\"]*\"|'[^']*'|=")
+
+(defn- highlight-xml [^String s]
+  (let [^java.util.regex.Matcher matcher (re-matcher xml-token-pattern s)]
+    (loop [cursor 0 in-tag? false out []]
+      (if (.find matcher)
+        (let [start (.start matcher)
+              end (.end matcher)
+              before (subs s cursor start)
+              tok (.group matcher)
+              out (cond-> out (seq before) (conj before))]
+          (cond
+            (string/starts-with? tok "<!--")
+            (recur end in-tag? (conj out [:span {:class "tok-c"} tok]))
+
+            (string/starts-with? tok "<?")
+            (recur end in-tag? (conj out [:span {:class "tok-meta"} tok]))
+
+            (string/starts-with? tok "<")
+            (let [tag-name (string/replace tok #"^</?" "")]
+              (recur end true (conj out
+                                    (subs tok 0 (- (count tok) (count tag-name)))
+                                    [:span {:class "tok-tag"} tag-name])))
+
+            (or (= tok ">") (= tok "/>"))
+            (recur end false (conj out tok))
+
+            (and in-tag? (or (string/starts-with? tok "\"")
+                             (string/starts-with? tok "'")))
+            (recur end in-tag? (conj out [:span {:class "tok-str"} tok]))
+
+            (and in-tag? (re-matches #"[\w:.-]+" tok))
+            (recur end in-tag? (conj out [:span {:class "tok-attr"} tok]))
+
+            :else
+            (recur end in-tag? (conj out tok))))
+        (let [tail (subs s cursor)]
+          (seq (cond-> out (seq tail) (conj tail))))))))
+
+(def ^:private py-token-pattern
+  #"(?m)(#.*$)|(f?\"\"\"[\s\S]*?\"\"\"|f?'''[\s\S]*?'''|f?\"[^\"]*\"|f?'[^']*')|\b(def|return|if|elif|else|for|while|in|import|from|as|with|try|except|finally|raise|assert|class|pass|break|continue|lambda|yield|async|await|None|True|False|and|or|not|is)\b|\b(print|len|open|range|int|str|dict|list|set|tuple|type)\b|\b(\d+)\b")
+
+(defn- highlight-python [^String s]
+  (let [^java.util.regex.Matcher matcher (re-matcher py-token-pattern s)]
+    (loop [cursor 0 out []]
+      (if (.find matcher)
+        (let [start (.start matcher)
+              end (.end matcher)
+              before (subs s cursor start)
+              [_ comment str-lit kw builtin num] (re-groups matcher)
+              tok (.group matcher)
+              out (cond-> out (seq before) (conj before))]
+          (cond
+            comment (recur end (conj out [:span {:class "tok-c"} comment]))
+            str-lit (recur end (conj out [:span {:class "tok-str"} str-lit]))
+            kw      (recur end (conj out [:span {:class "tok-kw"} kw]))
+            builtin (recur end (conj out [:span {:class "tok-fn"} builtin]))
+            num     (recur end (conj out [:span {:class "tok-num"} num]))
+            :else   (recur end (conj out tok))))
+        (let [tail (subs s cursor)]
+          (seq (cond-> out (seq tail) (conj tail))))))))
+
+(defn- highlight-code [lang ^String s]
+  (case lang
+    ("xml" "html") (highlight-xml s)
+    ("python" "py") (highlight-python s)
+    s))
+
 (defn- take-fence [lines source]
   (let [info (string/trim (subs (first lines) 3))
         body (take-while (complement fence-line?) (rest lines))
-        rest* (drop (inc (count body)) (rest lines))]
+        rest* (drop (inc (count body)) (rest lines))
+        raw (str (string/join "\n" body) "\n")]
     (when (= (count body) (count (rest lines)))
       (throw (ex-info "unterminated code fence"
                       {:reason :unterminated-code-fence :source source})))
     [[:pre [:code (cond-> {} (seq info) (assoc :class (str "language-" info)))
-            (str (string/join "\n" body) "\n")]]
+            (highlight-code info raw)]]
      rest*]))
 
 (defn- take-table [lines link]

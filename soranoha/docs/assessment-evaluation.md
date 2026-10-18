@@ -1,63 +1,56 @@
 # Assessment evaluation
 
-Assessment source records describe owner-reviewed Aozora Bunko reliance declarations and independent findings with their precise premises. The evaluator regenerates the publication snapshot using the kernel's CAS and constructive traces. The committed source accepts reliance for reviewed corpus editions recorded in `soranoha/data/assessment-source.json`. The publication policy requires applicable assessment evidence; other candidates remain quarantined.
+Soranoha publishes a work only after establishing that its copyright has
+expired in Japan. There are two ways to establish that, and both concern
+Japanese law only. What you may do with the published files is stated in
+[rights and licensing](../../docs/rights.md). How faithfully the text was
+converted is a separate question, answered by
+[source accountability](source-accountability.md).
 
-The research outputs are TEI and visible-body plaintext. The rights snapshot describes admission evidence. Transcription and markup fidelity are covered separately by [source accountability and review exports](source-accountability.md).
+## Reliance on Aozora Bunko's classification
 
-## Prepare Aozora Bunko reliance evidence
+Aozora Bunko marks each work it publishes as copyright-expired or not
+(作品著作権フラグ), following its own published rules. For most works,
+Soranoha relies on that mark. The record of that reliance holds the catalog
+row with the mark, the work's card with its link to the edition, and the file
+bundle itself, all kept as the bytes Aozora Bunko served.
 
-The default admission basis is reliance on Aozora Bunko’s published, work-level copyright-expired classification for the exact edition, scoped to Japan. It is an attributed upstream assertion, not Soranoha’s independent public-domain finding about every contributor. Concrete exceptions or conflicting applicable reviewed findings prevent reliance.
+Before each release the evaluator fetches the catalog row, the card and the
+bundle again. If any of them has changed, is missing or cannot be reached, the
+work drops out of the release. A work also drops out if a reviewer has recorded
+an exception for it, or a reviewed finding contradicts the mark.
 
-Set these paths to absolute paths, then capture a draft for 蜘蛛の糸:
+## Independent reviewed findings
 
-```sh
-nix run .#soranoha-kernel -- aozora-reliance-prepare \
-  --aozora-root "$CORPUS_CHECKOUT" \
-  --evidence-root "$EVIDENCE_ROOT" \
-  --slug 000092_000879 \
-  --out "$DRAFT_SOURCE"
-```
+A reviewer may instead record findings about each contribution to the
+edition: who made it, when that person died, and so on. From those findings the
+evaluator derives public-domain standing under one rule, and only this rule.
+Every contribution to the edition must satisfy all of the following:
 
-To preserve an existing source’s other records, also pass `--assessment-source "$EXISTING_SOURCE"`. Preparation refreshes only the selected edition’s declaration and preserves any recorded exception; clearing an exception requires an explicit source edit. Its observation date is the capture’s UTC date; `--as-of` optionally supplies the owner decision date, which cannot precede observation. Preparation writes a draft and retained evidence; it neither commits acceptance nor publishes.
+- the contributor died in or before 1967;
+- the contribution is attributed to a real name, a registered real name or a
+  well-known pseudonym;
+- the work is neither a film nor a photograph;
+- whether the work was published in the contributor's lifetime or after it is
+  established;
+- every work it derives from, such as the original of a translation, is itself
+  public domain;
+- no Allied-powers wartime addition applies to the term;
+- the evaluation date is 2018-12-29 or later.
 
-Capture retains the official catalog, card, ZIP and applicable rules as exact response bytes at `$EVIDENCE_ROOT/<sha256>`. Evaluation verifies those bytes and checks the live official catalog’s 作品著作権フラグ, the card’s edition link, the canonical file bundle and the approved rules digest. Being present in the Git archive is insufficient. Missing, protected, changed or unreachable official evidence makes that declaration unavailable; archived evidence cannot substitute for a current check. ZIP repacking and unrelated catalog or card edits preserve applicability when the relevant assertion, link and canonical bundle remain the same.
+A reviewer may also record a contribution as in copyright or as undetermined.
+A work that fails the rule is not thereby protected; it is simply not
+published. The statutes behind the rule are quoted in
+[the statutory citations](evidence/jp-term-statute-citations.md).
 
-Review the generated declaration’s basis and dates, then evaluate it using the command below with `--assessment-source "$DRAFT_SOURCE" --evidence-root "$EVIDENCE_ROOT"`. To record a concrete unresolved exception, set that declaration’s `exception` to a nonempty explanation. Remove or revise declarations through the owner-controlled source workflow.
+A work is admitted whole or not at all. If the author's copyright has expired
+but the translator's has not, the work stays out.
 
-Evidence supporting publication is retained indefinitely, separately from disposable computation caches. Soranoha accepts an explicit evidence directory and checks digests. The overall NixOS configuration sets its storage path and owns backup and recovery. Raw retained evidence stays internal; a public snapshot carries digest references to it rather than a download endpoint.
+## The release record
 
-## Evaluate a reviewed source
-
-From the repository root, using a clean Git checkout of the corpus, set `ASSESSMENT_STORE`, `CORPUS_CHECKOUT`, `EVIDENCE_ROOT`, and `SNAPSHOT_OUTPUT` to absolute paths. The Nix wrapper changes directory to its store copy before launching Clojure, so input and output paths must not depend on the caller’s working directory:
-
-```sh
-nix run .#soranoha-kernel -- assessment-evaluate \
-  --root "$ASSESSMENT_STORE" \
-  --aozora-root "$CORPUS_CHECKOUT" \
-  --assessment-source "$PWD/soranoha/data/assessment-source.json" \
-  --evidence-root "$EVIDENCE_ROOT" \
-  --as-of 2026-09-06 \
-  --out "$SNAPSHOT_OUTPUT"
-```
-
-The Nix entry point supplies the toolchain identity. Direct library or Clojure CLI callers must supply it themselves. `assessment-evaluate` accepts draft inputs and never publishes. Retained-evidence observations also require `--evidence-root`, an explicit directory containing the retained bytes at their declared relative paths; digests are checked before evaluation. Evidence retention is independent of the disposable computation store.
-
-Author source records against [the closed schema](../resources/assessment/source-1.schema.json). `soranoha.assessment.records/encode` returns canonical bytes; decoding rejects unknown fields, duplicate keys and noncanonical encoding. Authored finding IDs must not use the reserved `jp-conservative-term/` rule namespace. [Synthetic evaluator fixtures](../test/soranoha/assessment/evaluate_test.clj) illustrate records and premise fingerprints. [The real-edition dossier](../data/dossiers/README.md) records observations rather than findings.
-
-## Dependency and authority boundaries
-
-A fact is scoped by subject, predicate and jurisdiction. Person death years can be shared; contribution attribution and wartime-addition findings belong to the specific contribution. Catalog rows supply candidates, never the complete rights-relevant set. A reviewed contribution-set finding may discharge listed roles and add omitted identities. Minted identities use a disjoint namespace and their evidence must be consumed explicitly.
-
-Premises default to `evidence-version`. A `value` or `set-membership` projection requires an explicit rationale and retains only the dependency it declares. Evaluation separates semantic identity from basis identity. A corrected citation updates provenance while unchanged conclusions can reuse downstream semantic computations. Source capture reads current checkout observations; changed or removed inputs make their actual dependent findings unavailable. Independent facts retain their identities and traces.
-
-Effective dates belong to findings. Derived dates are at least the latest consumed premise date; `--as-of` validates applicability without becoming every fact's identity. The implemented sufficient expiry rule covers the adopted Japanese assessment model for dates from 2018-12-29 onward. Failure to establish that rule does not establish copyright protection. Unsupported historical or rights cases remain not-evaluated; explicit reviewed status findings may record in-copyright or undetermined, but public-domain is derived only from the established rule. Conflicting applicable justifications, cycles and dangling controls are structural errors; unavailable support produces not-evaluated snapshot facts. Publication is authorized only by this evaluator's closed acceptance rules over recorded findings.
-
-Review and commit the accepted source and regenerated snapshot before release. The release CLI requires source and snapshot bytes committed in the same Git checkout revision. The operator's owner-controlled Git workflow supplies acceptance authority; the assessor string is attribution, not an authenticated signature. After validating all file inputs, preflight captures local source identities. Before publication, the release evaluates current observations, byte-compares the regenerated snapshot, checks the consumed corpus content, performs current official applicability checks for reliance declarations, and rechecks committed assessment bytes. Any changed evaluation causes the captured release to be rejected. Unrelated owner-file changes do not invalidate the assessment.
-
-The scheduled release workflow supplies the runner’s UTC date with `--as-of "$(date -u +%F)"`. The date validates applicability; it does not alter fact values or cause the snapshot to change daily. A finding dated later than that UTC date fails with `future-assessment-finding`; a new JST calendar date can lead UTC by up to nine hours. Reproduce a particular evaluation with its original `--as-of`, not only its input revision. The scheduled release passes no `--evidence-root` of its own: it reaches the command as an `evidence-root` key of the deployment configuration the workflow specifies with `--deployment`, which is where the mounted directory has to be recorded before retained evidence or reliance declarations are used in a scheduled release. A source carrying reliances without one fails with `missing-evidence-root`.
-
-Assessment-owned source records, dossiers, publication snapshot, and policy are in `soranoha/data/` and are consumed through explicit paths. The same-revision check binds the assessment source and snapshot within the monorepo; the policy is validated separately.
-
-The toolchain identity covers the runtime and dependency environment, not Soranoha source code. Change the assessment `rule-version` whenever its legal rule or computation changes; that version identifies both the rule stage and its recorded basis. Change `reliance-version` when reliance eligibility or payload computation changes. Change `assessment-fact-version` when fact serialization or meaning changes. Keep these versions local to the affected stage so unrelated program changes preserve reusable results.
-
-The build/render graph remains separate from assessment rules. All sources emit `snh-assessment-snapshot/2`, whose candidates distinguish independent assessments from edition-level reliance. The snapshot carries the attributed assertion and retained-evidence digests; it does not create contributor findings. The manifest and signature formats remain unchanged. Assessment source files remain internal inputs.
+Each release manifest includes the hash of an assessment snapshot
+(`snh-assessment-snapshot/2`). The snapshot lists every work that was
+considered, records which of the two bases admitted it, and gives the SHA-256
+of each page the evaluator read. The pages themselves are not published.
+Manifests form an append-only chain, so the basis of every admission can be
+checked later.

@@ -219,7 +219,7 @@ release records.
 
 To compare a release against an earlier point in Aozora Bunko's history,
 check that history out and compare it against the release. From a
-checkout of this repository:
+checkout of the [Soranoha repository on GitHub](https://github.com/borh/soranoha):
 
 ```sh
 nix run .#soranoha-kernel -- corpus-delta \

@@ -30,25 +30,28 @@
 
   Two documents are not served as pages: the parser invariants and
   the snh protocol specification are written for implementers, and a link to
-  either resolves to its repository path rather than a page."
+  either resolves to its repository path rather than a page.
+
+  `:group` is the heading the document is listed under on the documentation
+  index."
   [{:route "start-here" :path "docs/start-here.md"
-    :ja "はじめに"}
+    :ja "はじめに" :group :guide}
    {:route "example" :path "docs/worked-example.md"
-    :ja "変換の実例：蜘蛛の糸"}
+    :ja "変換の実例：蜘蛛の糸" :group :guide}
    {:route "glossary" :path "docs/user-glossary.md"
-    :ja "用語集"}
+    :ja "用語集" :group :guide}
    {:route "identifiers" :path "soranoha/docs/work-identifiers.md"
-    :ja "作品識別子"}
+    :ja "作品識別子" :group :encoding}
    {:route "ns/tei" :path "soranoha/docs/tei-vocabulary.md"
-    :ja "TEI拡張語彙"}
+    :ja "TEI拡張語彙" :group :encoding}
    {:route "validation" :path "soranoha/docs/tei-validation.md"
-    :ja "TEIの検証"}
+    :ja "TEIの検証" :group :evidence}
    {:route "accountability" :path "soranoha/docs/source-accountability.md"
-    :ja "底本表記の照合と検証"}
+    :ja "底本表記の照合と検証" :group :evidence}
    {:route "assessment" :path "soranoha/docs/assessment-evaluation.md"
-    :ja "公開可否の判断"}
+    :ja "公開可否の判断" :group :evidence}
    {:route "annotation-layers" :path "docs/annotation-layers.md"
-    :ja "研究用の注釈レイヤー"}])
+    :ja "研究用の注釈レイヤー" :group :encoding}])
 
 (def generated
   "Pages the browse layer assembles itself, because each states facts it reads
@@ -66,9 +69,9 @@
 
   `:source` identifies the repository document that treats the subject at length.
   It is background a reader may want, not the page's substance."
-  [{:route "rights" :ja "権利について"
+  [{:route "rights" :ja "権利について" :en "Rights and licensing"
     :source "docs/rights.md"}
-   {:route "citation" :ja "引用のしかた"
+   {:route "citation" :ja "引用のしかた" :en "Citing Soranoha"
     :source "docs/citation.md"}])
 
 (def verbatim
@@ -99,7 +102,9 @@
    {:route "mappings/aat-v2-to-parser-ir-v1/generated-probe"
     :path "ab-validator/data/aat-to-parser-ir-mapping-v2.json"}
    {:route "policies/source-region-publication-v0"
-    :path "soranoha/data/source-region-publication-policy-v0.json"}])
+    :path "soranoha/data/source-region-publication-policy-v0.json"}
+   {:route "assets/pipeline.svg"
+    :path "docs/assets/pipeline.svg"}])
 
 (defn root
   "The directory the served files are read from."

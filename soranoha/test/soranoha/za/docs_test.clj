@@ -114,3 +114,23 @@
 
               :else
               (is (re-find #"^(https?://|mailto:)" href) href))))))))
+
+(deftest markdown-renders-images
+  (let [rendered (markdown/render {:text "# Title\n\n![The pipeline](assets/pipeline.svg)\n"
+                                   :link (constantly {:href "/assets/pipeline.svg"})
+                                   :source "docs/test.md"})]
+    (is (= [[:p (list [:img {:src "/assets/pipeline.svg" :alt "The pipeline"}])]]
+           rendered))))
+
+(deftest markdown-highlights-xml-and-python
+  (let [rendered (markdown/render {:text "# Title\n\n```xml\n<tag attr=\"val\">text</tag>\n```\n\n```python\nimport sys\n# note\n```\n"
+                                   :link identity
+                                   :source "docs/test.md"})]
+    (is (= 2 (count rendered)))
+    (let [[xml-block py-block] rendered]
+      (is (= :pre (first xml-block)))
+      (is (some (fn [node] (and (vector? node) (= :span (first node)) (= {:class "tok-tag"} (second node))))
+                (nth (second xml-block) 2)))
+      (is (some (fn [node] (and (vector? node) (= :span (first node)) (= {:class "tok-kw"} (second node))))
+                (nth (second py-block) 2))))))
+

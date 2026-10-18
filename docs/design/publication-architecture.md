@@ -35,7 +35,8 @@ publication preflight checks those inputs before running the build. A catalog
 contribution listing is not proof of exhaustive authorship or copyright ownership.
 The implemented Aozora Bunko reliance route records the upstream assertion and its
 source applicability, separately from independent rights assessment.
-See [assessment evaluation](../../soranoha/docs/assessment-evaluation.md).
+See [assessment evaluation](../../soranoha/docs/assessment-evaluation.md) and the
+[operator runbook](../../soranoha/docs/assessment-runbook.md).
 
 Source fidelity measures markup preservation. It is research evidence separate
 from rights admission and TEI schema validation. Plaintext contains visible body
