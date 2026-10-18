@@ -4,16 +4,21 @@
 //! its Aho-Corasick DFA, `classify_annotation_body`, and the per-family
 //! body parsers. Operates purely on the trimmed body string (no event
 //! context); the forward-reference recognisers that need event context
-//! live in the parent module. Extracted verbatim from the classify-stage
-//! classifier.
+//! live in the parent module.
 
 #[cfg(feature = "classify-instrument")]
 use super::super::instrumentation::{Subsystem, SubsystemGuard};
-use crate::text_variant::image_edition_note;
-use ab_aozora_syntax::ast::KuntenKind;
+use crate::text_variant::{
+    edition_statement, image_edition_note, layout_statement, located_figure_note,
+    omission_note_certainty, ruby_reading_annotation, sic_target, source_legibility_note,
+    uncertain_correction,
+};
 use ab_aozora_syntax::ast::{Content, Node};
+use ab_aozora_syntax::ast::{KuntenKind, KuntenScope};
 use ab_aozora_syntax::external_table_reference::external_table_filename;
 
+use ab_aozora_encoding::gaiji as gaiji_resolve;
+use std::borrow::Cow;
 use std::sync::OnceLock;
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, Anchored, Input, MatchKind, StartKind};
@@ -23,10 +28,11 @@ use ab_aozora_syntax::alloc::Allocator;
 use ab_aozora_syntax::ast::Directive;
 use ab_aozora_syntax::{
     AbsoluteSize, BOUTEN_KINDS, BlockPurpose, BlockStyles, BoutenKind, BoutenPosition,
-    CaptionScope, ColumnBlock, ColumnCount, DirectiveKind, EnclosureKind, FontShift, HeadingKind,
-    HeadingStyle, HorizontalPresentation, IndentBlock, IndentLayout, Kumi, LineAlignment,
-    LineFormat, LineWidth, QualitativeFontSize, RegionClose, RegionFormat, SectionKind, Span,
-    TableBlock,
+    CaptionScope, ColumnBlock, ColumnCount, DecorationPosition, DirectiveKind, EnclosureKind,
+    FirstLineIndent, FollowingPlacement, FontShift, HeadingKind, HeadingStyle,
+    HorizontalPresentation, IndentBlock, IndentLayout, Kumi, LineAlignment, LineFormat, LineWidth,
+    PageVerticalPlacement, QualifiedBreak, QualifiedBreakKind, QualitativeFontSize, RegionClose,
+    RegionFormat, SectionKind, Span, TableBlock,
 };
 
 use super::super::pair::PairEvent;
@@ -120,7 +126,7 @@ struct BodyPattern {
 /// dispatch to a small per-family parser for the body remainder.
 #[derive(Clone, Copy)]
 enum BodyFamily {
-    // === Exact-match (body must equal needle) ===
+    // Exact-match (body must equal needle).
     PageBreak,
     BodyEnd,     // 本文終わり
     ForcedBreak, // 改行
@@ -130,6 +136,8 @@ enum BodyFamily {
     AlignEnd0,           // 地付き
     CenterMarker,        // ページの左右中央 / 中央揃え
     LineGothic,          // この行はゴシック体
+    LineFramed,          // この行は枠囲み
+    PagePlacement,       // ページの天地中央
     KeigakomiOpen,       // 罫囲み
     KeigakomiClose,      // 罫囲み終わり
     IndentBlock1,        // ここから字下げ → Indent { amount: 1 }
@@ -148,10 +156,12 @@ enum BodyFamily {
     ParamBlockEnd,       // ここで[N]段組(み) / N段階…文字終わり
     WarichuOpen,         // 割り注
     WarichuClose,        // 割り注終わり
+    WarigakiOpen,        // 割書
+    WarigakiClose,       // 割書終わり
     KaeritenSingle,      // body must equal one of 12 single-char marks
     KaeritenCompound,    // body must equal one of 8 compound marks
 
-    // === Prefix-with-parameter (parse body[match_end..]) ===
+    // Prefix-with-parameter (parse body[match_end..]).
     AlignEndParamPrefix, // 地から → 地から{N}字上げ
     AlignEndSpacingPrefix,
     GothicAlignEndPrefix,
@@ -163,7 +173,7 @@ enum BodyFamily {
     LineAlignEndCompound,     // この行、下揃え、下から{N}字上げ、…
     OkuriganaPrefix,          // （ → kaeriten okurigana （X）
 
-    // === Body-equals-pattern then parse from body[0] ===
+    // Body-equals-pattern, then parse from body[0].
     IndentParamPrefix, // {digit} → {N}字下げ (re-parse from body[0])
 
     /// 傍点 / 傍線 range form (`傍点` / `白丸傍点` / `二重傍線` / `左に傍線`
@@ -208,9 +218,19 @@ enum BodyFamily {
     /// `Indent` leaf. Also carries the both-margin compound
     /// (`天X{N}字下げ、地より{M}字上げで`), see [`parse_both_margin_tail`].
     TopIndentPrefix,
+    /// `この行{N}字下げ`: the explicit single-line spelling of a plain
+    /// `{N}字下げ` directive.
+    ThisLineIndentPrefix,
     /// `改行天付き` → `改行天付き、折り返して{N}字下げ`: the ここから-less
     /// bare sibling of the top-flush hanging indent (amount 0 + wrap N).
     KaigyouTentsukiPrefix,
+    /// `数字は{N}字下げ、説明文は{M}字下げ`: numbered items whose number
+    /// sits at N and whose text wraps at M, a hanging indent (amount N +
+    /// wrap M) closed by the shared 字下げ終わり.
+    NumberedItemIndentPrefix,
+    /// `次の{K}項目は２行目以降{M}字下げ`: the following items hang from the
+    /// top margin with continuation lines at M (amount 0 + wrap M).
+    NextItemsIndentPrefix,
 
     /// Absolute font-size line directive (`大文字` … `特大文字、太字`). The
     /// needle anchors on the size keyword; `parse_line_font_size` re-reads the
@@ -221,9 +241,7 @@ enum BodyFamily {
 /// How a [`BodyFamily`] consumes its DFA match: an `Exact` family must
 /// equal the whole body, a `Prefix` family parses `body[match_end..]`,
 /// and a `Reparse` family re-reads the full body from `body[0]`. Derived
-/// 1:1 from the family so the exact-vs-not contract lives in one place
-/// instead of being split across the per-arm `if exact` guards and a
-/// parallel catch-all `None`.
+/// 1:1 from the family, so the exact-match contract is stated in one place.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MatchMode {
     Exact,
@@ -243,6 +261,8 @@ const fn body_family_mode(family: BodyFamily) -> MatchMode {
         | BodyFamily::AlignEnd0
         | BodyFamily::CenterMarker
         | BodyFamily::LineGothic
+        | BodyFamily::LineFramed
+        | BodyFamily::PagePlacement
         | BodyFamily::KeigakomiOpen
         | BodyFamily::KeigakomiClose
         | BodyFamily::WarichuBlockOpen
@@ -262,6 +282,8 @@ const fn body_family_mode(family: BodyFamily) -> MatchMode {
         | BodyFamily::CombineUprightClose
         | BodyFamily::WarichuOpen
         | BodyFamily::WarichuClose
+        | BodyFamily::WarigakiOpen
+        | BodyFamily::WarigakiClose
         | BodyFamily::KaeritenSingle
         | BodyFamily::KaeritenCompound => MatchMode::Exact,
         BodyFamily::AlignEndParamPrefix
@@ -279,9 +301,12 @@ const fn body_family_mode(family: BodyFamily) -> MatchMode {
         | BodyFamily::ParamBlockEnd
         | BodyFamily::OkuriganaPrefix
         | BodyFamily::TopIndentPrefix
-        | BodyFamily::KaigyouTentsukiPrefix => MatchMode::Prefix,
+        | BodyFamily::KaigyouTentsukiPrefix
+        | BodyFamily::NumberedItemIndentPrefix
+        | BodyFamily::NextItemsIndentPrefix => MatchMode::Prefix,
         BodyFamily::FontSizeBlockEnd
         | BodyFamily::IndentParamPrefix
+        | BodyFamily::ThisLineIndentPrefix
         | BodyFamily::BoutenRange
         | BodyFamily::Emphasis
         | BodyFamily::SmallScriptRange
@@ -291,10 +316,10 @@ const fn body_family_mode(family: BodyFamily) -> MatchMode {
 }
 
 /// Static pattern table. Order is irrelevant for behavior because the
-/// DFA is built with [`MatchKind::LeftmostLongest`]: the longer needle
-/// always wins (so `罫囲み終わり` beats `罫囲み`, `ここから字下げ` beats
-/// `ここから`, `一レ` beats `一`, etc.). Keeping families together for
-/// readability instead of sorting by length.
+/// DFA is built with [`MatchKind::LeftmostLongest`]: the longer needle is
+/// always selected (`罫囲み終わり` over `罫囲み`, `ここから字下げ` over
+/// `ここから`, `一レ` over `一`, etc.). Families are grouped for
+/// readability instead of sorted by length.
 static BODY_PATTERNS: &[BodyPattern] = &[
     // Block container with full-keyword bodies.
     BodyPattern {
@@ -317,6 +342,10 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         needle: "ここより",
         family: BodyFamily::IndentBlockParamPrefix,
     },
+    BodyPattern {
+        needle: "以下",
+        family: BodyFamily::IndentBlockParamPrefix,
+    },
     // `これより手紙文、{N}字下げ` is the same opener written with a different
     // deictic. It carries no measure of its own, so it reaches the same body
     // parse as `ここから` and `ここより` and declines the same way.
@@ -326,6 +355,12 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     BodyPattern {
         needle: "ここから",
+        family: BodyFamily::IndentBlockParamPrefix,
+    },
+    // Attested spellings that drop a character of the opener or misspell
+    // the closer's 字下げ as 地下げ.
+    BodyPattern {
+        needle: "ここか",
         family: BodyFamily::IndentBlockParamPrefix,
     },
     BodyPattern {
@@ -341,6 +376,10 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::IndentBlockEnd,
     },
     BodyPattern {
+        needle: "ここで地下げ終わり",
+        family: BodyFamily::IndentBlockEnd,
+    },
+    BodyPattern {
         needle: "ここで字下げおわり",
         family: BodyFamily::IndentBlockEnd,
     },
@@ -349,7 +388,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::IndentBlockEnd,
     },
     // The quotation's own close, with or without the `ここで` prefix and with
-    // either 終わり spelling. It names the role it closes, so pairing checks the
+    // either 終わり spelling. It states the role it closes, so pairing checks the
     // role rather than closing whichever indentation scope is innermost.
     BodyPattern {
         needle: "ここで引用文終",
@@ -390,9 +429,9 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::FormulaBlockEnd,
     },
     // The standalone table scope. Both sides read their whole body rather than
-    // matching a needle exactly, because the source can name an enclosure or a
+    // matching a needle exactly, because the source can state an enclosure or a
     // writing direction beside the role (`ここから表罫囲み`, `ここから横組みの表`)
-    // and the needle that wins is not the one that says which.
+    // and the selected needle does not identify which.
     BodyPattern {
         needle: "ここから表",
         family: BodyFamily::TableBlockOpen,
@@ -411,6 +450,14 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     BodyPattern {
         needle: "ここでプログラム",
+        family: BodyFamily::TableBlockEnd,
+    },
+    BodyPattern {
+        needle: "ここから罫仕切り",
+        family: BodyFamily::TableBlockOpen,
+    },
+    BodyPattern {
+        needle: "ここで罫仕切り終わり",
         family: BodyFamily::TableBlockEnd,
     },
     BodyPattern {
@@ -437,6 +484,16 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         needle: "ここで横書き終わり",
         family: BodyFamily::HorizontalBlockEnd,
     },
+    // Horizontal setting runs left to right, so the direction clause restates
+    // the plain block.
+    BodyPattern {
+        needle: "ここから左から右への横組み",
+        family: BodyFamily::HorizontalBlockOpen,
+    },
+    BodyPattern {
+        needle: "ここで左から右への横組み終わり",
+        family: BodyFamily::HorizontalBlockEnd,
+    },
     BodyPattern {
         needle: "ここで大きな文字終わり",
         family: BodyFamily::FontSizeBlockEnd,
@@ -448,7 +505,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     // Bare-range font-size close (ここ-less): ［＃大きな/小さな文字終わり］,
     // the sibling of ここで…終わり. Reuses FontSizeBlockEnd; the open side
     // (［＃{N}段階…文字］) routes through IndentParamPrefix (leading digit).
-    // LeftmostLongest keeps ここで… winning over the bare needle.
+    // LeftmostLongest selects ここで… over the bare needle.
     BodyPattern {
         needle: "大きな文字終わり",
         family: BodyFamily::FontSizeBlockEnd,
@@ -459,7 +516,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     // Bare-range horizontal (ここ-less): ［＃横組み］ … ［＃横組み終わり］,
     // the sibling of ここから横組み / ここで横組み終わり. Same Horizontal
-    // container; LeftmostLongest keeps 横組み終わり winning over 横組み, and
+    // container; LeftmostLongest selects 横組み終わり over 横組み, and
     // the exact-match guard rejects compounds like 横組みで、… (→ Unknown).
     BodyPattern {
         needle: "横組み",
@@ -478,7 +535,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::CombineUprightClose,
     },
     // 小書き range: ［＃行右小書き］ … ［＃行右小書き終わり］ (and 行左).
-    // LeftmostLongest keeps 行右小書き終わり winning over 行右小書き.
+    // LeftmostLongest selects 行右小書き終わり over 行右小書き.
     BodyPattern {
         needle: "行右小書き",
         family: BodyFamily::SmallScriptRange,
@@ -529,11 +586,8 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         needle: "ここで図表下部解説文終わり",
         family: BodyFamily::CaptionRange,
     },
-    // 縦中横 has no paired-range form (spec §6.3 defines only the forward-
-    // reference `「X」は縦中横` leaf). A bare `［＃縦中横］…［＃縦中横終わり］` is a
-    // non-canonical corpus convention that used to open a styling range,
-    // contradicting the handbook's own tcy page; it now stays verbatim
-    // `Directive{Unknown}` and never opens a block.
+    // Bare-range TCY is attested in the source corpus alongside the guide's
+    // forward-reference form, and therefore retains an explicit styling range.
     // Block 罫囲み (ここから form; the bare 罫囲み is also KeigakomiOpen).
     // LeftmostLongest keeps ここから罫囲み over the ここから indent prefix.
     BodyPattern {
@@ -545,7 +599,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::KeigakomiClose,
     },
     // 表罫囲み / ミシン罫囲み (specific rule styles) are non-canonical and
-    // corpus-vanishing (2 / 1 works); they are *not* folded onto Rule (which
+    // rare in the corpus (2 / 1 works); they are not folded onto Rule (which
     // would erase the rule-style spelling); they decline to Directive{Unknown}
     // (lossless verbatim), the core recognising only the canonical 罫囲み.
     // Block 割り注 (multi-line region; inline ［＃割り注］ stays WarichuOpen).
@@ -572,10 +626,22 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::TopIndentPrefix,
     },
     BodyPattern {
+        needle: "この行",
+        family: BodyFamily::ThisLineIndentPrefix,
+    },
+    BodyPattern {
         needle: "改行天付き",
         family: BodyFamily::KaigyouTentsukiPrefix,
     },
-    // Parameterized closes share ここで; longer fixed closers win. The
+    BodyPattern {
+        needle: "数字は",
+        family: BodyFamily::NumberedItemIndentPrefix,
+    },
+    BodyPattern {
+        needle: "次の",
+        family: BodyFamily::NextItemsIndentPrefix,
+    },
+    // Parameterized closes share ここで; longer fixed closers take precedence. The
     // handler validates the complete column-count or font-size suffix.
     BodyPattern {
         needle: "ここで",
@@ -605,7 +671,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::SectionKaimihiraki,
     },
     // Structural markers. `改行` is an exact match: a bare `［＃改行］`
-    // forced line break. The longer `改行天付き` needle wins under
+    // forced line break. The longer `改行天付き` needle is selected under
     // LeftmostLongest for the hanging-indent form, and the Exact mode rejects
     // any `改行X` tail, so only the bare body reaches `ForcedBreak`.
     BodyPattern {
@@ -623,7 +689,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     // 地より: the alternate wording of 地から (both "measured from the
     // bottom margin"); `地よりN字上げ` parses identically and canonicalises
-    // to 地から on serialize. LeftmostLongest keeps ここから地より winning.
+    // to 地から on serialize. LeftmostLongest selects ここから地より.
     BodyPattern {
         needle: "地より",
         family: BodyFamily::AlignEndParamPrefix,
@@ -648,6 +714,10 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::AlignEndParamPrefix,
     },
     BodyPattern {
+        needle: "行末から",
+        family: BodyFamily::AlignEndParamPrefix,
+    },
+    BodyPattern {
         needle: "地付き、地より",
         family: BodyFamily::AlignEndSpacingPrefix,
     },
@@ -660,7 +730,34 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::AlignEnd0,
     },
     BodyPattern {
+        needle: "下げて地付きで",
+        family: BodyFamily::AlignEnd0,
+    },
+    BodyPattern {
+        needle: "下げて、地付きで",
+        family: BodyFamily::AlignEnd0,
+    },
+    BodyPattern {
+        needle: "この日付は行末に記す",
+        family: BodyFamily::AlignEnd0,
+    },
+    BodyPattern {
+        needle: "下げて地より",
+        family: BodyFamily::AlignEndSpacingPrefix,
+    },
+    BodyPattern {
+        needle: "下げて、地より",
+        family: BodyFamily::AlignEndSpacingPrefix,
+    },
+    BodyPattern {
         needle: "地付き",
+        family: BodyFamily::AlignEnd0,
+    },
+    // Historical source spelling attested as the same flush end-alignment
+    // marker. Keep the original marker span while assigning its established
+    // layout meaning.
+    BodyPattern {
+        needle: "こ地付き",
         family: BodyFamily::AlignEnd0,
     },
     // 右寄せ / 地寄せ: wording variants of 地付き (inline-end alignment; in
@@ -681,13 +778,51 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         needle: "中央揃え",
         family: BodyFamily::CenterMarker,
     },
+    // Spellings of the same two markers: the input manual calls page centering
+    // 左右中央, and the line-final 中央寄せ and 直線は中央に配置 centre their line.
+    BodyPattern {
+        needle: "左右中央",
+        family: BodyFamily::CenterMarker,
+    },
+    BodyPattern {
+        needle: "中央寄せ",
+        family: BodyFamily::CenterMarker,
+    },
+    BodyPattern {
+        needle: "直線は中央に配置",
+        family: BodyFamily::CenterMarker,
+    },
     BodyPattern {
         needle: "この行はゴシック体",
         family: BodyFamily::LineGothic,
     },
+    // A frame around the line the marker sits on. ミシン罫 is a perforated,
+    // dashed rule.
+    BodyPattern {
+        needle: "この行は枠囲み",
+        family: BodyFamily::LineFramed,
+    },
+    // Vertical page positions; each scopes the text up to the next page break.
+    BodyPattern {
+        needle: "ページの天地中央",
+        family: BodyFamily::PagePlacement,
+    },
+    BodyPattern {
+        needle: "ページの天地左右中央に",
+        family: BodyFamily::PagePlacement,
+    },
+    BodyPattern {
+        needle: "横組みで、ページの上部、左右中央に",
+        family: BodyFamily::PagePlacement,
+    },
+    BodyPattern {
+        needle: "この行全体はミシン罫囲み",
+        family: BodyFamily::LineFramed,
+    },
     // The line-scoped foot alignment written as a clause list, which is the
-    // only spelling that carries a type size beside the measure. Both needles
-    // lose to the longer `この行はゴシック体` and `この行は行末より` above.
+    // only spelling that carries a type size beside the measure.
+    // LeftmostLongest selects the longer `この行はゴシック体` and
+    // `この行は行末より` above over both needles.
     BodyPattern {
         needle: "この行、",
         family: BodyFamily::LineAlignEndCompound,
@@ -699,7 +834,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     // Absolute font-size line directives (`大文字` … `特大文字、太字`). All four
     // size keywords anchor `LineFontSize`; `parse_line_font_size` re-reads the
     // body for the size and the optional `、太字` compound. `特大文字` is the
-    // longest, so LeftmostLongest prefers it over `大文字`.
+    // longest, so LeftmostLongest selects it over `大文字`.
     BodyPattern {
         needle: "特大文字",
         family: BodyFamily::LineFontSize,
@@ -737,6 +872,14 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     BodyPattern {
         needle: "割り注",
         family: BodyFamily::WarichuOpen,
+    },
+    BodyPattern {
+        needle: "割書終わり",
+        family: BodyFamily::WarigakiClose,
+    },
+    BodyPattern {
+        needle: "割書",
+        family: BodyFamily::WarigakiOpen,
     },
     // 傍点 / 傍線 range form openers (`［＃傍点］ … ［＃傍点終わり］`). One
     // needle per emphasis variant `bouten_kind_from_suffix` recognises,
@@ -781,6 +924,10 @@ static BODY_PATTERNS: &[BodyPattern] = &[
         family: BodyFamily::BoutenRange,
     },
     BodyPattern {
+        needle: "白四角傍点",
+        family: BodyFamily::BoutenRange,
+    },
+    BodyPattern {
         needle: "丸傍点",
         family: BodyFamily::BoutenRange,
     },
@@ -811,7 +958,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     // 太字 / 斜体 emphasis. The inline-range openers (`太字` / `斜体`)
     // also anchor their `…終わり` closers (re-parsed in full by
     // `parse_emphasis_body`); the block forms need their own anchors
-    // (`ここから太字` beats the generic `ここから` via LeftmostLongest;
+    // (LeftmostLongest selects `ここから太字` over the generic `ここから`;
     // `ここで太字終わり` has no shorter generic anchor).
     BodyPattern {
         needle: "太字",
@@ -842,7 +989,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     // gothic family apart from a bold weight, so the parser keeps its own
     // spelling and never folds it to 太字. The bare openers also anchor their
     // `…終わり` closers and the forward-reference `「X」はゴシック体` leaf.
-    // ゴチック (1 corpus work) is *not* recognised: it declines to
+    // ゴチック (1 corpus work) is not recognised: it declines to
     // Directive{Unknown} and a Tier1 lint suggests ゴシック体.
     BodyPattern {
         needle: "ゴシック体",
@@ -858,6 +1005,14 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     BodyPattern {
         needle: "ここから教科書体",
+        family: BodyFamily::Emphasis,
+    },
+    BodyPattern {
+        needle: "ここから手書き文字",
+        family: BodyFamily::Emphasis,
+    },
+    BodyPattern {
+        needle: "ここで手書き文字終わり",
         family: BodyFamily::Emphasis,
     },
     BodyPattern {
@@ -1040,12 +1195,8 @@ static BODY_PATTERNS: &[BodyPattern] = &[
 
 /// Build the annotation-body Aho-Corasick automaton from `BODY_PATTERNS`.
 ///
-/// This DFA build is the bulk of parser boot cost (~150 microseconds, as
-/// the `boot` bench measures). It is exposed under `#[doc(hidden)]` so
-/// that bench can build it in isolation without making `BODY_PATTERNS`
-/// public; the same pattern as `aozora-scan`'s hidden `NaiveScanner`
-/// export. The process-lifetime cache lives in `body_dispatcher`;
-/// `prewarm` warms it.
+/// `body_dispatcher` caches the automaton for the process lifetime;
+/// `prewarm` forces that cache.
 #[doc(hidden)]
 #[must_use]
 pub fn build_body_dispatcher() -> AhoCorasick {
@@ -1064,7 +1215,7 @@ fn body_dispatcher() -> &'static AhoCorasick {
     DFA.get_or_init(build_body_dispatcher)
 }
 
-/// Force the one-time Aho-Corasick DFA build now.
+/// Force the one-time Aho-Corasick DFA build.
 ///
 /// This is the bulk of parser boot cost. Idempotent: the `OnceLock` is
 /// set at most once per process. `body_dispatcher` stays private; this
@@ -1073,13 +1224,81 @@ pub(crate) fn prewarm() {
     let _ = body_dispatcher();
 }
 
+const EXPLANATION_STATEMENTS: &[&str] = &[
+    "巻頭に梅津只圓翁の写真と合わせて３枚の写真あり",
+    "図１～図３は、右から続く一葉",
+    "この作品は表題と副題のみで、本文はありません。",
+    "「雲隠れ」の帖は冒頭の晶子詞のみで本文はありません。",
+    "「Ｏ」は覆面の英字です。",
+    "劇場名",
+    "ホテル名",
+    "お手伝いさん",
+    "夫人",
+    "スカーフ",
+    "長男",
+    "三男",
+    "次男",
+    "小説家",
+    "長女",
+    "父",
+    "母",
+    "甥",
+    "次女",
+    "ここには室生犀星の詩が引用されている",
+    "ここに土田杏村の「跋」入る",
+    "以下、新聞の切抜き",
+    "この日、海野がしたためた遺書を、以下に引く",
+    "以上、宮原晃一郎による解説",
+    "「七夕」「真つすぐな街」は自由律俳句",
+    "読みは「つね」",
+    "括弧内は「染付」と「赤繪」の二行になっている",
+    "「諸国における富の分配」の図表のこと",
+    "ここに「下ニ詳ナリ」という注意書きが入る",
+    "便箋右上に花飾り付きのページ数",
+    "行項目名のタイトル",
+    "列項目名は２段組、１段目",
+    "列項目名２段目は１段目をそれぞれ２分割",
+    "項目名",
+    "金馬と小金馬の対談がここにはいる。",
+    "波罫線",
+    "闇汁の図",
+    "「検察官」",
+    "「嘘の効用」",
+    "戯曲「赤藍色の島」",
+    "映画館名、「穂」",
+    "船名「香取丸」",
+    "宮本百合子の作品「赤い貨車」のナースチャのモデル",
+    "口語自由詩で、民衆の現実を描こうとした、「民衆派」の詩人",
+    "正しくは「All Quiet on the Western Front」",
+    "第一次世界大戦の休戦記念日",
+    "１字アキか改行か判然せず",
+    "この読点不適当",
+    "３つの「｛」は１つに繋がる",
+    "「｝一八〇」はこの後の５行にわたる",
+    "「ココ」は手描きの切符の下部の線に結ばれている",
+    "第六章第九段落目以降のこと",
+    "第二章後ろから数えて三段落目のこと",
+    "第二章（二五）の最後の段落のこと",
+    "改訂",
+    "本文中、新聞記事の見出しを模した箇所では、入力者注で文字の大きさを表した。大きさの比率は、見出し文字：小見出し文字：本文の文字＝５：４：３",
+    "実際には「文宗閣」が「鎭江」に、「文※［＃「さんずい＋（匚＜隹）」、第4水準2-79-7］閣」が「揚州」にあった。",
+    "著者所蔵の「研幾小録」の欄外には、「秦風車鄰有馬白顛傳白顛的※［＃「桑＋頁」、第3水準1-94-2］也」といふ著者の書き込みがある。",
+    "著者所蔵の「研幾小録」の欄外には、「召誥　其惟王位在徳元［＃ここから割り注］孔傳其惟王居位在徳之首［＃ここで割り注終わり］」といふ著者の書き込みがある。",
+];
+
+const TRANSCRIPTION_STATEMENTS: &[&str] = &[
+    "改行を挿入",
+    "原文は括弧「〔〕」を使うが、他の所と一致させるため改める",
+    "罫線の部分は、「｛」「｝」で括る",
+];
+
 /// Classify an input-editor note body into its [`DirectiveKind`], or
 /// `None` if the body is not a recognised editorial note.
 ///
 /// These are the corpus's two dominant editorial families:
 /// - `ママ` / `「X」はママ` (and `ルビの「X」はママ`): *sic*: X is reproduced
-///   as it stands in the source. `底本のまま` ("as in the base text") is the
-///   same kept-irregularity note. → [`DirectiveKind::Sic`].
+///   as it stands in the source. `底本のまま`, `底本ママ` and `原文まま` ("as in
+///   the base text") are the same kept-irregularity note. → [`DirectiveKind::Sic`].
 /// - `…底本では…` (`「X」は底本では「Y」`, `「X」は底本では脱落`, …): a
 ///   source-text divergence note. `…初出では…` ("in the first appearance …")
 ///   is the same shape against the first publication. →
@@ -1091,54 +1310,62 @@ pub(crate) fn prewarm() {
 /// here. The note does not restyle its target, so the caller leaves X in
 /// the text and consumes only the bracket.
 pub(super) fn editorial_note_kind(body: &str) -> Option<DirectiveKind> {
+    if uncertain_correction(body).is_some() {
+        return Some(DirectiveKind::UncertainCorrection);
+    }
+    if source_legibility_note(body).is_some() {
+        return Some(DirectiveKind::SourceLegibilityNote);
+    }
     if external_table_filename(body).is_some() {
         return Some(DirectiveKind::ExternalTableReference);
     }
-    if body
+    if body == "「３字下げ」" {
+        Some(DirectiveKind::NotationExample)
+    } else if body
         .strip_prefix("現代語訳「")
         .and_then(|text| text.strip_suffix('」'))
         .is_some_and(|text| {
             !text.is_empty() && !text.contains(['「', '」', '［', '］', '\r', '\n'])
         })
     {
-        Some(DirectiveKind::ExplanationNote)
-    } else if body == "ママ" || body.ends_with("はママ") || body == "底本のまま" {
+        Some(DirectiveKind::TranslationNote)
+    } else if matches!(
+        body,
+        "ママ"
+            | "底本のまま"
+            | "底本のママ"
+            | "底本のママ。"
+            | "底本ママ"
+            | "ルビは底本ママ"
+            | "原文まま"
+    ) || body.ends_with("はママ")
+        || sic_target(body).is_some()
+    {
         Some(DirectiveKind::Sic)
-    } else if body.contains("底本では") || body.contains("初出では") {
+    } else if body.contains("底本では")
+        || body.contains("初出では")
+        || body.contains("原文では")
+        || edition_statement(body).is_some()
+    {
         // Checked before EditorNote so a 底本 correction that happens to cite a
         // numbered note (`底本では…誤記。入力者注(6)`) stays a BaseTextVariant.
         Some(DirectiveKind::BaseTextVariant)
     } else if is_editor_note_body(body) {
         Some(DirectiveKind::EditorNote)
-    } else if is_omission_note_body(body) {
+    } else if omission_note_certainty(body).is_some() {
         Some(DirectiveKind::OmissionNote)
     } else if is_figure_insertion_body(body) {
         Some(DirectiveKind::FigureInsertion)
     } else if body == "未完" {
         Some(DirectiveKind::IncompletenessNote)
-    } else if matches!(
-        body,
-        "この作品は表題と副題のみで、本文はありません。"
-            | "「雲隠れ」の帖は冒頭の晶子詞のみで本文はありません。"
-            | "「Ｏ」は覆面の英字です。"
-            | "劇場名"
-            | "ホテル名"
-            | "お手伝いさん"
-            | "夫人"
-            | "スカーフ"
-            | "長男"
-            | "三男"
-            | "次男"
-            | "小説家"
-            | "長女"
-            | "父"
-            | "母"
-            | "甥"
-            | "次女"
-    ) {
+    } else if ruby_reading_annotation(body).is_some() {
+        Some(DirectiveKind::RubyReadingAnnotation)
+    } else if EXPLANATION_STATEMENTS.contains(&body) || layout_statement(body) {
         Some(DirectiveKind::ExplanationNote)
-    } else if body == "改行を挿入" {
+    } else if TRANSCRIPTION_STATEMENTS.contains(&body) {
         Some(DirectiveKind::TranscriptionNote)
+    } else if matches!(body, "左頁" | "右頁") {
+        Some(DirectiveKind::PageSideNote)
     } else if is_ruby_attached_body(body) {
         Some(DirectiveKind::RubyAttached)
     } else if is_ruby_retarget_body(body) {
@@ -1156,43 +1383,52 @@ pub(super) fn editorial_note_kind(body: &str) -> Option<DirectiveKind> {
     }
 }
 
-fn is_omission_note_body(body: &str) -> bool {
-    matches!(
-        body,
-        "「註」略"
-            | "省略"
-            | "図省略"
-            | "図は省略"
-            | "Ａ、Ｂ、Ｃの図省略"
-            | "紙片の図、図省略"
-            | "王家の紙幣の図、図省略"
-            | "この後、改ページに続いて「VI.　文例」の章があるが、著作権の状態が不明なため、省略する。"
-            | "目次のページ数および「解題（大内兵衛）」「追記」は省略しました"
-    ) || body
-        .strip_prefix('「')
-        .and_then(|body| body.strip_suffix("」省略"))
-        .is_some_and(|label| !label.is_empty() && !label.contains(['「', '」']))
-        || body
-            .strip_prefix("図が入るが省略。底本")
-            .and_then(|body| body.strip_suffix("ページ"))
-            .is_some_and(|page| !page.is_empty() && page.bytes().all(|b| b.is_ascii_digit()))
-}
-
 /// Whether `body` is a source-positioned figure insertion declaration: a
-/// statement that a named figure belongs at this point, supplying no filename,
-/// no dimensions and no claim that the figure is available.
+/// statement that a figure belongs at this point, supplying no filename, no
+/// dimensions and no claim that the figure is available.
 ///
-/// Three shapes occur: `図１入る`, `カット「焼夷弾の図」入る。16-上段`, and a
-/// described figure such as `昭和新山の出来た経過を示す図入る`. A trailing
-/// `。<locator>` names a place in the base edition; it stays in the note text
+/// The shapes are `図１入る`, `カット「焼夷弾の図」入る。16-上段`, a described
+/// figure such as `昭和新山の出来た経過を示す図入る` or `ここに挿し絵入る`, a
+/// numbered figure followed by its description (`図４、花の絵`), a described
+/// shape (`図形　□（四角）に内接する◆`), a figure followed by `入る：` and its
+/// description, `ここに…の挿絵あり`, and quoted figures each followed by its
+/// page (`図「A」P524、「B」P525`). A trailing `。<locator>` or
+/// `、P<page>` gives a place in the base edition; it stays in the note text
 /// rather than being resolved, as the omission note's `底本43ページ` does.
 ///
 /// Declines a parenthesised clause, which is the asset-backed illustration form
-/// and belongs to `Figure`, and declines a supplied name containing `、`, which
-/// opens a description of a figure rather than a declaration that one belongs
-/// here. `図が入るが省略` reaches `is_omission_note_body` first: the source says
+/// and belongs to `Figure`, and declines a figure name containing `、`.
+/// `図が入るが省略` reaches the omission classifier first: the source says
 /// there that the figure was left out, which is a different statement.
 fn is_figure_insertion_body(body: &str) -> bool {
+    if located_figure_note(body).is_some() {
+        return true;
+    }
+    if let Some(figures) = body.strip_prefix('図')
+        && figures.split('、').all(|figure| {
+            figure
+                .strip_prefix('「')
+                .and_then(|figure| figure.split_once("」P"))
+                .is_some_and(|(label, page)| {
+                    !label.is_empty() && !label.contains(['「', '」']) && is_decimal_number(page)
+                })
+        })
+    {
+        return true;
+    }
+    if let Some((number, description)) = body
+        .strip_prefix('図')
+        .and_then(|rest| rest.split_once('、'))
+        && is_decimal_number(number)
+    {
+        return is_figure_description(description);
+    }
+    if let Some(shape) = body.strip_prefix("図形　") {
+        return is_figure_description(shape);
+    }
+    if let Some((named, description)) = body.split_once("入る：") {
+        return is_figure_description(description) && is_named_figure(named);
+    }
     let head = match body.split_once('。') {
         Some((head, locator)) => {
             if locator.is_empty() || locator.contains(['。', '「', '」']) {
@@ -1202,32 +1438,53 @@ fn is_figure_insertion_body(body: &str) -> bool {
         }
         None => body,
     };
-    let Some(named) = head.strip_suffix("入る") else {
-        return false;
-    };
+    head.strip_suffix("入る")
+        .or_else(|| {
+            head.rsplit_once("入る、P")
+                .filter(|(_, page)| is_decimal_number(page))
+                .map(|(named, _)| named)
+        })
+        .or_else(|| {
+            head.strip_prefix("ここに")
+                .and_then(|named| named.strip_suffix("あり"))
+        })
+        .is_some_and(is_named_figure)
+}
+
+fn is_named_figure(named: &str) -> bool {
     if named.is_empty() || named.contains(['、', '（', '）', '(', ')', '［', '］', '\r', '\n'])
     {
         return false;
     }
-    if let Some(number) = named.strip_prefix('図')
-        && !number.is_empty()
-        && number
-            .chars()
-            .all(|char| char.is_ascii_digit() || ('０'..='９').contains(&char))
-    {
+    if named.strip_prefix('図').is_some_and(is_decimal_number) {
         return true;
     }
     if let Some(label) = named
         .strip_prefix("カット「")
+        .or_else(|| named.strip_prefix("図「"))
         .and_then(|label| label.strip_suffix('」'))
         && !label.is_empty()
         && !label.contains(['「', '」'])
     {
         return true;
     }
-    named
-        .strip_suffix('図')
-        .is_some_and(|described| !described.is_empty() && !described.contains(['「', '」']))
+    ["挿絵", "挿し絵", "楽譜", "地図", "写真"]
+        .iter()
+        .any(|noun| named.ends_with(noun))
+        || named
+            .strip_suffix('図')
+            .is_some_and(|described| !described.is_empty() && !described.contains(['「', '」']))
+}
+
+fn is_figure_description(description: &str) -> bool {
+    !description.is_empty() && !description.contains(['［', '］', '\r', '\n'])
+}
+
+fn is_decimal_number(number: &str) -> bool {
+    !number.is_empty()
+        && number
+            .chars()
+            .all(|char| char.is_ascii_digit() || ('０'..='９').contains(&char))
 }
 
 /// Whether `body` is exactly a ruby-presence note `「X」にルビ` (whole body, `X`
@@ -1239,11 +1496,25 @@ fn is_ruby_attached_body(body: &str) -> bool {
 }
 
 /// Whether `body` is exactly a ruby-binding note `ルビは「X」にかかる` (whole body,
-/// `X` non-empty). Records that a nearby ruby applies to the run `X`.
+/// `X` non-empty). The corpus also contains the orthographic `掛かる` and
+/// `付く` spellings and the `「X」のルビ` and `「X」全体にかかるルビ` forms with the
+/// same supplied relation.
 fn is_ruby_retarget_body(body: &str) -> bool {
     body.strip_prefix("ルビは「")
-        .and_then(|r| r.strip_suffix("」にかかる"))
+        .and_then(|rest| {
+            ["」にかかる", "」に掛かる", "」に付く"]
+                .into_iter()
+                .find_map(|suffix| rest.strip_suffix(suffix))
+        })
         .is_some_and(|x| !x.is_empty())
+        || body
+            .strip_prefix('「')
+            .and_then(|rest| rest.strip_suffix("」のルビ"))
+            .is_some_and(|x| !x.is_empty() && !x.contains(['「', '」']))
+        || body
+            .strip_prefix('「')
+            .and_then(|rest| rest.strip_suffix("」全体にかかるルビ"))
+            .is_some_and(|x| !x.is_empty() && !x.contains(['「', '」']))
 }
 
 /// Whether `body` is a left-side-ruby span closer `左に「Y」のルビ付き終わり`
@@ -1266,9 +1537,80 @@ fn is_margin_note_pair_close_body(body: &str) -> bool {
         .is_some_and(|y| !y.is_empty())
 }
 
+/// Whether `body` can be an editor's gloss on the text before its marker, such as
+/// `中條精一郎` after `息子`: prose without quotation marks, brackets, Latin
+/// letters or a notation term. The caller requires printed text before the
+/// marker on its line.
+pub(super) fn is_gloss_body(body: &str) -> bool {
+    const NOTATION_TERMS: &[&str] = &[
+        "字",
+        "図",
+        "写真",
+        "註",
+        "注",
+        "段",
+        "罫",
+        "枠",
+        "囲",
+        "傍",
+        "見出し",
+        "横組",
+        "縦組",
+        "横書",
+        "縦書",
+        "ゴシック",
+        "太字",
+        "斜体",
+        "中央",
+        "寄せ",
+        "配置",
+        "終わり",
+        "ここ",
+        "この",
+        "次行",
+        "以下",
+        "以上",
+        "行アキ",
+        "行目",
+        "改行",
+        "行末",
+        "行頭",
+        "アクセント",
+        "帯気",
+        "ウムラウト",
+        "アクサン",
+        "ドット",
+        "ママ",
+        "底本",
+        "原文",
+        "初出",
+        "誤",
+        "欄外",
+        "入る",
+        "付き",
+        "読み",
+        "不明",
+        "判読",
+    ];
+    let katakana = |character: char| ('ァ'..='ヺ').contains(&character) || character == 'ー';
+    !body.is_empty()
+        && !body.starts_with('（')
+        && !body.contains([
+            '「', '」', '『', '』', '［', '］', '※', '＃', '〔', '〕', '(', ')', '[', ']', '{',
+            '}', '｛', '｝', '\r', '\n',
+        ])
+        && !body
+            .chars()
+            .any(|character| character.is_ascii_alphabetic())
+        && !NOTATION_TERMS.iter().any(|term| body.contains(term))
+        && !body
+            .match_indices("ルビ")
+            .any(|(at, term)| !body[at + term.len()..].starts_with(katakana))
+}
+
 /// Whether `body` is exactly a numbered input-typist note `入力者注(N)` with an
 /// ASCII-paren, ASCII-digit index (the corpus form). A compound note that
-/// merely *contains* the phrase is excluded (the whole body must match).
+/// contains the phrase is excluded (the whole body must match).
 fn is_editor_note_body(body: &str) -> bool {
     let Some(rest) = body.strip_prefix("入力者注(") else {
         return false;
@@ -1307,6 +1649,9 @@ pub(super) fn classify_annotation_body(
     if body.is_empty() {
         return None;
     }
+    if let Some(break_) = parse_qualified_break(body) {
+        return Some((EmitKind::Aozora(alloc.qualified_break(break_)), None));
+    }
     if let Some(placement) = relative_placement(body, alloc) {
         return Some((
             EmitKind::BlockOpen(RegionFormat::RelativePlacement(placement)),
@@ -1320,6 +1665,9 @@ pub(super) fn classify_annotation_body(
     if let Some(emit) = parse_heading_directive(body) {
         return Some((emit, None));
     }
+    if let Some(emit) = parse_small_indent_compound(body) {
+        return Some((emit, None));
+    }
     let dfa = body_dispatcher();
     let mat = dfa.find(Input::new(body).anchored(Anchored::Yes))?;
     let pat = BODY_PATTERNS[mat.pattern().as_usize()];
@@ -1327,13 +1675,12 @@ pub(super) fn classify_annotation_body(
     let exact = match_end == body.len();
     // An exact-match family must consume the whole body; a prefix-only
     // DFA hit (`罫囲みfoo` matches the needle `罫囲み`) makes no claim.
-    // Checking the mode once here lets every exact arm below drop its
-    // `if exact` guard and replaces the parallel catch-all `None`.
+    // This check covers every exact arm below.
     if body_family_mode(pat.family) == MatchMode::Exact && !exact {
         return None;
     }
     match pat.family {
-        // ----- Exact-match families (must consume the entire body) -----
+        // Exact-match families (must consume the entire body).
         BodyFamily::PageBreak => Some((EmitKind::Aozora(alloc.page_break()), None)),
         BodyFamily::BodyEnd => Some((EmitKind::Aozora(alloc.body_end()), None)),
         BodyFamily::ForcedBreak => Some((EmitKind::Aozora(alloc.forced_break()), None)),
@@ -1360,13 +1707,33 @@ pub(super) fn classify_annotation_body(
         BodyFamily::CenterMarker => {
             // ページの左右中央 (page centre) vs 中央揃え: a single-line
             // zero-width centring marker.
-            let page = body == "ページの左右中央";
+            let page = matches!(body, "ページの左右中央" | "左右中央");
             Some((
                 EmitKind::Aozora(alloc.line(LineFormat::Center { page })),
                 None,
             ))
         }
         BodyFamily::LineGothic => Some((EmitKind::Aozora(alloc.line(LineFormat::Gothic)), None)),
+        BodyFamily::PagePlacement => Some((
+            EmitKind::Aozora(alloc.line(LineFormat::PagePlacement {
+                vertical: if body.contains("上部") {
+                    PageVerticalPlacement::Top
+                } else {
+                    PageVerticalPlacement::Center
+                },
+                horizontal_center: body.contains("左右中央"),
+                horizontal: body.starts_with("横組み"),
+            })),
+            None,
+        )),
+        BodyFamily::LineFramed => Some((
+            EmitKind::Aozora(alloc.line(LineFormat::Framed(if body == "この行は枠囲み" {
+                EnclosureKind::Unspecified
+            } else {
+                EnclosureKind::DashedRule
+            }))),
+            None,
+        )),
         BodyFamily::LineFontSize => parse_line_font_size(body).map(|(size, bold)| {
             (
                 EmitKind::Aozora(alloc.line(LineFormat::FontSizeAbsolute { size, bold })),
@@ -1390,6 +1757,7 @@ pub(super) fn classify_annotation_body(
                 column_count: None,
                 amount: 1,
                 wrap: None,
+                first_line: None,
                 page_horizontal_center: false,
                 align: None,
                 end_offset: None,
@@ -1412,12 +1780,32 @@ pub(super) fn classify_annotation_body(
             // Formula has an independent endpoint, beyond matching the indentation family.
             let tail = &body[match_end..];
             let purpose = (tail == "、ここで数式終わり").then_some(BlockPurpose::Formula);
-            (tail.is_empty() || (tail.starts_with('、') && tail.ends_with("終わり"))).then_some((
+            let partial = tail.strip_prefix('、').and_then(|clause| {
+                super::formatting_instruction::kaeriten_policy_clause(
+                    clause,
+                    source.start + u32::try_from(match_end + '、'.len_utf8()).ok()?,
+                    KuntenScope::PrecedingBlock,
+                )
+                .map(|instruction| {
+                    alloc.partial_layout_with_instructions(
+                        source.text,
+                        Vec::new(),
+                        vec![instruction],
+                    )
+                })
+            });
+            let supported_tail = if partial.is_some() {
+                true
+            } else {
+                tail.is_empty() || (tail.starts_with('、') && tail.ends_with("終わり"))
+            };
+            supported_tail.then_some((
                 EmitKind::BlockClose(RegionClose::Indent {
                     purpose,
                     amount: None,
                     kumi_width: None,
                     styles: BlockStyles::EMPTY,
+                    partial,
                 }),
                 None,
             ))
@@ -1445,6 +1833,7 @@ pub(super) fn classify_annotation_body(
                         amount: None,
                         kumi_width: None,
                         styles,
+                        partial: None,
                     }),
                     None,
                 ));
@@ -1466,6 +1855,7 @@ pub(super) fn classify_annotation_body(
                             amount: None,
                             kumi_width: Some(LineWidth(w)),
                             styles: BlockStyles::EMPTY,
+                            partial: None,
                         }),
                         None,
                     )
@@ -1474,14 +1864,15 @@ pub(super) fn classify_annotation_body(
         BodyFamily::QuoteBlockEnd => {
             // The scope the quotation opener supplied is an indentation scope
             // with a role on it, so its close is the indentation close carrying
-            // the same role. `おわり` is not accepted: it is not a spelling the
-            // corpus uses here, and admitting it would guess at the source.
+            // the same role. `おわり` is not accepted: the corpus does not use
+            // that spelling here.
             matches!(&body[match_end..], "わり" | "り").then_some((
                 EmitKind::BlockClose(RegionClose::Indent {
                     purpose: Some(BlockPurpose::Quotation),
                     amount: None,
                     kumi_width: None,
                     styles: BlockStyles::EMPTY,
+                    partial: None,
                 }),
                 None,
             ))
@@ -1493,18 +1884,19 @@ pub(super) fn classify_annotation_body(
         BodyFamily::TableBlockOpen => parse_table_open(body, source, alloc)
             .map(|block| (EmitKind::BlockOpen(RegionFormat::Table(block)), None)),
         BodyFamily::TableBlockEnd => {
-            // A close that names an enclosure or a direction ends only a table
+            // A close that states an enclosure or a direction ends only a table
             // that carries it; a bare `ここで表終わり` imposes nothing and ends
             // any of them. `ここでプログラム（表罫囲み）終わり` restates the
             // opener's own clauses, and the unread one among them is already
             // retained there, so the close reads the table and the enclosure it
-            // names and adds no second claim.
+            // states and adds no second claim.
             let mut styles = BlockStyles::EMPTY;
             match body {
                 "ここで表終わり" | "ここで表組終わり" | "ここで表組み終わり" =>
                     {}
-                "ここで表罫囲み終わり" | "ここでプログラム（表罫囲み）終わり" =>
-                {
+                "ここで表罫囲み終わり"
+                | "ここでプログラム（表罫囲み）終わり"
+                | "ここで罫仕切り終わり" => {
                     styles.frame = Some(EnclosureKind::Rule);
                 }
                 "ここで横組みの表終わり" => {
@@ -1556,6 +1948,7 @@ pub(super) fn classify_annotation_body(
                         amount: Some(amount),
                         kumi_width: None,
                         styles: BlockStyles::EMPTY,
+                        partial: None,
                     }),
                     None,
                 ));
@@ -1578,7 +1971,16 @@ pub(super) fn classify_annotation_body(
                     None,
                 ));
             }
-            (rest == "段組終わり" || rest == "段組み終わり")
+            let rest = rest
+                .strip_prefix("段組")
+                .map(|rest| rest.strip_prefix('み').unwrap_or(rest))
+                .map(|rest| {
+                    rest.strip_prefix("、上段")
+                        .or_else(|| rest.strip_prefix("、下段"))
+                        .filter(|_| count.is_some_and(|count| count.0.get() == 2))
+                        .unwrap_or(rest)
+                });
+            (rest == Some("終わり"))
                 .then_some((EmitKind::BlockClose(RegionClose::Columns(count)), None))
         }
         BodyFamily::WarichuOpen => {
@@ -1586,9 +1988,9 @@ pub(super) fn classify_annotation_body(
             let node = alloc.annotation(p);
             // Re-build a payload for the segment-wrap case. The
             // Allocator interns by string content, so the second
-            // call hits the dedup table; it pays at most a single
-            // `Box<str>` clone, which is cheap relative
-            // to the rare nested-Warichu shape this case targets.
+            // call reuses the interned entry and costs at most one
+            // `Box<str>` clone; the case covers the rare nested-Warichu
+            // shape.
             let p2 = alloc.make_directive("［＃割り注］", DirectiveKind::WarichuOpen);
             Some((EmitKind::Aozora(node), Some(p2)))
         }
@@ -1598,20 +2000,35 @@ pub(super) fn classify_annotation_body(
             let p2 = alloc.make_directive("［＃割り注終わり］", DirectiveKind::WarichuClose);
             Some((EmitKind::Aozora(node), Some(p2)))
         }
+        BodyFamily::WarigakiOpen => {
+            let p = alloc.make_directive("［＃割書］", DirectiveKind::WarigakiOpen);
+            let node = alloc.annotation(p);
+            let p2 = alloc.make_directive("［＃割書］", DirectiveKind::WarigakiOpen);
+            Some((EmitKind::Aozora(node), Some(p2)))
+        }
+        BodyFamily::WarigakiClose => {
+            let p = alloc.make_directive("［＃割書終わり］", DirectiveKind::WarigakiClose);
+            let node = alloc.annotation(p);
+            let p2 = alloc.make_directive("［＃割書終わり］", DirectiveKind::WarigakiClose);
+            Some((EmitKind::Aozora(node), Some(p2)))
+        }
         BodyFamily::KaeritenSingle | BodyFamily::KaeritenCompound => Some((
             EmitKind::Aozora(alloc.kunten(KuntenKind::ReturnMark, body)),
             None,
         )),
 
-        // ----- Prefix-with-parameter families -----
+        // Prefix-with-parameter families.
         BodyFamily::AlignEndParamPrefix => {
             // body == 地から/文末より/行末より{N}字上げ; remainder = body[match_end..].
             // The verb is the intransitive 字上がり as well as 字上げ, with an
             // optional 揃え suffix (`文末よりN字上げ揃え`).
             let rest = &body[match_end..];
             let (n, tail) = parse_layout_count_prefix(rest)?;
-            (matches!(tail, "字上げ" | "字上がり" | "字上げ揃え" | "字上がり揃え") && n >= 1).then(
-                || {
+            (matches!(
+                tail,
+                "字上げ" | "字上がり" | "字上げ揃え" | "字上がり揃え" | "字上で地付き"
+            ) && n >= 1)
+                .then(|| {
                     (
                         EmitKind::Aozora(alloc.line(LineFormat::AlignEnd {
                             offset: n,
@@ -1620,8 +2037,7 @@ pub(super) fn classify_annotation_body(
                         })),
                         None,
                     )
-                },
-            )
+                })
         }
         BodyFamily::AlignEndSpacingPrefix => {
             let offset = parse_end_spacing(&body[match_end..])?;
@@ -1661,7 +2077,7 @@ pub(super) fn classify_annotation_body(
             // chars off the foot edge.
             let rest = &body[match_end..];
             let (n, tail) = parse_decimal_u8_prefix(rest)?;
-            if tail == "字下げ" && n >= 1 {
+            if matches!(tail, "字下げ" | "字下げて") && n >= 1 {
                 Some((
                     EmitKind::Aozora(alloc.line(LineFormat::Indent {
                         amount: n,
@@ -1672,6 +2088,17 @@ pub(super) fn classify_annotation_body(
             } else {
                 parse_both_margin_tail(n, tail).map(|lf| (EmitKind::Aozora(alloc.line(lf)), None))
             }
+        }
+        BodyFamily::ThisLineIndentPrefix => {
+            let rest = body.strip_prefix("この行")?;
+            let (n, tail) = parse_decimal_u8_prefix(rest)?;
+            (tail == "字下げ" && n >= 1).then_some((
+                EmitKind::Aozora(alloc.line(LineFormat::Indent {
+                    amount: n,
+                    end_offset: None,
+                })),
+                None,
+            ))
         }
         BodyFamily::KaigyouTentsukiPrefix => {
             // body == 改行天付き、折り返して{N}字下げ: the ここから-less bare
@@ -1687,6 +2114,7 @@ pub(super) fn classify_annotation_body(
                     column_count: None,
                     amount: 0,
                     wrap: Some(m),
+                    first_line: None,
                     page_horizontal_center: false,
                     align: None,
                     end_offset: None,
@@ -1697,15 +2125,30 @@ pub(super) fn classify_annotation_body(
                 None,
             ))
         }
+        BodyFamily::NumberedItemIndentPrefix => {
+            let (n, tail) = parse_decimal_u8_prefix(&body[match_end..])?;
+            let after = tail
+                .strip_prefix("字下げ、説明文は")
+                .or_else(|| tail.strip_prefix("字下げ、説明は"))?;
+            let (m, tail) = parse_decimal_u8_prefix(after)?;
+            (tail == "字下げ").then(|| (hanging_indent_open(n, m), None))
+        }
+        BodyFamily::NextItemsIndentPrefix => {
+            let (_, tail) = parse_decimal_u8_prefix(&body[match_end..])?;
+            let after = tail.strip_prefix("項目は")?;
+            let (line, tail) = parse_decimal_u8_prefix(after)?;
+            let (m, tail) = parse_decimal_u8_prefix(tail.strip_prefix("行目以降")?)?;
+            (line == 2 && tail == "字下げ").then(|| (hanging_indent_open(0, m), None))
+        }
         BodyFamily::SashiePrefix => classify_sashie_body(source, alloc).map(|e| (e, None)),
         BodyFamily::IndentBlockParamPrefix => {
             // body == ここから{N}字下げ; remainder = body[match_end..]
             let rest = &body[match_end..];
-            // `ここから引用文、３字下げ`: the source names the role of the scope
+            // `ここから引用文、３字下げ`: the source states the role of the scope
             // before the measure that scopes it. Read the leading role clause
             // off here so the rest of the body is the ordinary measure-first
-            // body; without this the whole marker declines and the supplied
-            // indentation is lost along with the role.
+            // body; otherwise the whole marker declines, discarding both the
+            // supplied indentation and the role.
             let (role, rest) = split_leading_role(rest);
             let rest = rest.strip_prefix("改行").unwrap_or(rest);
             // ここから[改行]天付き、折り返して{M}字下げ: top-flush hanging
@@ -1727,6 +2170,7 @@ pub(super) fn classify_annotation_body(
                         column_count: None,
                         amount: 0,
                         wrap: Some(m),
+                        first_line: None,
                         page_horizontal_center: false,
                         align: None,
                         end_offset: None,
@@ -1737,7 +2181,7 @@ pub(super) fn classify_annotation_body(
                 )))
             } else {
                 let Some((n, tail)) = parse_layout_count_prefix(rest) else {
-                    // A clause list with no measure can still name a table
+                    // A clause list with no measure can still state a table
                     // scope (`ここからプログラム、表罫囲み`). The indentation
                     // reading has declined by this point, so it carries
                     // nothing over; the whole body is read afresh.
@@ -1752,6 +2196,7 @@ pub(super) fn classify_annotation_body(
                         column_count: None,
                         amount: n,
                         wrap: None,
+                        first_line: None,
                         page_horizontal_center: false,
                         align: None,
                         end_offset: None,
@@ -1804,12 +2249,12 @@ pub(super) fn classify_annotation_body(
             ))
         }
         BodyFamily::OkuriganaPrefix => {
-            // The DFA matched `（` at body[0..3]. Defer to the same
-            // parens-recognising helper as the legacy code so the
-            // length / character-class invariants stay in one place.
-            is_okurigana_body(body).then(|| {
+            // The DFA matched `（` at body[0..3]. The parens-recognising
+            // helper keeps the length / character-class invariants in one
+            // place.
+            okurigana_text(body).map(|text| {
                 (
-                    EmitKind::Aozora(alloc.kunten(KuntenKind::Okurigana, &body[3..body.len() - 3])),
+                    EmitKind::Aozora(alloc.kunten(KuntenKind::Okurigana, &text)),
                     None,
                 )
             })
@@ -1818,7 +2263,7 @@ pub(super) fn classify_annotation_body(
             // The DFA matched a single digit. Re-parse from body[0]
             // for full multi-digit support.
             let (n, tail) = parse_decimal_u8_prefix(body)?;
-            if tail == "字下げ" && n >= 1 {
+            if matches!(tail, "字下げ" | "字下がる") && n >= 1 {
                 Some((
                     EmitKind::Aozora(alloc.line(LineFormat::Indent {
                         amount: n,
@@ -1839,6 +2284,7 @@ pub(super) fn classify_annotation_body(
                         amount: Some(n),
                         kumi_width: None,
                         styles: BlockStyles::EMPTY,
+                        partial: None,
                     }),
                     None,
                 ))
@@ -1909,6 +2355,114 @@ pub(super) fn classify_annotation_body(
     }
 }
 
+fn parse_small_indent_compound(body: &str) -> Option<EmitKind> {
+    if body == "ここで小文字、字下げ終わり" {
+        return Some(EmitKind::BlockClose(RegionClose::Indent {
+            purpose: None,
+            amount: None,
+            kumi_width: None,
+            styles: BlockStyles {
+                font: Some(QualitativeFontSize::Smaller),
+                ..BlockStyles::EMPTY
+            },
+            partial: None,
+        }));
+    }
+    let rest = body.strip_prefix("ここから小文字、")?;
+    let (continuation, rest) = parse_decimal_u8_prefix(rest)?;
+    let rest = rest.strip_prefix("字下げ。冒頭のみ")?;
+    let (first, rest) = parse_decimal_u8_prefix(rest)?;
+    if rest != "字下げ" || first == 0 || continuation == 0 {
+        return None;
+    }
+    Some(EmitKind::BlockOpen(RegionFormat::Indent(IndentBlock {
+        purpose: None,
+        partial: None,
+        column_count: None,
+        amount: first,
+        wrap: Some(continuation),
+        first_line: None,
+        page_horizontal_center: false,
+        align: None,
+        end_offset: None,
+        table_rules_absent: false,
+        layout: IndentLayout::None,
+        styles: BlockStyles {
+            font: Some(QualitativeFontSize::Smaller),
+            ..BlockStyles::EMPTY
+        },
+    })))
+}
+
+fn parse_qualified_break(body: &str) -> Option<QualifiedBreak> {
+    if let Some(number) = body
+        .strip_suffix("段目")
+        .filter(|number| {
+            number
+                .chars()
+                .all(|c| c.is_ascii_digit() || ('０'..='９').contains(&c))
+        })
+        .and_then(|number| parse_decimal_u8_prefix(number))
+        .filter(|(_, tail)| tail.is_empty())
+        .and_then(|(number, _)| NonZeroU8::new(number))
+    {
+        return Some(QualifiedBreak {
+            kind: QualifiedBreakKind::Column,
+            destination_right: false,
+            following_placement: None,
+            following_indent: None,
+            column_number: Some(number),
+        });
+    }
+    let (head, operand) = body
+        .split_once('、')
+        .map_or((body, None), |(head, operand)| (head, Some(operand)));
+    let (head, destination_right) = head
+        .strip_suffix('右')
+        .map_or((head, false), |head| (head, true));
+    let kind = match head {
+        "改ページ" | "改頁" => QualifiedBreakKind::Page,
+        "改丁" => QualifiedBreakKind::Kaicho,
+        "改段" => QualifiedBreakKind::Column,
+        "改見開き" => QualifiedBreakKind::Kaimihiraki,
+        _ => return None,
+    };
+    let (following_placement, following_indent) = match operand {
+        None if destination_right => (None, None),
+        Some("ページの左右中央" | "ページの左右中央に") => {
+            (Some(FollowingPlacement::HorizontalCenter), None)
+        }
+        Some("左寄せで") => (Some(FollowingPlacement::Left), None),
+        Some(value) => {
+            let value = value.strip_suffix("字下げで")?;
+            (None, Some(parse_break_indent(value)?))
+        }
+        None => return None,
+    };
+    Some(QualifiedBreak {
+        kind,
+        destination_right,
+        following_placement,
+        following_indent,
+        column_number: None,
+    })
+}
+
+fn parse_break_indent(value: &str) -> Option<u16> {
+    let mut parsed = 0_u16;
+    for character in value.chars() {
+        let digit = match character {
+            '0'..='9' => character as u32 - '0' as u32,
+            '０'..='９' => character as u32 - '０' as u32,
+            _ => return None,
+        };
+        parsed = parsed
+            .checked_mul(10)?
+            .checked_add(u16::try_from(digit).ok()?)?;
+    }
+    (!value.is_empty()).then_some(parsed)
+}
+
 /// Wrap an open [`RegionFormat`] as the matching [`EmitKind`]: the open marker
 /// carries the full payload; the close projects to its [`RegionClose`]
 /// discriminant via [`RegionClose::of`] (the open side stays authoritative).
@@ -1920,14 +2474,56 @@ fn open_or_close(region: RegionFormat, is_close: bool) -> EmitKind {
     }
 }
 
+/// Visible text of the okurigana body `（X）`. X may carry 傍点 or 傍線
+/// notes `［＃「T」に…］` whose quoted target T ends the text before the note;
+/// the published XHTML prints such okurigana with the decoration inside.
+/// X may also contain resolvable gaiji references `※［＃…］`, each of which
+/// contributes its glyph as one character.
+fn okurigana_text(body: &str) -> Option<Cow<'_, str>> {
+    if !body.contains('［') {
+        return is_okurigana_body(body).then(|| body[3..body.len() - 3].into());
+    }
+    let mut rest = body.strip_prefix('（')?.strip_suffix('）')?;
+    let mut text = String::new();
+    let mut literal = String::new();
+    let mut glyphs = 0usize;
+    while let Some(open) = rest.find("［＃") {
+        let note = &rest[open + "［＃".len()..];
+        let close = note.find('］')?;
+        if let Some(before) = rest[..open].strip_suffix('※') {
+            text.push_str(before);
+            literal.push_str(before);
+            let reference = gaiji_resolve::parse_gaiji_body(&note[..close]);
+            gaiji_resolve::lookup(None, reference.mencode, reference.description)?
+                .write_to(&mut text)
+                .ok()?;
+            glyphs += 1;
+        } else {
+            text.push_str(&rest[..open]);
+            literal.push_str(&rest[..open]);
+            let (target, decoration) = note[..close].strip_prefix('「')?.split_once("」に")?;
+            let (_, _, is_close) = parse_bouten_range_body(decoration)?;
+            if target.is_empty() || is_close || target.contains('［') || !text.ends_with(target) {
+                return None;
+            }
+        }
+        rest = &note[close + '］'.len_utf8()..];
+    }
+    text.push_str(rest);
+    literal.push_str(rest);
+    (literal.chars().all(is_okurigana_char)
+        && (1..=6).contains(&(literal.chars().count() + glyphs)))
+    .then_some(text.into())
+}
+
 /// Whether `body` is the okurigana shape `（X）` where X is a short
 /// run of Japanese characters.
 ///
-/// The length bound guards against accidentally claiming long
-/// parenthesised glosses (which belong to the generic annotation
-/// catch-all). 6 characters is the ~99th-percentile okurigana length
-/// in Aozora corpora; anything longer is practically always editorial
-/// prose rather than an inflection marker.
+/// The length bound keeps long parenthesised glosses (which belong to the
+/// generic annotation catch-all) from being classified as okurigana.
+/// 6 characters is the ~99th-percentile okurigana length in Aozora
+/// corpora; a longer run is nearly always editorial prose rather than an
+/// inflection marker.
 fn is_okurigana_body(body: &str) -> bool {
     let Some(inner) = body.strip_prefix('（').and_then(|s| s.strip_suffix('）')) else {
         return false;
@@ -1937,14 +2533,13 @@ fn is_okurigana_body(body: &str) -> bool {
     // Hiragana/katakana/CJK are 3 bytes UTF-8; half-width katakana
     // is also 3 bytes (U+FF61..U+FF9F). So a 1..=6 char inner has
     // byte length in `3..=18`. Any inner outside that range cannot
-    // satisfy `is_okurigana_char.all` and we skip the char decode.
+    // satisfy `is_okurigana_char.all`, so the char decode is skipped.
     if !(3..=18).contains(&inner.len()) {
         return false;
     }
     // Single-pass fusion of `chars().count()` + `chars().all()`:
     // count and class-check in one walk, with early-out at >6 chars
-    // or first non-conforming char. Replaces two iterations over
-    // the same byte stream.
+    // or first non-conforming char.
     let mut count = 0usize;
     for c in inner.chars() {
         count += 1;
@@ -1956,13 +2551,15 @@ fn is_okurigana_body(body: &str) -> bool {
 }
 
 /// Character class accepted inside okurigana parens: hiragana,
-/// katakana (incl. half-width), CJK unified ideographs. Narrower
+/// katakana (incl. half-width), CJK unified ideographs and the
+/// ideographic iteration mark 々. Narrower
 /// than "any non-whitespace" so editorial `（注）` or
 /// punctuation-rich glosses fall through to the annotation path.
 const fn is_okurigana_char(ch: char) -> bool {
     matches!(
         ch,
-        '\u{3041}'..='\u{309F}'      // hiragana
+        '\u{3005}'                  // ideographic iteration mark 々
+        | '\u{3041}'..='\u{309F}'    // hiragana
         | '\u{30A0}'..='\u{30FF}'    // katakana
         | '\u{FF66}'..='\u{FF9F}'    // half-width katakana
         | '\u{4E00}'..='\u{9FFF}'    // CJK unified
@@ -1978,15 +2575,6 @@ pub(super) fn illustration_file_spec(spec: &str) -> Option<(&str, Option<&str>)>
     (!file.is_empty()).then_some((file, dimensions))
 }
 
-/// Classify a `［＃挿絵（file）入る］` sashie (illustration insert),
-/// optionally bundling a caption: `［＃挿絵（file）「caption」入る］`.
-///
-/// Called from [`classify_annotation_body`]'s `SashiePrefix` arm:
-/// the AC has already verified the `挿絵（` prefix at body[0..9]; this
-/// function captures the filename between `（` and `）`, an optional
-/// `「caption」` (per <https://www.aozora.gr.jp/annotation/graphics.html>),
-/// and confirms the trailing `入る` keyword. Quoted caption text stays
-/// image metadata; visible captions are separate source content.
 fn relative_placement(
     body: &str,
     alloc: &mut Allocator,
@@ -2003,12 +2591,21 @@ fn relative_placement(
     (rest == "字下げ、横組み右揃えで").then(|| alloc.relative_text_placement(reference, offset))
 }
 
+/// Classify a `［＃挿絵（file）入る］` sashie (illustration insert),
+/// optionally bundling a caption: `［＃挿絵（file）「caption」入る］`.
+///
+/// Called from [`classify_annotation_body`]'s `SashiePrefix` arm:
+/// the AC has already verified the `挿絵（` prefix at body[0..9]; this
+/// function captures the filename between `（` and `）`, an optional
+/// `「caption」` (per <https://www.aozora.gr.jp/annotation/graphics.html>),
+/// and confirms the trailing `入る` keyword. Quoted caption text stays
+/// image metadata; visible captions are separate source content.
 fn classify_sashie_body(source: &AnnotationBody<'_>, alloc: &mut Allocator) -> Option<EmitKind> {
     let body = source.text;
     // `挿絵（file）入る` and the numbered `挿絵{N}（file）入る` (N a run of
-    // half/full-width digits before the `（`). A description *before* 挿絵
+    // half/full-width digits before the `（`). A description before 挿絵
     // (`女性と犬の挿絵（…）`, `「…」のキャプション付きの挿絵（…）`) is a separate,
-    // unhandled form; it does not start with 挿絵, so the needle misses it.
+    // unhandled form; it does not start with 挿絵, so the needle does not match it.
     let after_kw = body.strip_prefix("挿絵")?;
     let paren = after_kw.find('（')?;
     let number = if paren == 0 {
@@ -2038,33 +2635,43 @@ fn classify_sashie_body(source: &AnnotationBody<'_>, alloc: &mut Allocator) -> O
     // `「caption」入る`. Any other shape declines (→ `Directive{Unknown}`).
     let caption = if tail == "入る" {
         None
-    } else if let Some(inner) = tail
-        .strip_prefix('「')
-        .and_then(|t| t.strip_suffix("」入る"))
-    {
+    } else {
+        let inner = tail
+            .strip_prefix('「')
+            .and_then(|t| t.strip_suffix("」入る"))?;
         if inner.is_empty() {
             return None;
         }
         Some(alloc.content_plain(inner))
-    } else {
-        return None;
+    };
+    // graphics.html treats `挿絵１` as the image description, the text before
+    // `（`, and the published XHTML gives it as the alt text.
+    let description_len = body.len() - after_kw.len() + paren;
+    let description = match alloc.content_plain(&body[..description_len]) {
+        Content::Plain(id) => Some(id),
+        _ => None,
     };
     let result = alloc.sashie(file, number, dimensions, caption);
-    if let Node::Illustration(id) = result
-        && caption.is_some()
-    {
+    if let Node::Illustration(id) = result {
         let image = alloc.illustration_mut(id);
-        let start = source.start
-            + u32::try_from(tail.as_ptr().addr() - body.as_ptr().addr() + '「'.len_utf8())
-                .expect("source offset fits u32");
-        let end = source.start
-            + u32::try_from(body.len() - "」入る".len()).expect("source offset fits u32");
-        image.caption_span = Some(Span::new(start, end));
+        image.description = description;
+        image.description_span = Some(Span::new(
+            source.start,
+            source.start + u32::try_from(description_len).expect("source offset fits u32"),
+        ));
+        if caption.is_some() {
+            let start = source.start
+                + u32::try_from(tail.as_ptr().addr() - body.as_ptr().addr() + '「'.len_utf8())
+                    .expect("source offset fits u32");
+            let end = source.start
+                + u32::try_from(body.len() - "」入る".len()).expect("source offset fits u32");
+            image.caption_span = Some(Span::new(start, end));
+        }
     }
     Some(EmitKind::Aozora(result))
 }
 
-/// Classify the *general* image form `［＃<説明>（file［、横W×縦H］）入る］`
+/// Classify the general image form `［＃<説明>（file［、横W×縦H］）入る］`
 /// (図 / 地図 / 口絵 / 表紙 / コンドル博士の図 / 神代文字ア …) per
 /// <https://www.aozora.gr.jp/annotation/graphics.html>: the leading text
 /// before `（` is the image's alt-description (the guide lists 図 / 地図 /
@@ -2074,7 +2681,7 @@ fn classify_sashie_body(source: &AnnotationBody<'_>, alloc: &mut Allocator) -> O
 ///
 /// The keyword `挿絵` form is claimed earlier by [`classify_sashie_body`]
 /// via its anchored needle; this is the fallback for every other
-/// description, tried just before the `Directive{Unknown}` catch-all (it
+/// description, tried immediately before the `Directive{Unknown}` catch-all (it
 /// has no prefix needle because the description is arbitrary). Returns
 /// `None` unless the insertion is complete; an explicitly attributed statement
 /// about image lettering may follow it as documentary apparatus.
@@ -2086,12 +2693,13 @@ pub(super) fn classify_general_image_body(
     let mixed = image_edition_note(body);
     let original = body;
     let body = mixed.map_or(body, |(image, _)| image);
-    let middle = body.strip_suffix("入る")?;
-    // The file spec `（file、横W×縦H）` is always the LAST paren group before
+    let middle = body
+        .strip_suffix("入る")
+        .or_else(|| body.strip_suffix("入る。"))?;
+    // The file spec `（file、横W×縦H）` is always the last paren group before
     // `入る`; use `rfind` so a description that itself embeds `（…）` (e.g.
     // `…（1798）…の図（fig.png、…）入る`) splits at the file paren, not the
-    // first inner one. For a single-paren body `rfind == find`, so every
-    // already-recognized body is byte-identical.
+    // first inner one. For a single-paren body `rfind == find`.
     let paren = middle.rfind('（')?;
     let description = &middle[..paren];
     if description.is_empty() {
@@ -2128,7 +2736,7 @@ pub(super) fn classify_general_image_body(
 /// hint (`「X」はSTYLEレベル見出し`) and the paired / block container forms
 /// ([`parse_heading_directive`]).
 ///
-/// `副見出し` is not a real annotation (it never occurs in the corpus), so
+/// `副見出し` is not an attested annotation (it does not occur in the corpus), so
 /// it matches nothing and the directive falls through to `Directive{Unknown}`.
 /// The 同行 / 窓 styles cross with every level (`同行中見出し`, `窓小見出し`, …).
 pub(super) fn parse_heading_keyword(s: &str) -> Option<(HeadingStyle, HeadingKind)> {
@@ -2171,7 +2779,7 @@ fn parse_heading_close_level(s: &str) -> Option<(HeadingStyle, Option<HeadingKin
     Some((style, level))
 }
 
-/// Recognise a **paired** (`STYLEレベル見出し` / `…見出し終わり`) or **block**
+/// Recognise a paired (`STYLEレベル見出し` / `…見出し終わり`) or block
 /// (`ここからSTYLEレベル見出し` / `ここでSTYLEレベル見出し終わり`) heading
 /// directive body, returning the [`EmitKind`] to emit. These delimit their
 /// content and route through the container pairing machinery as
@@ -2204,7 +2812,7 @@ fn parse_heading_directive(body: &str) -> Option<EmitKind> {
     }
     if let Some(inner) = body.strip_suffix("終わり") {
         let (style, level) = parse_heading_close_level(inner)?;
-        // The paired (`…終わり`, no `ここで`) close REQUIRES an explicit level: a
+        // The paired (`…終わり`, no `ここで`) close requires an explicit level: a
         // bare `見出し終わり` has neither the `ここで` block-scope signal nor a
         // level word, so it is too ambiguous to claim (0 corpus occ) and stays
         // Unknown. Only the `ここで` block close (below) admits the level-less form.
@@ -2223,10 +2831,6 @@ fn parse_heading_directive(body: &str) -> Option<EmitKind> {
     }))
 }
 
-/// Signed stage count for a `ここから{N}段階大きな/小さな文字` block opener,
-/// where `tail` is the body after the `ここから{N}` prefix and `magnitude`
-/// is `N`. `大きな` → `+N`, `小さな` → `-N`; `None` for a zero/overflowing
-/// magnitude or any other tail.
 fn font_size_block_close(body: &str) -> Option<RegionClose> {
     let rest = body.strip_prefix("ここで").unwrap_or(body);
     let (magnitude, rest) = if let Some((count, tail)) = parse_decimal_u8_prefix(rest) {
@@ -2245,14 +2849,18 @@ fn font_size_block_close(body: &str) -> Option<RegionClose> {
     Some(RegionClose::FontSize { larger, magnitude })
 }
 
+/// Signed stage count for a `ここから{N}段階大きな/小さな文字` block opener,
+/// where `tail` is the body after the `ここから{N}` prefix and `magnitude`
+/// is `N`. `大きな` → `+N`, `小さな` → `-N`; `None` for a zero/overflowing
+/// magnitude or any other tail.
 fn font_size_block_open_steps(tail: &str, magnitude: u8) -> Option<i8> {
     let steps = i8::try_from(magnitude).ok()?;
     if steps == 0 {
         return None;
     }
     match tail {
-        "段階大きな文字" => Some(steps),
-        "段階小さな文字" => Some(-steps),
+        "段階大きな文字" | "回り大きな文字" => Some(steps),
+        "段階小さな文字" | "回り小さな文字" => Some(-steps),
         _ => None,
     }
 }
@@ -2295,14 +2903,13 @@ impl<T: Copy + PartialEq> ClauseAxis<T> {
 ///
 /// Every axis records the first value it is given together with the clause span
 /// it came from, so a later clause that disagrees yields a conflict span rather
-/// than being resolved by clause order. Keeping them in one place means an
-/// added axis is a field, an [`IndentAxes::observe`] entry and an
-/// [`IndentAxes::settle`] line, rather than another local threaded through the
-/// clause loop.
+/// than being resolved by clause order. An added axis is a field, an
+/// [`IndentAxes::observe`] entry and an [`IndentAxes::settle`] line.
 #[derive(Default)]
 struct IndentAxes {
     purpose: ClauseAxis<BlockPurpose>,
     wrap: ClauseAxis<u8>,
+    first_line: ClauseAxis<FirstLineIndent>,
     align: ClauseAxis<LineAlignment>,
     horizontal_align: ClauseAxis<LineAlignment>,
     end_offset: ClauseAxis<u8>,
@@ -2368,6 +2975,7 @@ impl IndentAxes {
     fn settle(self, block: &mut IndentBlock, clauses: &mut Vec<Span>) {
         block.purpose = self.purpose.value();
         block.wrap = self.wrap.value();
+        block.first_line = self.first_line.value();
         block.align = self.align.value();
         if let Some(horizontal) = &mut block.styles.horizontal {
             horizontal.align = self.horizontal_align.value();
@@ -2403,6 +3011,7 @@ fn parse_indent_compound(
         column_count: None,
         amount,
         wrap: None,
+        first_line: None,
         page_horizontal_center: false,
         align: None,
         end_offset: None,
@@ -2413,7 +3022,44 @@ fn parse_indent_compound(
     let mut block = initial;
     let mut axes = IndentAxes::default();
     let mut clauses = Vec::new();
-    for (segment, span) in source.clauses(after) {
+    let mut instructions = Vec::new();
+    let segments = source.clauses(after);
+    let mut index = 0;
+    while index < segments.len() {
+        let (segment, span) = segments[index];
+        if let Some(instruction) = super::formatting_instruction::kaeriten_policy_clause(
+            segment,
+            span.start,
+            KuntenScope::FollowingBlock,
+        ) {
+            instructions.push(instruction);
+            index += 1;
+            continue;
+        }
+        if segment.ends_with("をのぞき")
+            && let Some((_, next_span)) = segments.get(index + 1).copied()
+        {
+            let start = usize::try_from(span.start - source.start).expect("source span fits usize");
+            let end =
+                usize::try_from(next_span.end - source.start).expect("source span fits usize");
+            if let Some(instruction) = super::formatting_instruction::kaeriten_policy_clause(
+                &source.text[start..end],
+                span.start,
+                KuntenScope::FollowingBlock,
+            ) {
+                instructions.push(instruction);
+                index += 2;
+                continue;
+            }
+        }
+        if let Some((quoted, amount)) = first_line_clause(segment) {
+            let first_line = alloc.first_line_indent(quoted, amount);
+            if let Some(conflict) = axes.first_line.observe(first_line, span) {
+                clauses.push(conflict);
+            }
+            index += 1;
+            continue;
+        }
         let mut candidate = initial;
         let problem = if resolve_indent_segment(segment, &mut candidate).is_none() {
             // A second primary indentation value makes the container's own scope uncertain.
@@ -2434,10 +3080,12 @@ fn parse_indent_compound(
         if let Some(problem) = problem {
             clauses.push(problem);
         }
+        index += 1;
     }
     axes.settle(&mut block, &mut clauses);
-    if !clauses.is_empty() {
-        block.partial = Some(alloc.partial_layout(source.text, clauses));
+    if !clauses.is_empty() || !instructions.is_empty() {
+        block.partial =
+            Some(alloc.partial_layout_with_instructions(source.text, clauses, instructions));
     }
     Some(block)
 }
@@ -2451,10 +3099,19 @@ fn parse_column_compound(
     let mut block = ColumnBlock {
         column_rule: false,
         count,
+        part: None,
         styles: BlockStyles::EMPTY,
         partial: None,
     };
     if after.is_empty() {
+        return Some(block);
+    }
+    // A parenthesised exception followed by sentences describing the columns
+    // is one statement about the block, kept whole.
+    if after.starts_with('（') {
+        let end = source.start + u32::try_from(source.text.len()).expect("source fits native span");
+        let start = end - u32::try_from(after.len()).expect("source fits native span");
+        block.partial = Some(alloc.partial_layout(source.text, vec![Span::new(start, end)]));
         return Some(block);
     }
     let after = after.strip_prefix('、')?;
@@ -2464,6 +3121,10 @@ fn parse_column_compound(
     for (segment, span) in source.clauses(after) {
         if segment == "段間に罫" {
             block.column_rule = true;
+            continue;
+        }
+        if count.0.get() == 2 && block.part.is_none() && matches!(segment, "上段" | "下段") {
+            block.part = NonZeroU8::new(if segment == "上段" { 1 } else { 2 });
             continue;
         }
         let mut candidate = BlockStyles::EMPTY;
@@ -2490,6 +3151,23 @@ fn parse_column_compound(
     Some(block)
 }
 
+/// `ただし冒頭の{X}のみ[は]{N}字下げ`: the quoted first character of the
+/// block's first line and that line's indent.
+///
+/// `X` is one character, a gaiji reference or `歌記号`. A clause that selects
+/// lines by another description, such as `改行行頭の「・」`, is not accepted.
+fn first_line_clause(segment: &str) -> Option<(&str, u8)> {
+    let (quoted, measure) = segment.strip_prefix("ただし冒頭の")?.rsplit_once("のみ")?;
+    let mut characters = quoted.chars();
+    let single = characters.next().is_some() && characters.next().is_none();
+    let gaiji = quoted.starts_with("※［＃") && quoted.ends_with('］');
+    if !(single || gaiji || quoted == "歌記号") {
+        return None;
+    }
+    let (amount, tail) = parse_layout_count_prefix(measure.strip_prefix('は').unwrap_or(measure))?;
+    (tail == "字下げ").then_some((quoted, amount))
+}
+
 /// Interpret one independent `字下げ、` clause into a fresh candidate payload.
 fn resolve_indent_segment(segment: &str, block: &mut IndentBlock) -> Option<()> {
     if segment == "ここから数式" {
@@ -2502,7 +3180,11 @@ fn resolve_indent_segment(segment: &str, block: &mut IndentBlock) -> Option<()> 
         return Some(());
     }
     // 折り返して{M}字下げ: hanging-indent continuation width.
-    if let Some(rest) = segment.strip_prefix("折り返して") {
+    // `一つの行が複数行に渡る場合は２行目から{M}字下げ` states the same width.
+    if let Some(rest) = segment
+        .strip_prefix("折り返して")
+        .or_else(|| segment.strip_prefix("一つの行が複数行に渡る場合は２行目から"))
+    {
         let (m, tail) = parse_layout_count_prefix(rest)?;
         if tail != "字下げ" || block.wrap.is_some() {
             return None;
@@ -2574,10 +3256,11 @@ fn resolve_indent_segment(segment: &str, block: &mut IndentBlock) -> Option<()> 
 
 /// Split a role clause the source wrote ahead of the measure that scopes it.
 ///
-/// `ここから引用文、３字下げ` and `これより手紙文、１字下げ` name what the scope
+/// `ここから引用文、３字下げ` and `これより手紙文、１字下げ` state what the scope
 /// is first and how far it is indented second. Only a leading clause that is
 /// entirely a role spelling is taken; anything else is left for the measure
-/// parse to accept or decline, so no marker loses its ordinary reading to this.
+/// parse to accept or decline, so this step changes the reading of no other
+/// marker.
 fn split_leading_role(rest: &str) -> (Option<BlockPurpose>, &str) {
     let Some((clause, after)) = rest.split_once('、') else {
         return (None, rest);
@@ -2590,12 +3273,12 @@ fn split_leading_role(rest: &str) -> (Option<BlockPurpose>, &str) {
     }
 }
 
-/// Attach a role the source named ahead of the measure.
+/// Attach a role the source stated ahead of the measure.
 ///
 /// The role is about the indentation scope this same marker opens. A marker
-/// that opens something else, or that names a second role among its trailing
-/// clauses, states two things about one scope; it is declined whole rather than
-/// one of the two being chosen and the other silently dropped.
+/// that opens something else, or that states a second role among its trailing
+/// clauses, states two things about one scope; it is declined whole, so
+/// neither statement is discarded.
 fn with_supplied_role(open: EmitKind, role: Option<BlockPurpose>) -> Option<EmitKind> {
     let Some(role) = role else {
         return Some(open);
@@ -2617,10 +3300,10 @@ fn with_supplied_role(open: EmitKind, role: Option<BlockPurpose>) -> Option<Emit
 /// source calls smaller. No magnitude is derived for the size, because the
 /// source states a direction and no degree.
 ///
-/// A clause naming a target (`「…」は地より{N}字上げ`), or left truncated to a
-/// bare `は` with the target gone, is not read: the marker would then be about a
-/// piece of the line rather than the line, and which piece is not something the
-/// marker settles.
+/// A clause that quotes a target (`「…」は地より{N}字上げ`), or is truncated to
+/// a bare `は` with the target missing, is not read: the marker would then be
+/// about a piece of the line rather than the line, and the marker does not
+/// identify which piece.
 fn parse_line_align_end_compound(body: &str) -> Option<LineFormat> {
     let clauses = body
         .strip_prefix("この行、")
@@ -2630,12 +3313,17 @@ fn parse_line_align_end_compound(body: &str) -> Option<LineFormat> {
     let mut font = None;
     for clause in clauses.split('、') {
         match clause {
-            // `下揃え` names the foot alignment this line form already is. It
+            // `下揃え` states the foot alignment this line form already is. It
             // adds nothing to the measure clause beside it, and on its own it
             // is the flush `地付き` the measure would otherwise lift off.
             "下揃え" => aligned = true,
             "相対的に字が小さい" | "ポイントを下げて" | "ポイントを下げ" => {
                 if font.replace(QualitativeFontSize::Smaller).is_some() {
+                    return None;
+                }
+            }
+            "ポイントを上げ" => {
+                if font.replace(QualitativeFontSize::Larger).is_some() {
                     return None;
                 }
             }
@@ -2657,7 +3345,12 @@ fn parse_line_align_end_compound(body: &str) -> Option<LineFormat> {
             _ => {
                 let rest = clause
                     .strip_prefix("下から")
-                    .or_else(|| clause.strip_prefix("地より"))?;
+                    .or_else(|| clause.strip_prefix("地より"))
+                    .or_else(|| {
+                        (font == Some(QualitativeFontSize::Larger))
+                            .then(|| clause.strip_prefix("は地より"))
+                            .flatten()
+                    })?;
                 let (supplied, tail) = parse_layout_count_prefix(rest)?;
                 if supplied == 0
                     || !matches!(tail, "字上げ" | "字上")
@@ -2675,14 +3368,15 @@ fn parse_line_align_end_compound(body: &str) -> Option<LineFormat> {
     })
 }
 
-/// Read a standalone table opener into the role and whatever the source names
+/// Read a standalone table opener into the role and whatever the source states
 /// beside it.
 ///
-/// `ここから表罫囲み` names an enclosure, `ここから横組みの表` a writing
+/// `ここから表罫囲み` states an enclosure, `ここから横組みの表` a writing
 /// direction, and `ここからプログラム、表罫囲み` a clause this does not read.
-/// Each lands on its own axis, so these differ from a bare `ここから表` only in
-/// what the source said. A clause that names no table leaves the marker
-/// declined: without the role there is no table scope for the rest to be about.
+/// Each is recorded on its own axis, so these differ from a bare `ここから表`
+/// only in what the source states. A clause that states no table leaves the
+/// marker declined: without the role there is no table scope for the rest to
+/// be about.
 fn parse_table_open(
     body: &str,
     source: &AnnotationBody<'_>,
@@ -2715,8 +3409,8 @@ fn parse_table_open(
     })
 }
 
-/// Interpret one role clause into the role the source names, and the enclosure
-/// a fused spelling names along with it.
+/// Interpret one role clause into the role the source states, and the enclosure
+/// a fused spelling states along with it.
 ///
 /// `罫囲みの表` and `表罫囲み` say two things in one word: the scope is a table,
 /// and a ruled box is drawn around it. Both are recorded on their own axis, so
@@ -2724,7 +3418,7 @@ fn parse_table_open(
 /// and the role stays comparable with a bare `表組み`. Nothing here derives
 /// cells, columns or rules from the enclosed lines, and nothing about a quoted
 /// passage's own source, or a letter's correspondents, is derived either: the
-/// clause names what the scope is, and only that.
+/// clause states what the scope is, and only that.
 fn resolve_role_clause(
     segment: &str,
     purpose: &mut Option<BlockPurpose>,
@@ -2733,7 +3427,10 @@ fn resolve_role_clause(
     let (role, frame) = match segment {
         "表" | "表組" | "表組み" => (BlockPurpose::Table, None),
         "図表" => (BlockPurpose::FigureOrTable, None),
-        "罫囲みの表" | "表罫囲み" => (BlockPurpose::Table, Some(EnclosureKind::Rule)),
+        // 罫仕切り: a ruled table whose rows are compartments between rules.
+        "罫囲みの表" | "表罫囲み" | "罫仕切り" => {
+            (BlockPurpose::Table, Some(EnclosureKind::Rule))
+        }
         "引用文" => (BlockPurpose::Quotation, None),
         "手紙文" => (BlockPurpose::Letter, None),
         _ => return None,
@@ -2778,8 +3475,11 @@ fn resolve_block_style(segment: &str, styles: &mut BlockStyles) -> Option<()> {
         "破線枠囲み" if styles.frame.is_none() => {
             styles.frame = Some(EnclosureKind::DashedRule);
         }
-        "小さい活字" if styles.font.is_none() => {
+        "小さい活字" | "文字のポイント下げる" if styles.font.is_none() => {
             styles.font = Some(QualitativeFontSize::Smaller);
+        }
+        "ポイントを上げ" if styles.font.is_none() => {
+            styles.font = Some(QualitativeFontSize::Larger);
         }
         "字のポイントはやや小さくしてある。" if styles.font.is_none() => {
             styles.font = Some(QualitativeFontSize::SlightlySmaller);
@@ -2874,14 +3574,12 @@ fn parse_indent_line_layout(after: &str) -> Option<IndentLayout> {
 /// Map the trailing keyword (after `に`) to a [`BoutenKind`].
 ///
 /// The reverse of [`BoutenKind::keyword`], derived by walking the single
-/// [`BOUTEN_KINDS`] source rather than a hand-maintained second table:
-/// so a mark can never be recognised in the forward direction
-/// (`keyword`) yet silently missed here. `×傍点` is accepted as an input
+/// [`BOUTEN_KINDS`] source rather than a hand-maintained second table,
+/// so every mark recognised in the forward direction (`keyword`) is also
+/// recognised here. `×傍点` is accepted as an input
 /// alias for ばつ傍点; 黒丸傍点 is the equivalent explicit-color spelling of
-/// 丸傍点. Canonical mark-prefix keywords
-/// (`白丸傍点`, …) are recognised; the non-canonical `傍点（白丸）` /
-/// `傍点◎` marker-suffix spellings decline to `Directive{Unknown}`,
-/// served by a Tier1 lint suggesting the canonical keyword. Unknown suffixes
+/// 丸傍点. The marker-suffix spellings `傍点（白丸）` and `傍点◎` are read as
+/// 白丸傍点 and 二重丸傍点, as the published XHTML renders them. Unknown suffixes
 /// return `None`, letting the annotation fall through to the
 /// `Directive{Unknown}` catch-all. Lookup is a short linear scan (14 entries,
 /// dominated by the leading-byte mismatch on the first compare).
@@ -2889,6 +3587,8 @@ pub(super) fn bouten_kind_from_suffix(s: &str) -> Option<BoutenKind> {
     match s {
         "×傍点" => return Some(BoutenKind::Cross),
         "黒丸傍点" => return Some(BoutenKind::Circle),
+        "傍点（白丸）" => return Some(BoutenKind::WhiteCircle),
+        "傍点◎" => return Some(BoutenKind::DoubleCircle),
         _ => {}
     }
     BOUTEN_KINDS.iter().copied().find(|k| k.keyword() == s)
@@ -2897,12 +3597,14 @@ pub(super) fn bouten_kind_from_suffix(s: &str) -> Option<BoutenKind> {
 /// Parse a 傍点/傍線 range-form body into `(kind, position, is_close)`.
 /// Strips an optional `左に` left-side prefix and an optional `終わり`
 /// close suffix; the remainder must be a [`bouten_kind_from_suffix`]
-/// keyword (all fourteen kinds, incl. the rare 鎖線 / 破線 / 黒三角傍点).
+/// keyword (every kind, incl. the rare 鎖線 / 破線 / 黒三角傍点).
 /// Returns `None` (→ `Directive{Unknown}`) for any non-bouten body.
-fn parse_bouten_range_body(body: &str) -> Option<(BoutenKind, BoutenPosition, bool)> {
+fn parse_bouten_range_body(body: &str) -> Option<(BoutenKind, DecorationPosition, bool)> {
     let (position, rest) = body
         .strip_prefix("左に")
-        .map_or((BoutenPosition::Right, body), |r| (BoutenPosition::Left, r));
+        .map_or((DecorationPosition::Right, body), |r| {
+            (DecorationPosition::Left, r)
+        });
     let (is_close, kind_str) = rest
         .strip_suffix("終わり")
         .map_or((false, rest), |k| (true, k));
@@ -2914,7 +3616,7 @@ fn parse_bouten_range_body(body: &str) -> Option<(BoutenKind, BoutenPosition, bo
 /// `BoutenPosition::Right`, `行左小書き` → `Left`; an optional `終わり`
 /// suffix marks the close. Returns `None` (→ `Directive{Unknown}`) for any
 /// other body, so a needle-prefix-but-longer body like `行右小書きほげ`
-/// declines cleanly.
+/// declines.
 fn parse_small_script_range_body(body: &str) -> Option<(BoutenPosition, bool)> {
     let (is_close, core) = body
         .strip_suffix("終わり")
@@ -2958,10 +3660,8 @@ fn parse_line_font_size(body: &str) -> Option<(AbsoluteSize, bool)> {
         (AbsoluteSize::Large, r)
     } else if let Some(r) = body.strip_prefix("中文字") {
         (AbsoluteSize::Medium, r)
-    } else if let Some(r) = body.strip_prefix("小文字") {
-        (AbsoluteSize::Small, r)
     } else {
-        return None;
+        (AbsoluteSize::Small, body.strip_prefix("小文字")?)
     };
     let bold = match rest {
         "" => false,
@@ -2974,7 +3674,7 @@ fn parse_line_font_size(body: &str) -> Option<(AbsoluteSize, bool)> {
 /// Parse supplied emphasis and typeface scope spellings directly to their
 /// authoritative opening attribute and whether this marker closes it.
 pub(super) fn parse_emphasis_body(body: &str) -> Option<(RegionFormat, bool)> {
-    use RegionFormat::{Bold, Gothic, Italic, Textbook};
+    use RegionFormat::{Bold, Gothic, Handwritten, Italic, Textbook};
     Some(match body {
         "太字" => (Bold { padded: false }, false),
         "太字終わり" => (Bold { padded: false }, true),
@@ -2990,13 +3690,34 @@ pub(super) fn parse_emphasis_body(body: &str) -> Option<(RegionFormat, bool)> {
         "ここで斜体終わり" => (Italic { padded: true }, true),
         "ここから教科書体" => (Textbook, false),
         "ここで教科書体終わり" => (Textbook, true),
+        "ここから手書き文字" => (Handwritten, false),
+        "ここで手書き文字終わり" => (Handwritten, true),
         _ => return None,
     })
 }
 
 pub(super) fn parse_end_spacing(source: &str) -> Option<u8> {
     let (offset, tail) = parse_layout_count_prefix(source)?;
-    (offset > 0 && matches!(tail, "字アキ" | "字あき")).then_some(offset)
+    (offset > 0 && matches!(tail, "字アキ" | "字あき" | "字アキで" | "字あきで")).then_some(offset)
+}
+
+/// A block indent whose first lines sit at `amount` and whose continuation
+/// lines wrap at `wrap`.
+const fn hanging_indent_open(amount: u8, wrap: u8) -> EmitKind {
+    EmitKind::BlockOpen(RegionFormat::Indent(IndentBlock {
+        purpose: None,
+        partial: None,
+        column_count: None,
+        amount,
+        wrap: Some(wrap),
+        first_line: None,
+        page_horizontal_center: false,
+        align: None,
+        end_offset: None,
+        table_rules_absent: false,
+        layout: IndentLayout::None,
+        styles: BlockStyles::EMPTY,
+    }))
 }
 
 fn parse_layout_count_prefix(source: &str) -> Option<(u8, &str)> {
@@ -3025,8 +3746,8 @@ fn parse_layout_count_prefix(source: &str) -> Option<(u8, &str)> {
 /// Returns `None` if the leading char is not a digit, or if the value
 /// overflows `u8` (> 255). `saturating_mul` / `saturating_add` during
 /// accumulation keep the `u32` intermediate bounded, but the final
-/// `try_from` enforces the `u8` range; a body like `300字下げ` fails
-/// cleanly rather than wrapping to 44.
+/// `try_from` enforces the `u8` range; a body like `300字下げ` returns
+/// `None` instead of wrapping to 44.
 pub(super) fn parse_decimal_u8_prefix(s: &str) -> Option<(u8, &str)> {
     let mut value: u32 = 0;
     let mut consumed = 0;
@@ -3085,7 +3806,7 @@ mod both_margin_tests {
     /// clause, and a bottom clause missing its explicit count.
     #[test]
     fn non_both_margin_tails_decline() {
-        // Plain head indent, no 地より clause: the caller's plain arm owns this.
+        // Plain head indent, no 地より clause: the caller's plain arm handles this.
         assert_eq!(parse_both_margin_tail(2, "字下げ"), None);
         // Bottom clause without an explicit count declines.
         assert_eq!(parse_both_margin_tail(2, "字下げ、地より字上げで"), None);

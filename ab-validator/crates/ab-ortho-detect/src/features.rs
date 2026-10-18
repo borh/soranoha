@@ -54,7 +54,6 @@ pub fn extract_char_features(text: &str) -> CharFeatures {
         }
     }
 
-    // Unique char ratio
     let unique_count = {
         let mut sorted: Vec<char> = chars.clone();
         sorted.sort_unstable();
@@ -94,12 +93,11 @@ pub fn extract_char_features(text: &str) -> CharFeatures {
     };
 
     // Repeated bigram pattern ratio: count of immediate ABAB echoes
-    // (optionally ッ-separated). Mirrors the Python heuristic's
+    // (optionally ッ-separated). Same as the Python heuristic's
     // `len(re.findall(r"(..)ッ?\1", text))`, not "distinct bigrams appearing
     // >=2 times anywhere", which would reject unrelated repetitions.
     let repeated_bigram_pattern_count = count_immediate_bigram_echoes(&chars);
 
-    // Does the sentence end in katakana?
     let katakana_at_end = chars.last().is_some_and(|ch| is_katakana(*ch));
 
     CharFeatures {
@@ -142,12 +140,12 @@ fn is_kanji(ch: char) -> bool {
     ('\u{4E00}'..='\u{9FFF}').contains(&ch) || ('\u{3400}'..='\u{4DBF}').contains(&ch) // CJK Ext-A
 }
 
-/// Count immediate ABAB-style bigram echoes (optionally ッ-separated), faithful
+/// Count immediate ABAB-style bigram echoes (optionally ッ-separated), equal
 /// to the Python heuristic's `len(re.findall(r"(..)ッ?\1", text))`.
 ///
 /// A match at position `i` is: chars[i..i+2] == chars[i+2..i+4] (no separator)
 /// OR chars[i+2] == 'ッ' AND chars[i..i+2] == chars[i+3..i+5] (ッ-separated).
-/// Matches are non-overlapping (advance past a match); this mirrors Python's
+/// Matches are non-overlapping (advance past a match), as in Python's
 /// `re.findall` leftmost-non-overlapping semantics.
 fn count_immediate_bigram_echoes(chars: &[char]) -> usize {
     let n = chars.len();
@@ -176,9 +174,9 @@ fn count_immediate_bigram_echoes(chars: &[char]) -> usize {
 }
 
 /// Canonical feature vector order used by the ML trainer + runtime classifier.
-/// The model's weight vector indexes match this order. DO NOT reorder without
-/// retraining + rehashing partitions the model hash by
-/// this exact order).
+/// The model's weight vector indexes match this order. Reordering requires
+/// retraining the model and recomputing the model hash, which depends on this
+/// order.
 pub const FEATURE_NAMES: &[&str] = &[
     "total_chars",
     "hiragana_ratio",

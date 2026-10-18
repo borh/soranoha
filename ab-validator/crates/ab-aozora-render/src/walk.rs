@@ -1,28 +1,29 @@
 //! Shared PUA-sentinel walk over an [`LexOutput`]'s normalized text.
 //!
 //! Both renderers — [`crate::html`] and `serialize`
-//! — sweep the same normalized text, dispatching each PUA sentinel through the
-//! owned registry and bulk-copying the plain runs between hits. The scan,
+//! — scan the same normalized text, dispatch each PUA sentinel through the
+//! owned registry, and copy the plain runs between sentinels in bulk. The scan,
 //! sentinel decoding, registry lookup, and cursor bookkeeping are identical;
-//! only what happens *at* each event differs. This module owns that single scan
-//! and drives a [`WalkSink`] for the renderer-specific work.
+//! the renderers differ only in the handling of each event. This module
+//! implements the scan and calls a [`WalkSink`] for the renderer-specific
+//! handling.
 //!
 //! # Why a byte scan
 //!
 //! Every PUA sentinel (`U+E001..U+E004`) shares the 2-byte UTF-8 prefix
-//! `0xEE 0x80`; the third byte (`0x81..0x84`) names the kind. A single
-//! `memchr` finds candidate lead bytes at memory-bandwidth speed (SIMD
-//! via the `memchr` crate); each candidate is validated with two byte
+//! `0xEE 0x80`; the third byte (`0x81..0x84`) identifies the kind. A single
+//! `memchr` pass finds candidate lead bytes with SIMD instructions (via the
+//! `memchr` crate); each candidate is validated with two byte
 //! loads and a registry lookup before node dispatch. Unregistered source
 //! characters stay in the pending plain-text run.
 //!
 //! # Newlines
 //!
-//! The HTML renderer also reacts to `\n` (paragraph / `<br />` control);
-//! the serializer copies newlines verbatim as plain text. A sink opts in
-//! with [`WalkSink::WANTS_NEWLINES`], which selects `memchr2(0xEE, '\n')`
-//! vs `memchr(0xEE)` at compile time so the serializer pays nothing for a
-//! needle it does not use.
+//! The HTML renderer also handles `\n` (paragraph / `<br />` control);
+//! the serializer copies newlines verbatim as plain text. A sink sets
+//! [`WalkSink::WANTS_NEWLINES`] to receive newlines; the constant selects
+//! `memchr2(0xEE, '\n')` or `memchr(0xEE)` at compile time, so the
+//! serializer's scan does not search for `\n`.
 
 use core::fmt;
 
@@ -42,7 +43,7 @@ const BLOCK_OPEN_SENTINEL_TAIL: u8 = 0x83;
 /// Third UTF-8 byte of `BLOCK_CLOSE_SENTINEL` (`U+E004`).
 const BLOCK_CLOSE_SENTINEL_TAIL: u8 = 0x84;
 
-/// Which structural role a validated sentinel plays. Mirrors the
+/// The structural role of a validated sentinel. Corresponds to the
 /// `NodeRef` variant the registry returns at the sentinel's offset.
 #[derive(Clone, Copy)]
 pub(crate) enum SentinelKind {
@@ -57,8 +58,8 @@ pub(crate) enum SentinelKind {
 }
 
 /// Decode the third UTF-8 byte of a PUA-sentinel candidate. `Some` only
-/// for the four well-known sentinels; any other byte is a collision
-/// (plain text that happens to share the `0xEE 0x80` prefix).
+/// for the four defined sentinels; any other byte belongs to plain text
+/// that shares the `0xEE 0x80` prefix.
 #[inline]
 const fn sentinel_kind_for_tail_byte(b: u8) -> Option<SentinelKind> {
     match b {
@@ -70,20 +71,20 @@ const fn sentinel_kind_for_tail_byte(b: u8) -> Option<SentinelKind> {
     }
 }
 
-/// The sink [`walk`] drives over an [`LexOutput`]: `on_text` for
+/// The callbacks [`walk`] calls over an [`LexOutput`]: `on_text` for
 /// each plain run and `on_node` for each PUA sentinel (with the owned
 /// [`NodeRef`] resolved against the output's `Registry`), plus the
 /// `on_newline` / `finish` hooks. Both renderers ([`crate::html`]
-/// and `serialize`) implement it, so they share this single scan scaffold.
+/// and `serialize`) implement it and share one scan.
 pub(crate) trait WalkSink {
-    /// Whether [`walk`] should surface `\n` as [`Self::on_newline`].
+    /// Whether [`walk`] passes each `\n` to [`Self::on_newline`].
     const WANTS_NEWLINES: bool;
 
     /// Emit a plain-text run. Never called with an empty slice.
     fn on_text(&mut self, text: &str) -> fmt::Result;
 
-    /// React to a `\n`. Only called when `Self::WANTS_NEWLINES`; default
-    /// no-op (the serializer copies newlines verbatim through `on_text`).
+    /// Handle a `\n`. Called only when `Self::WANTS_NEWLINES`; the default
+    /// does nothing (the serializer copies newlines verbatim through `on_text`).
     fn on_newline(&mut self, next: Option<u8>) -> fmt::Result {
         let _ = next;
         Ok(())
@@ -93,7 +94,8 @@ pub(crate) trait WalkSink {
     /// the owned registry entry at its offset.
     fn on_node(&mut self, kind: SentinelKind, node: NodeRef) -> fmt::Result;
 
-    /// Render with the normalized event position when source ownership needs it.
+    /// Render a validated sentinel at its normalized offset, for sinks that
+    /// map nodes to source positions. The default calls [`Self::on_node`].
     fn on_node_at(
         &mut self,
         position: NormalizedOffset,
@@ -104,7 +106,7 @@ pub(crate) trait WalkSink {
         self.on_node(kind, node)
     }
 
-    /// Finalise after the last run. Default no-op.
+    /// Called after the last plain run. The default does nothing.
     fn finish(&mut self) -> fmt::Result {
         Ok(())
     }
@@ -150,8 +152,8 @@ fn handle_sentinel<S: WalkSink>(
 ///
 /// # Panics
 ///
-/// Panics if the normalized text exceeds `u32::MAX` bytes — inherited from the
-/// lexer's `Span` width contract; in practice unreachable.
+/// Panics if the normalized text exceeds `u32::MAX` bytes, the width of the
+/// lexer's `Span` offsets; the sanitize stage caps input below that length.
 pub(crate) fn walk<S: WalkSink>(out: &LexOutput, sink: &mut S) -> fmt::Result {
     let normalized = out.normalized.as_str();
     let bytes = normalized.as_bytes();

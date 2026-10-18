@@ -36,6 +36,38 @@ fn supplied_end_spacing_and_kanji_counts_use_the_existing_offset() {
 }
 
 #[test]
+fn historical_ko_chitsuki_spelling_keeps_source_and_flush_alignment() {
+    let source = "前の行\n［＃こ地付き］署名\n次の行\n";
+    let aat = parse(source);
+    let layout = &aat["blocks"][1];
+    assert_eq!(layout["kind"], "layout_block", "{aat}");
+    assert_eq!(layout["align"], "right", "{aat}");
+    assert_eq!(layout["offset_from_end"], 0, "{aat}");
+    assert_eq!(layout["children"][0]["content"][0]["value"], "署名");
+    assert_eq!(
+        layout["interpretation_marker_spans"][0]["byte_start"], 10,
+        "{aat}"
+    );
+    assert_eq!(
+        layout["interpretation_marker_spans"][0]["byte_end"], 31,
+        "{aat}"
+    );
+    assert!(!aat.to_string().contains("interpretation_problem"), "{aat}");
+
+    let document = ab_aozora_facade::Document::new(source);
+    let tree = document.parse();
+    let canonical = tree.to_source();
+    assert_eq!(canonical, "前の行\n［＃地付き］署名\n次の行\n");
+    let reparsed = ab_aozora_facade::Document::new(canonical);
+    assert_eq!(reparsed.parse().to_html(), tree.to_html());
+    assert!(
+        tree.diagnostics()
+            .iter()
+            .all(|diagnostic| diagnostic.code() != "aozora::lint::non_canonical_directive")
+    );
+}
+
+#[test]
 fn repeated_offset_on_the_same_complete_line_does_not_accumulate_margin() {
     let source = "前\n［＃地から８字上げ］美作守内［＃地付き、地より８字アキ］\n後\n";
     let aat = parse(source);

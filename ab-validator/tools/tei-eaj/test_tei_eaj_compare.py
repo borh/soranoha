@@ -6,7 +6,6 @@ import tempfile
 import textwrap
 import unittest
 
-
 TOOL_DIR = pathlib.Path(__file__).resolve().parent
 
 
@@ -314,14 +313,9 @@ class TeiEajCompareTest(unittest.TestCase):
             abc_dir = root / "publication" / "tei-by-work-id"
             abc_dir.mkdir(parents=True)
             (root / "publication" / "inspection-index.tsv").write_text(
-                "\n".join(
-                    [
-                        "work_id\tsource_slug\ttitle\treading\tstatus\ttei_path",
-                        "000104\tslug\t長崎小品\tながさきしょうひん\tpassed\tignored",
-                        "002575\tslug\t鈴木三重吉宛書簡―明治三十九年\tすずき\tpassed\tignored",
-                    ]
-                )
-                + "\n",
+                "work_id\tsource_slug\ttitle\treading\tstatus\ttei_path\n"
+                "000104\tslug\t長崎小品\tながさきしょうひん\tpassed\tignored\n"
+                "002575\tslug\t鈴木三重吉宛書簡―明治三十九年\tすずき\tpassed\tignored\n",
                 encoding="utf-8",
             )
             self.write_xml(abc_dir, "000104.xml", "長崎小品", "<p>薄暗き硝子戸棚の中。</p>")

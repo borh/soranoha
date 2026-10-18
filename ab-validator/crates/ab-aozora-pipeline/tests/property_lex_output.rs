@@ -5,9 +5,8 @@
 //!    kinds + container kinds + diagnostic count).
 //! 2. Every registry entry points at its matching placeholder in normalized text.
 //!
-//! Together these gate any future change to `lex` from
-//! introducing nondeterminism (e.g. iteration order over a `HashMap`)
-//! or from desynchronising the registry from the normalised text.
+//! These detect nondeterminism in `lex` (for example, iteration order over
+//! a `HashMap`) and a registry out of step with the normalised text.
 
 use ab_aozora_spec::Sentinel;
 use ab_aozora_syntax::ast::NodeRef;
@@ -91,11 +90,11 @@ fn assert_registry_aligned_with_sentinels(source: &str) {
     for (pos, nr) in out.registry.iter_sorted() {
         let bytes = &out.normalized.as_bytes()[pos as usize..];
         let kind = nr.sentinel_kind();
-        // The classifier emits one of the four PUA sentinels; map
-        // back to the UTF-8 byte triple so we can byte-match in the
-        // normalized buffer. Computing this from the `Sentinel` char
-        // representation avoids the wildcard `_ => panic!()` arm
-        // that clippy reads as unreachable for an exhaustive enum.
+        // The classifier emits one of the four PUA sentinels; the
+        // comparison with the normalized buffer uses its UTF-8 byte
+        // triple. The triple is computed from the `Sentinel` char,
+        // because clippy reports a wildcard `_ => panic!()` arm over the
+        // exhaustive enum as unreachable.
         let expected_utf8 = utf8_bytes_for_sentinel(kind);
         assert!(
             bytes.starts_with(&expected_utf8),
@@ -104,9 +103,9 @@ fn assert_registry_aligned_with_sentinels(source: &str) {
     }
 }
 
-/// UTF-8 byte triple for a [`Sentinel`]'s codepoint. PUA sentinels all
-/// encode as 3 bytes; we encode through `char::encode_utf8` once so
-/// new variants don't need a hand-maintained byte table.
+/// UTF-8 byte triple for a [`Sentinel`]'s codepoint. Every PUA sentinel
+/// encodes as 3 bytes; encoding through `char::encode_utf8` covers new
+/// variants without a hand-maintained byte table.
 fn utf8_bytes_for_sentinel(kind: Sentinel) -> [u8; 3] {
     let mut buf = [0u8; 4];
     let s = kind.as_char().encode_utf8(&mut buf);
@@ -120,10 +119,7 @@ fn check(source: &str) {
     assert_registry_aligned_with_sentinels(source);
 }
 
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors: same shapes as the prior arena
-// equivalence test. Each anchor exercises one variant family.
-// ----------------------------------------------------------------------
+// Fixed regression inputs; each exercises one variant family.
 
 #[test]
 fn empty_input() {
@@ -176,10 +172,6 @@ fn mixed_pageful() {
          ［＃ここで字下げ終わり］",
     );
 }
-
-// ----------------------------------------------------------------------
-// Property tests: cover the same generator surface as the prior test.
-// ----------------------------------------------------------------------
 
 proptest! {
     #![proptest_config(default_config())]

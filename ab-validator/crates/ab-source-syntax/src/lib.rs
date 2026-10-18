@@ -102,15 +102,15 @@ pub struct SourceAnnotationsBoth<'a> {
 /// The three declared regions of an Aozora source, in one coordinate.
 ///
 /// The body constitutes the work (both prose and annotations). The header and tail
-/// contain metadata *about* the work. They are two populations, not two candidate
-/// denominators for one ratio, and measuring their union averages parser
-/// fidelity against packaging attribution and can mean neither.
+/// contain metadata *about* the work. Body and metadata are separate populations:
+/// a ratio over their union mixes parser fidelity with packaging attribution
+/// and measures neither.
 ///
 /// The regions are derived from [`aozora_body_range`] alone; no separator or
 /// `底本：` heuristic is maintained anywhere else. The tail is anchored on
-/// the body **end**, rather than on the returned tail start. Because `body_end`
+/// the body end, rather than on the returned tail start. Because `body_end`
 /// is trim-adjusted for trailing newlines and `tail_start` is not, anchoring
-/// on the latter would leave the blank lines between them in no region at all.
+/// on the latter would assign the blank lines between them to no region.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRegions {
     header: core::ops::Range<usize>,
@@ -133,9 +133,7 @@ impl SourceRegions {
     /// Declare the partition from two boundaries and a length.
     ///
     /// This is the only constructor, so the conservation identity cannot be
-    /// bypassed by assembling the regions field by field. Every defect traced
-    /// in this area shared one property: no invariant existed that could
-    /// catch it, so this one is checked rather than documented.
+    /// bypassed by assembling the regions field by field.
     ///
     /// # Errors
     ///
@@ -154,10 +152,9 @@ impl SourceRegions {
             body: body_start..body_end,
             tail: body_end..len,
         };
-        // Conservation and disjointness, asserted rather than assumed. The
-        // regions are half-open and adjacent by construction above, so this
-        // can only fail on arithmetic overflow, which is the case a
-        // reader would otherwise assume away.
+        // Checks conservation and disjointness. The regions are half-open and
+        // adjacent by construction above, so this check fails only on
+        // arithmetic overflow.
         let covered = regions
             .header
             .len()
@@ -215,15 +212,15 @@ impl SourceRegions {
     }
 }
 
-/// Returns the Aozora BODY range and TAIL start of a source text: the single
-/// authority for "where does the body start/end", shared by the parser
-/// (`ab-aat` sanitize stage) and the checker (`ab-check::body_text`)
-/// so the two sides of any source↔AAT comparison cannot drift.
+/// Returns the Aozora body range and tail start of a source text. The parser
+/// (`ab-aat` sanitize stage) and the checker (`ab-check::body_text`) both
+/// call this function, so both sides of a source↔AAT comparison use the same
+/// body boundaries.
 ///
-/// Head: the header is cut ONLY when the region between the first two
-/// dash-run separator lines carries the editorial legend
+/// Head: the header is cut only when the region between the first two
+/// dash-run separator lines contains the editorial legend
 /// (テキスト中に現れる記号について / 《》：ルビ / ［＃］：入力者注). Dash-runs used as scene or
-/// poem dividers carry no legend and leave the body uncut. With no separators,
+/// poem dividers contain no legend and leave the body uncut. With no separators,
 /// a two-line title/author header followed by a blank line is recognized only
 /// when a source tail boundary is present.
 ///
@@ -308,7 +305,7 @@ fn is_aozora_separator(line: &str) -> bool {
 }
 
 /// Variant editorial header: a bracketed ［表記について］ heading within the
-/// first 15 lines, whose note block (example text carries literal marker
+/// first 15 lines, whose note block (example text contains literal marker
 /// syntax such as 「《ルビ》」) runs to the next dash- or equals-run
 /// separator line. Returns the body start after that separator, or 0 when
 /// the shape is absent.
@@ -748,6 +745,17 @@ fn scan_next_marker(txt: &str, offset: usize, line: usize) -> Option<RawMarker<'
                 RawMarkerEvent::PreserveText,
             ));
         }
+        let prefix = &txt[body_start..];
+        let prefix_end = prefix
+            .find(|ch: char| !ch.is_ascii() || matches!(ch, '\r' | '\n'))
+            .unwrap_or(prefix.len());
+        if !prefix.as_bytes()[..prefix_end]
+            .iter()
+            .enumerate()
+            .any(|(offset, _)| starts_composed_accent(&prefix.as_bytes()[offset..prefix_end]))
+        {
+            return None;
+        }
         return Some(raw_marker(
             txt,
             offset,
@@ -797,16 +805,9 @@ pub fn remove_bottom_note_fragments(txt: &str) -> String {
     let mut offset = 0;
     while offset < txt.len() {
         let rest = &txt[offset..];
-        if rest.starts_with("」は底本では「") {
+        if let Some((end, _)) = bottom_text_correction_note_bounds(txt, offset) {
             trim_note_prefix(&mut out);
-            offset += "」は底本では「".len();
-            offset = skip_until_any_bracket(txt, offset);
-            continue;
-        }
-        if rest.starts_with("」はママ") {
-            trim_note_prefix(&mut out);
-            offset += "」はママ".len();
-            offset = skip_until_any_bracket(txt, offset);
+            offset = end;
             continue;
         }
         let ch = rest.chars().next().expect("non-empty rest has a char");
@@ -1084,10 +1085,23 @@ fn ruby_correction_note_bounds(txt: &str, offset: usize) -> Option<(usize, &str,
 }
 
 fn bottom_text_correction_note_bounds(txt: &str, offset: usize) -> Option<(usize, usize)> {
-    ["」は底本では「", "」はママ"]
-        .iter()
-        .find(|prefix| txt[offset..].starts_with(**prefix))
-        .map(|prefix| (skip_until_any_bracket(txt, offset), offset + prefix.len()))
+    let prefix = ["」は底本では「", "」はママ"]
+        .into_iter()
+        .find(|prefix| txt[offset..].starts_with(prefix))?;
+    let content_start = offset + prefix.len();
+    if prefix == "」はママ" {
+        let close = txt[content_start..].chars().next()?;
+        return matches!(close, '］' | ']')
+            .then_some((content_start + close.len_utf8(), content_start));
+    }
+    let target_start = content_start - '「'.len_utf8();
+    let target_end = quoted_text_end_on_same_line(txt, target_start, None)?;
+    ['］', ']']
+        .into_iter()
+        .filter_map(|close| {
+            command_end(txt, target_end, close).map(|end| (end + close.len_utf8(), content_start))
+        })
+        .min_by_key(|(end, _)| *end)
 }
 
 fn terminal_provenance_note_end(txt: &str, offset: usize) -> Option<usize> {
@@ -1137,6 +1151,9 @@ fn marker_end(text: &str, content_start: usize, end_marker: char) -> Option<usiz
             continue;
         }
         let ch = rest.chars().next()?;
+        if ch == '〔' {
+            return None;
+        }
         if ch == end_marker {
             return Some(offset);
         }
@@ -1146,19 +1163,85 @@ fn marker_end(text: &str, content_start: usize, end_marker: char) -> Option<usiz
 }
 
 fn bracket_marker_kind(body: &str) -> SourceMarkerKind {
-    if body.is_ascii() && !body.contains(['\r', '\n']) {
+    if matches!(body.len(), 2 | 3) && starts_accent_spelling(body.as_bytes()) {
+        return SourceMarkerKind::AccentNotation;
+    }
+    let mut offset = 0;
+    let mut line_has_accent = false;
+    while offset < body.len() {
+        let rest = &body[offset..];
+        let command = [("※［＃", '］'), ("※[#", ']'), ("［＃", '］'), ("[#", ']')]
+            .into_iter()
+            .find(|(prefix, _)| rest.starts_with(prefix));
+        if let Some((prefix, close)) = command
+            && let Some(end) = command_end(body, offset + prefix.len(), close)
+        {
+            offset = end + close.len_utf8();
+            continue;
+        }
+        let character = rest.chars().next().expect("offset is a character boundary");
+        if matches!(character, '\r' | '\n') {
+            if !line_has_accent {
+                return SourceMarkerKind::BracketNote;
+            }
+            line_has_accent = false;
+            if rest.starts_with("\r\n") {
+                offset += 1;
+            }
+        } else {
+            line_has_accent |= starts_composed_accent(rest.as_bytes());
+        }
+        offset += character.len_utf8();
+    }
+    if line_has_accent {
         SourceMarkerKind::AccentNotation
     } else {
         SourceMarkerKind::BracketNote
     }
 }
 
+/// An accent spelling at the start of `bytes`, where a cedilla comma must be
+/// followed by a letter, as in `franc,aise` but not `Erkenntnis, und`.
+fn starts_composed_accent(bytes: &[u8]) -> bool {
+    starts_accent_spelling(bytes)
+        && (bytes.get(1) != Some(&b',') || bytes.get(2).is_some_and(u8::is_ascii_alphabetic))
+}
+
+fn starts_accent_spelling(bytes: &[u8]) -> bool {
+    if [b"ae&", b"AE&", b"oe&", b"OE&"]
+        .iter()
+        .any(|ligature| bytes.starts_with(*ligature))
+    {
+        return true;
+    }
+    let [base, mark, ..] = bytes else {
+        return false;
+    };
+    let bases: &[u8] = match mark {
+        b'`' | b'~' => b"aeinouAEINOU",
+        b'\'' => b"aceilmnorsuyzACEILMNORSUYZ",
+        b'^' => b"aceghijosuACEGHIJOSU",
+        b':' => b"aeiouyAEIOU",
+        b'&' => b"ausAU",
+        b',' => b"cstCST",
+        b'/' => b"dhiloDLO",
+        b'_' => b"aeiouAEIOU",
+        _ => return false,
+    };
+    bases.contains(base)
+}
+
 fn count_newlines(value: &str) -> usize {
     value.bytes().filter(|byte| *byte == b'\n').count()
 }
 
-fn quoted_text_end_on_same_line(text: &str, start: usize, end_marker: char) -> Option<usize> {
-    if let Some(after_open) = text[start..].strip_prefix('「')
+fn quoted_text_end_on_same_line(
+    text: &str,
+    start: usize,
+    end_marker: Option<char>,
+) -> Option<usize> {
+    if let Some(end_marker) = end_marker
+        && let Some(after_open) = text[start..].strip_prefix('「')
         && let Some(after_marker) = after_open.strip_prefix(end_marker)
         && after_marker.starts_with('」')
     {
@@ -1175,7 +1258,7 @@ fn quoted_text_end_on_same_line(text: &str, start: usize, end_marker: char) -> O
                 }
             }
             '\r' | '\n' => return None,
-            ch if ch == end_marker => return None,
+            ch if Some(ch) == end_marker => return None,
             _ => {}
         }
     }
@@ -1194,7 +1277,7 @@ fn command_end(text: &str, content_start: usize, end_marker: char) -> Option<usi
     while offset < text.len() {
         let rest = &text[offset..];
         if rest.starts_with('「')
-            && let Some(end) = quoted_text_end_on_same_line(text, offset, end_marker)
+            && let Some(end) = quoted_text_end_on_same_line(text, offset, Some(end_marker))
         {
             offset = end;
             continue;
@@ -1266,19 +1349,6 @@ fn command_end(text: &str, content_start: usize, end_marker: char) -> Option<usi
     None
 }
 
-fn skip_until_any_bracket(txt: &str, offset: usize) -> usize {
-    let rest = &txt[offset..];
-    let fullwidth = rest.find('］');
-    let ascii = rest.find(']');
-    match (fullwidth, ascii) {
-        (Some(left), Some(right)) if left <= right => offset + left + '］'.len_utf8(),
-        (Some(_), Some(right)) => offset + right + 1,
-        (Some(left), None) => offset + left + '］'.len_utf8(),
-        (None, Some(right)) => offset + right + 1,
-        (None, None) => txt.len(),
-    }
-}
-
 fn trim_note_prefix(out: &mut String) {
     let Some(close_quote) = out.rfind('「') else {
         return;
@@ -1289,7 +1359,7 @@ fn trim_note_prefix(out: &mut String) {
         .rev()
         .find_map(|(offset, ch)| is_note_boundary(ch).then_some(offset + ch.len_utf8()))
     else {
-        out.truncate(0);
+        out.clear();
         return;
     };
     out.truncate(start);
@@ -1351,8 +1421,8 @@ mod tests {
 
     #[test]
     fn aozora_body_range_keeps_content_dash_runs_uncut() {
-        // Dash-run lines used as scene/poem dividers carry no legend
-        // between the first two runs, so the header cut must not fire
+        // Dash-run lines used as scene/poem dividers contain no legend
+        // between the first two runs, so the header is not cut
         // (e.g. the 小熊秀雄全集 volumes, poem-per-fence collections).
         let src = "小熊秀雄全集-1\n短歌集\n\n第一歌\n--------------------\n第二歌\n--------------------\n第三歌\n";
         let (body, tail_start) = aozora_body_range(src);
@@ -1382,10 +1452,8 @@ mod tests {
         assert!(src[tail_start..].starts_with("底本："));
     }
 
-    // Boundary cases for the three-region partition Q15 derives from this
-    // function. They are here rather than in the consumer because this is the
-    // one authority for where the body starts and ends, and a partition is
-    // only as sound as the range it is derived from.
+    // Boundary cases for the three-region partition derived from this
+    // function, which is the only source of the body boundaries.
     //
     // Region set, in this function's own coordinates:
     //   header [0, body_start)   body [body_start, body_end)   tail [body_end, len)
@@ -1405,10 +1473,9 @@ mod tests {
 
     #[test]
     fn the_returned_tail_start_leaves_a_gap_that_body_end_does_not() {
-        // This is the defect the partition must resolve, pinned as behaviour
-        // rather than left as prose. `body_end` is trim-adjusted for trailing
-        // newlines (:146) while `tail_start` is not (:147), so whenever a tail
-        // exists at least one byte lies between them and belongs to no region.
+        // `aozora_body_range` trims trailing newlines from `body_end` but sets
+        // `tail_start` to the start of the tail line, so when a newline
+        // precedes that line, at least one byte lies between them.
         let src = "本文です。\n\n\n底本：底本社\n";
         let (body, tail_start) = aozora_body_range(src);
         assert!(
@@ -1416,8 +1483,8 @@ mod tests {
             "expected a gap between body_end and tail_start"
         );
         assert_eq!(&src[body.end..tail_start], "\n\n\n");
-        // Anchoring the tail on `tail_start` loses those bytes; anchoring it on
-        // `body_end` does not. That is why the region set uses `body_end`.
+        // Anchoring the tail on `tail_start` omits those bytes; anchoring it on
+        // `body_end` includes them, so the region set uses `body_end`.
         assert_ne!(
             body.len() + (src.len() - tail_start),
             src.len() - body.start
@@ -1456,12 +1523,12 @@ mod tests {
 
     #[test]
     fn bare_cr_sources_do_not_find_a_colophon_line() {
-        // Recorded because it decides which region a bare-CR work's colophon
-        // lands in, and the answer is "the body". `split_inclusive('\n')`
-        // yields one line for the whole file, so the 底本： line is never seen
-        // at a line start. The partition still conserves (the tail is simply
-        // empty), but a metadata predicate over the tail measures nothing
-        // here; that is a property of the input rather than of the partition.
+        // A bare-CR work's colophon falls in the body region.
+        // `split_inclusive('\n')` yields one line for the whole file, so the
+        // 底本： line is never at a line start. The partition conserves (the
+        // tail is empty), but a metadata predicate over the tail measures
+        // nothing here; that is a property of the input rather than of the
+        // partition.
         let src = "本文です。\r底本：底本社\r";
         let (body, tail_start) = aozora_body_range(src);
         assert_eq!(body, 0..src.len());
@@ -1485,9 +1552,8 @@ mod tests {
     fn declaring_a_region_set_that_is_not_a_partition_fails() {
         let src = "本文です。\n底本：底本社\n";
         // Inverted, out of bounds, and mid-character boundaries are all
-        // refused. The last matters most: every other guard traced in this
-        // area accepted intervals landing mid-character, because it checked
-        // only `start <= end <= bound`.
+        // rejected. A check of only `start <= end <= bound` accepts intervals
+        // that land mid-character.
         assert_eq!(
             SourceRegions::declare(src, 6, 3),
             Err(RegionError::Inverted)
@@ -1510,8 +1576,8 @@ mod tests {
         assert_eq!(regions.metadata(), [regions.header(), regions.tail()]);
         assert_eq!(&src[regions.body()], "本文です。");
         assert!(src[regions.header()].contains("《》：ルビ"));
-        // The tail absorbs the blank line the body end trimmed, which is the
-        // whole reason it is anchored on `body_end` and not on `tail_start`.
+        // The tail includes the blank lines trimmed from the body end, because
+        // it is anchored on `body_end` and not on `tail_start`.
         assert_eq!(&src[regions.tail()], "\n\n底本：底本社\n");
         assert_eq!(regions.decoded_len(), src.len());
     }
@@ -1525,7 +1591,7 @@ mod tests {
     }
 
     #[test]
-    fn comparison_lossy_body_from_events_matches_legacy() {
+    fn comparison_lossy_body_from_events_matches_string_scan() {
         let body = "吾輩《わがはい》は※［＃「口＋世」、U+546D］でも、末尾まで見通す。";
         let expected = comparison_lossy_body(body).into_owned();
         let events = source_events(body);
@@ -1880,9 +1946,133 @@ mod tests {
     }
 
     #[test]
+    fn inner_brackets_do_not_close_a_different_source_scope() {
+        for (source, expected) in [
+            (
+                "〔訳注〔cafe'〕続き〕",
+                vec![(SourceMarkerKind::AccentNotation, "〔cafe'〕")],
+            ),
+            (
+                "〔George Innes, 1825―1894.〔Albert Biersta`dt〕、画家〕",
+                vec![(SourceMarkerKind::AccentNotation, "〔Albert Biersta`dt〕")],
+            ),
+            (
+                "〔e'未完\n〔cafe'〕",
+                vec![
+                    (SourceMarkerKind::MalformedAccentNotation, "〔"),
+                    (SourceMarkerKind::AccentNotation, "〔cafe'〕"),
+                ],
+            ),
+            (
+                "〔Was ko:nnen wir tun?（11）〔gros&〕",
+                vec![
+                    (SourceMarkerKind::MalformedAccentNotation, "〔"),
+                    (SourceMarkerKind::AccentNotation, "〔gros&〕"),
+                ],
+            ),
+            (
+                "〔訳注：ここまで］\n〔Athothis〕",
+                vec![(SourceMarkerKind::BracketNote, "〔Athothis〕")],
+            ),
+        ] {
+            let markers = source_markers(source);
+            assert_eq!(
+                markers.iter().map(|m| (m.kind, m.raw)).collect::<Vec<_>>(),
+                expected,
+                "{source}"
+            );
+            for marker in markers {
+                assert_eq!(&source[marker.span.start..marker.span.end], marker.raw);
+                assert_eq!(
+                    source[..marker.span.start]
+                        .bytes()
+                        .filter(|b| *b == b'\n')
+                        .count()
+                        + 1,
+                    marker.span.line
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn accent_scopes_require_supplied_decomposition() {
+        for source in [
+            "〔Athothis〕",
+            "〔George Innes〕",
+            "〔q'〕",
+            "〔ピース・ポリッジ・ホットとは\r\nPease porridge hot,〕",
+            "〔欄外 Emil Brunner, Erlebnis, Erkenntnis und Glaube, 1923.〕",
+        ] {
+            assert_eq!(
+                source_markers(source)[0].kind,
+                SourceMarkerKind::BracketNote,
+                "{source}"
+            );
+        }
+        for source in ["〔George Innes", "〔Athothis\n", "〔q'"] {
+            assert!(source_markers(source).is_empty(), "{source}");
+        }
+        for source in [
+            "〔e'tiquette〕",
+            "〔ae&〕",
+            "〔m'〕",
+            "〔c,〕",
+            "〔Antoin Dovo※［＃字］a'k〕",
+            "〔※[#字]a'〕",
+            "〔Pardonnez a` mon bavardage\r\nJ'en suis a` mon premier voyage.〕",
+            "〔日本語の e'tiquette〕",
+            "〔“Er ist dahin, der su:sse Glaube〕",
+            "〔ИЗ　одногo`　тe'ста〕",
+        ] {
+            let markers = source_markers(source);
+            assert_eq!(markers.len(), 1, "{source}");
+            assert_eq!(
+                markers[0].kind,
+                SourceMarkerKind::AccentNotation,
+                "{source}"
+            );
+            assert_eq!(markers[0].raw, source);
+        }
+    }
+
+    #[test]
+    fn unmatched_prose_brackets_are_not_accent_notation() {
+        for source in [
+            "チンチン〔思ひも寄らぬ夫定《つまさだめ》……」",
+            "「もう少し聴いてくれ、〔立つる操《みさを》を破ら……」",
+            "底本では「〔」で始まる宛先",
+            "〔一九四六（昭和二一）年九月『来訪者』］",
+            "「…決まる〕」、「〔事が多い、…」としました。",
+            "〔日本語の e'tiquette",
+        ] {
+            assert!(
+                source_markers(source)
+                    .iter()
+                    .all(|marker| marker.kind != SourceMarkerKind::MalformedAccentNotation),
+                "{source}"
+            );
+        }
+        for source in [
+            "〔e'tiquette",
+            "〔 'E'tude",
+            "〔ae&",
+            "〔o:後",
+            "〔e'\n次行",
+        ] {
+            let markers = source_markers(source);
+            assert_eq!(
+                markers[0].kind,
+                SourceMarkerKind::MalformedAccentNotation,
+                "{source}"
+            );
+            assert_eq!(markers[0].raw, "〔");
+        }
+    }
+
+    #[test]
     fn source_markers_surface_malformed_starts() {
-        let text =
-            "※［＃未完了\n※[#broken\n［＃ここから割り注\n[#broken\n｜未完了\n《未完了\n〔未完了";
+        let text = "※［＃未完了\n※[#broken\n［＃ここから割り注\n[#broken\n｜未完了\n《未完了\n〔e'tiquette";
         let markers = source_markers(text);
 
         assert_eq!(markers.len(), 6);
@@ -1944,6 +2134,61 @@ mod tests {
             assert_eq!(markers[0].raw, source.strip_suffix('後').unwrap());
             assert!(markers[0].body.contains(command));
         }
+    }
+
+    #[test]
+    fn detached_corrections_keep_nested_markup_and_legacy_suffixes() {
+        for note in [
+            "」は底本では「〔a'※［＃字］〕」］",
+            "」は底本では「〔a'※[#字]〕」]",
+            "」は底本では「〔a'※[#字]〕」］",
+            "」は底本では「　ルミ」と誤植］",
+            "」は底本では「a]b」］",
+            "」は底本では「a］b」]",
+            "」は底本では「「題」」］",
+            "」はママ］",
+            "」はママ]",
+        ] {
+            let text = format!("「訂正{note}後");
+            let markers = source_markers(&text);
+            assert_eq!(markers.len(), 1, "{note}");
+            assert_eq!(
+                markers[0].kind,
+                SourceMarkerKind::EditorialNoteBottomTextCorrection
+            );
+            assert_eq!(markers[0].raw, note);
+            assert_eq!(&text[markers[0].span.start..markers[0].span.end], note);
+            assert_eq!(remove_bottom_note_fragments(&text), "後");
+            assert_eq!(comparison_lossy_body(&text), "後");
+        }
+    }
+
+    #[test]
+    fn correction_wording_without_its_own_closer_remains_text() {
+        for text in [
+            "「パパ」はママや書生達と遊んだ。\n※［＃字］後",
+            "「訂正」は底本では「元」の形です。\n※［＃字］後",
+            "「訂正」は底本では「元」",
+            "「訂正」はママ",
+            "「訂正」は底本では「元」\n］",
+            "「訂正」は底本では「元」\r\n］",
+            "「訂正」は底本では「元」\r］",
+        ] {
+            assert!(
+                source_markers(text).iter().all(|marker| {
+                    marker.kind != SourceMarkerKind::EditorialNoteBottomTextCorrection
+                }),
+                "{text}"
+            );
+            assert_eq!(remove_bottom_note_fragments(text), text);
+            assert_eq!(comparison_lossy_body(text), text.replace("※［＃字］", ""));
+        }
+        let command = "［＃「〔e'〕」は底本では「〔a'※［＃字］〕」］";
+        let outer = source_markers(command).remove(0);
+        let children = source_markers(outer.body);
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0].raw, "〔e'〕");
+        assert_eq!(children[1].raw, "〔a'※［＃字］〕");
     }
 
     #[test]

@@ -1,4 +1,5 @@
-//! Adjacent supplied dots decorate the ruby base without altering source ownership.
+//! An adjacent supplied dot instruction applies to the ruby base and keeps the
+//! ruby reading.
 
 use ab_aozora_facade::Document;
 

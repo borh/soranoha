@@ -712,6 +712,10 @@ fn tei_eaj_work_id_aliases(workset: &TeiEajWorksetExport) -> BTreeMap<String, St
         .collect()
 }
 
+/// Work-id aliases taken from the TEI-EAJ file stem, since workset rows carry
+/// no alias field: every digit run other than `work_id` that is at least three
+/// digits long, so the `1` in `4244-1_tei.xml` is not an alias. Returns no
+/// aliases when no digit run equals `work_id`.
 fn tei_eaj_file_id_aliases(tei_eaj_file: &str, work_id: &str) -> BTreeSet<String> {
     let Some(stem) = Path::new(tei_eaj_file)
         .file_stem()
@@ -729,8 +733,6 @@ fn tei_eaj_file_id_aliases(tei_eaj_file: &str, work_id: &str) -> BTreeSet<String
 
     numeric_tokens
         .into_iter()
-        // Avoid unsafe aliases from suffixes like 4244-1_tei.xml; ABC should
-        // Source aliases are not yet exported; relying on this temporary mapping.
         .filter(|token| *token != work_id && token.len() >= 3)
         .map(ToOwned::to_owned)
         .collect()
@@ -1124,7 +1126,7 @@ fn visible_text(value: &Value) -> String {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_owned(),
-        Some("ruby") => object
+        Some("ruby" | "ruby_group") => object
             .get("base")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)

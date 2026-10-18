@@ -1,13 +1,12 @@
-//! End-to-end "does the diagnostic fire?" tests for the authoring-error
-//! diagnostics emitted by the fused lex pipeline.
+//! End-to-end tests that the fused lex pipeline emits its authoring-error
+//! diagnostics.
 //!
-//! Each test parses a hand-crafted trigger string through
-//! [`lex`] and asserts that the expected
-//! [`ab_aozora_spec::Diagnostic`] code shows up with the right severity. The
-//! exact span / JSON shape is frozen separately by the conformance render
-//! gate (`crates/aozora-conformance/fixtures/render/<case>/`); here we only
-//! pin *that* the detection triggers (and, for the negatives, that it does
-//! not).
+//! Each test parses a hand-written trigger string through [`lex`] and
+//! asserts that the expected [`ab_aozora_spec::Diagnostic`] code is
+//! emitted with the expected severity. The conformance render fixtures
+//! (`crates/aozora-conformance/fixtures/render/<case>/`) pin the exact
+//! span and JSON shape; these tests pin only whether the diagnostic is
+//! emitted.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_spec::{Severity, codes};
@@ -17,7 +16,7 @@ fn count_code(src: &str, code: &str) -> usize {
     out.diagnostics.iter().filter(|d| d.code() == code).count()
 }
 
-/// Assert exactly one diagnostic of `code` fires, and return its severity.
+/// Assert that exactly one diagnostic of `code` is emitted, and return its severity.
 fn one_diag_severity(src: &str, code: &str) -> Severity {
     let out = lex(src);
     let hits: Vec<_> = out
@@ -34,14 +33,12 @@ fn one_diag_severity(src: &str, code: &str) -> Severity {
     hits[0].severity()
 }
 
-// ---------------------------------------------------------------------------
 // #8 accent_decomposition_applied (Note, sanitize stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn accent_decomposition_fires_as_note() {
-    // `〔cafe'〕` decomposes to `〔café〕`; the span is not at byte 0 so a
-    // coordinate slip would surface in the conformance golden.
+fn accent_decomposition_is_reported_as_note() {
+    // `〔cafe'〕` decomposes to `〔café〕`; the span is not at byte 0, so a
+    // coordinate error changes the conformance golden output.
     let sev = one_diag_severity("前〔cafe'〕後", codes::ACCENT_DECOMPOSITION_APPLIED);
     assert_eq!(sev, Severity::Note);
 }
@@ -53,7 +50,7 @@ fn accent_decomposition_one_note_per_substitution_site() {
         count_code("前〔a`〕中〔e'〕後", codes::ACCENT_DECOMPOSITION_APPLIED),
         2
     );
-    // Two digraphs inside ONE span also → two notes: the note is per
+    // Two digraphs inside one span also → two notes: the note is per
     // substitution site, bracketing the replacement character, not per span.
     assert_eq!(
         count_code("前〔ve'rite'〕後", codes::ACCENT_DECOMPOSITION_APPLIED),
@@ -62,25 +59,23 @@ fn accent_decomposition_one_note_per_substitution_site() {
 }
 
 #[test]
-fn accent_span_without_digraph_is_silent() {
-    // A `〔…〕` whose body holds no accent digraph must not fire the note.
+fn accent_span_without_digraph_reports_no_diagnostic() {
+    // A `〔…〕` whose body holds no accent digraph must not produce the note.
     assert_eq!(
         count_code("〔plain〕text", codes::ACCENT_DECOMPOSITION_APPLIED),
         0
     );
-    // And ordinary prose with no tortoiseshell brackets at all is silent.
+    // Ordinary prose with no tortoiseshell brackets produces no note.
     assert_eq!(
         count_code("ふつうの文章です", codes::ACCENT_DECOMPOSITION_APPLIED),
         0
     );
 }
 
-// ---------------------------------------------------------------------------
 // #6 unresolved_gaiji (Warning, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn unresolved_gaiji_fires_as_warning() {
+fn unresolved_gaiji_is_reported_as_warning() {
     // Same `※［＃「…」、<mencode>］` shape as a real gaiji, but the men-ku-ten
     // is out of range so it resolves to nothing and the multi-char
     // description is not a single fallback character → `ucs == None`.
@@ -92,8 +87,8 @@ fn unresolved_gaiji_fires_as_warning() {
 }
 
 #[test]
-fn resolvable_gaiji_is_silent() {
-    // A real, resolvable gaiji (JIS X 0213 第3水準1-85-54 → 𠀋) must not fire.
+fn resolvable_gaiji_reports_no_diagnostic() {
+    // A resolvable gaiji (JIS X 0213 第3水準1-85-54 → 𠀋) produces no diagnostic.
     assert_eq!(
         count_code(
             "珍しき木※［＃「木＋吶のつくり」、第3水準1-85-54］が立つ。",
@@ -103,12 +98,10 @@ fn resolvable_gaiji_is_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // #3 mismatched_container_close (Error, normalizer fold)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn mismatched_container_close_fires_as_error() {
+fn mismatched_container_close_is_reported_as_error() {
     // Indent opener (`ここから2字下げ`) closed by an align-end closer
     // (`ここで地付き終わり`) → families differ → Error.
     let sev = one_diag_severity(
@@ -119,10 +112,10 @@ fn mismatched_container_close_fires_as_error() {
 }
 
 #[test]
-fn matched_container_close_is_silent() {
+fn matched_container_close_reports_no_diagnostic() {
     // Same family open/close: the amount payload differs internally
     // (`Indent{2}` open vs `Indent{0}` close) but the discriminant is
-    // equal, so this must NOT fire.
+    // equal, so no diagnostic is emitted.
     assert_eq!(
         count_code(
             "［＃ここから2字下げ］本文［＃ここで字下げ終わり］",
@@ -130,7 +123,7 @@ fn matched_container_close_is_silent() {
         ),
         0
     );
-    // Align-end pair, likewise silent.
+    // Align-end pair: likewise no diagnostic.
     assert_eq!(
         count_code(
             "［＃ここから地から2字上げ］本文［＃ここで地付き終わり］",
@@ -140,32 +133,29 @@ fn matched_container_close_is_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // #1 empty_ruby_reading (Error, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn empty_ruby_reading_fires_as_error() {
+fn empty_ruby_reading_is_reported_as_error() {
     // Explicit `｜` base with an empty `《》` reading.
     let sev = one_diag_severity("｜青梅《》", codes::EMPTY_RUBY_READING);
     assert_eq!(sev, Severity::Error);
 }
 
 #[test]
-fn valid_and_baseless_empty_ruby_are_silent() {
-    // A complete explicit ruby must not fire.
+fn valid_and_baseless_empty_ruby_report_no_diagnostic() {
+    // A complete explicit ruby produces no diagnostic.
     assert_eq!(count_code("｜青梅《おうめ》", codes::EMPTY_RUBY_READING), 0);
-    // An empty `《》` with NO explicit base is just literal text (the
-    // parser can't be sure a base was intended) → silent by design.
+    // An empty `《》` without an explicit base is literal text: without a
+    // base, the source does not establish that ruby was intended, so no
+    // diagnostic is emitted.
     assert_eq!(count_code("あ《》", codes::EMPTY_RUBY_READING), 0);
 }
 
-// ---------------------------------------------------------------------------
 // #2 nested_ruby (Error, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn nested_ruby_fires_as_error() {
+fn nested_ruby_is_reported_as_error() {
     // The reading body of the outer `《…》` itself opens an inner `《ん》`.
     // `《` / `》` are single-character ruby triggers (the angle-quote
     // notation is the distinct `≪…≫`), so this is the genuine nested-ruby
@@ -176,7 +166,7 @@ fn nested_ruby_fires_as_error() {
 
 #[test]
 fn flat_ruby_is_not_nested() {
-    // A normal ruby and two adjacent rubies must not trip the nested check.
+    // A normal ruby and two adjacent rubies produce no nested-ruby diagnostic.
     assert_eq!(count_code("｜青梅《おうめ》", codes::NESTED_RUBY), 0);
     assert_eq!(
         count_code("｜青《あお》｜梅《うめ》", codes::NESTED_RUBY),
@@ -184,12 +174,10 @@ fn flat_ruby_is_not_nested() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // #7 unrecognised_container_directive (Warning, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn unrecognised_container_directive_fires_as_warning() {
+fn unrecognised_container_directive_is_reported_as_warning() {
     // `ここから…` opener whose remainder is not a known container kind.
     let sev = one_diag_severity(
         "［＃ここからナントカ］本文",
@@ -199,7 +187,7 @@ fn unrecognised_container_directive_fires_as_warning() {
 }
 
 #[test]
-fn known_and_non_container_directives_are_silent() {
+fn known_and_non_container_directives_report_no_diagnostic() {
     // A valid container opener resolves → no warning.
     assert_eq!(
         count_code(
@@ -208,8 +196,8 @@ fn known_and_non_container_directives_are_silent() {
         ),
         0
     );
-    // An unknown annotation that is NOT a `ここから` directive is just a
-    // plain `Directive{Unknown}` and must not be mislabelled.
+    // An unknown annotation that is not a `ここから` directive is a plain
+    // `Directive{Unknown}` and must not receive the container diagnostic.
     assert_eq!(
         count_code(
             "［＃ふつうの注記］",
@@ -219,9 +207,7 @@ fn known_and_non_container_directives_are_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // #4 tcy_target_not_found (Warning, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
 fn tcy_target_not_found_fires_as_warning() {
@@ -231,7 +217,7 @@ fn tcy_target_not_found_fires_as_warning() {
 }
 
 #[test]
-fn tcy_with_present_target_is_silent() {
+fn tcy_with_present_target_reports_no_diagnostic() {
     // Target `64` precedes the directive → recognised → no warning.
     assert_eq!(
         count_code("昭和64［＃「64」は縦中横］年", codes::TCY_TARGET_NOT_FOUND),
@@ -239,38 +225,31 @@ fn tcy_with_present_target_is_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // #5 bouten_target_ambiguous (Warning, classify stage)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn bouten_target_ambiguous_fires_as_warning() {
-    // `青空` occurs twice before the bracket → which run to emphasise is
-    // ambiguous.
+fn detached_bouten_target_ambiguous_is_reported_as_warning() {
     let sev = one_diag_severity(
-        "青空青空［＃「青空」に傍点］",
+        "青空と青空。［＃「青空」に傍点］",
         codes::BOUTEN_TARGET_AMBIGUOUS,
     );
     assert_eq!(sev, Severity::Warning);
 }
 
 #[test]
-fn bouten_unique_target_is_silent() {
-    // `青空` occurs exactly once before the bracket → unambiguous.
-    assert_eq!(
-        count_code("青空［＃「青空」に傍点］", codes::BOUTEN_TARGET_AMBIGUOUS),
-        0
-    );
+fn bouten_unique_or_adjacent_target_reports_no_diagnostic() {
+    for source in ["青空［＃「青空」に傍点］", "青空青空［＃「青空」に傍点］"]
+    {
+        assert_eq!(count_code(source, codes::BOUTEN_TARGET_AMBIGUOUS), 0);
+    }
 }
 
-// ---------------------------------------------------------------------------
 // break_in_single_line_container (Warning, normalizer fold)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn break_in_single_line_align_end_fires_as_warning() {
+fn break_in_single_line_align_end_is_reported_as_warning() {
     // `［＃地付き］` is a single-line align-end marker; the `［＃改ページ］` on
-    // the SAME source line drops it.
+    // the same source line drops it.
     let sev = one_diag_severity(
         "［＃地付き］本文［＃改ページ］",
         codes::BREAK_IN_SINGLE_LINE_CONTAINER,
@@ -279,7 +258,7 @@ fn break_in_single_line_align_end_fires_as_warning() {
 }
 
 #[test]
-fn break_in_single_line_indent_fires() {
+fn break_in_single_line_indent_is_reported() {
     // Single-line `［＃2字下げ］` directive sharing a line with a section break.
     assert_eq!(
         count_code(
@@ -291,8 +270,8 @@ fn break_in_single_line_indent_fires() {
 }
 
 #[test]
-fn break_inside_warichu_fires() {
-    // A break between `［＃割り注］` and `［＃割り注終わり］` lands inside an
+fn break_inside_warichu_is_reported() {
+    // A break between `［＃割り注］` and `［＃割り注終わり］` falls inside an
     // inline warichu range.
     assert_eq!(
         count_code(
@@ -304,8 +283,8 @@ fn break_inside_warichu_fires() {
 }
 
 #[test]
-fn break_on_next_line_is_silent() {
-    // The single-line directive ends with its line; a break on the FOLLOWING
+fn break_on_next_line_reports_no_diagnostic() {
+    // The single-line directive ends with its line; a break on the following
     // line does not drop it.
     assert_eq!(
         count_code(
@@ -317,9 +296,9 @@ fn break_on_next_line_is_silent() {
 }
 
 #[test]
-fn break_in_block_container_is_silent() {
+fn break_in_block_container_reports_no_diagnostic() {
     // Paired `［＃ここから…］` block containers persist across breaks (print
-    // typography): a break inside one must not fire.
+    // typography): a break inside one produces no diagnostic.
     assert_eq!(
         count_code(
             "［＃ここから2字下げ］本文［＃改ページ］残り［＃ここで字下げ終わり］",
@@ -327,7 +306,7 @@ fn break_in_block_container_is_silent() {
         ),
         0
     );
-    // A standalone break with no container in scope is likewise silent.
+    // A standalone break with no container in scope likewise produces none.
     assert_eq!(
         count_code(
             "本文［＃改ページ］次",
@@ -337,19 +316,17 @@ fn break_in_block_container_is_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // bracketed_kaeriten_no_pair (Error, classify-stage finalize)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn bracketed_kaeriten_no_pair_fires_as_error() {
+fn bracketed_kaeriten_no_pair_is_reported_as_error() {
     // A `［＃二］` whose clause has no `［＃一］` partner.
     let sev = one_diag_severity("怪物［＃二］", codes::BRACKETED_KAERITEN_NO_PAIR);
     assert_eq!(sev, Severity::Error);
 }
 
 #[test]
-fn kaeriten_base_present_is_silent() {
+fn kaeriten_base_present_reports_no_diagnostic() {
     // `二` and `一` both present: order does not matter (real kanbun writes
     // `二` before `一`).
     assert_eq!(
@@ -371,7 +348,7 @@ fn kaeriten_base_present_is_silent() {
 
 #[test]
 fn kaeriten_base_presence_is_document_wide() {
-    // The base `一` lives in a different clause (after the `。`) than the
+    // The base `一` occurs in a different clause (after the `。`) than the
     // `二`: kanbun return groups span clause boundaries, so this is not
     // flagged (document-wide base presence).
     assert_eq!(
@@ -387,28 +364,26 @@ fn kaeriten_base_presence_is_document_wide() {
         count_code("見［＃三］而知［＃一］", codes::BRACKETED_KAERITEN_NO_PAIR),
         0
     );
-    // A document using `下` (rank 2/3) with NO `上` anywhere → genuine
-    // missing base → fires.
+    // A document using `下` (rank 2/3) with no `上` anywhere → missing
+    // base → reported.
     assert_eq!(
         count_code("有［＃下］耳", codes::BRACKETED_KAERITEN_NO_PAIR),
         1
     );
 }
 
-// ---------------------------------------------------------------------------
 // kaeriten_outside_kanbun (Warning, classify-stage finalize, conservative)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn kaeriten_outside_kanbun_fires_as_warning() {
-    // A single `レ` kaeriten (non-laddering, so no pair diagnostic) sitting
-    // in kana-dominant prose: the only kaeriten in the document.
+fn kaeriten_outside_kanbun_is_reported_as_warning() {
+    // A single `レ` kaeriten (non-laddering, so no pair diagnostic) in
+    // kana-dominant prose: the only kaeriten in the document.
     let sev = one_diag_severity("これは［＃レ］と書いた。", codes::KAERITEN_OUTSIDE_KANBUN);
     assert_eq!(sev, Severity::Warning);
 }
 
 #[test]
-fn kaeriten_in_kanbun_context_is_silent() {
+fn kaeriten_in_kanbun_context_reports_no_diagnostic() {
     // Multiple kaeriten (a real kanbun cluster) → never flagged.
     assert_eq!(
         count_code("自［＃二］女王國［＃一］", codes::KAERITEN_OUTSIDE_KANBUN),
@@ -421,19 +396,17 @@ fn kaeriten_in_kanbun_context_is_silent() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // mismatched_bouten_container (Error, normalizer fold)
-// ---------------------------------------------------------------------------
 
 #[test]
-fn mismatched_bouten_container_fires_as_error() {
+fn mismatched_bouten_container_is_reported_as_error() {
     // 傍点 (点) range opened, closed by a 傍線 (線) closer → family mismatch.
     let sev = one_diag_severity(
         "彼は［＃傍点］必ず［＃傍線終わり］来る",
         codes::MISMATCHED_BOUTEN_CONTAINER,
     );
     assert_eq!(sev, Severity::Error);
-    // The discriminant-level `mismatched_container_close` must NOT also fire
+    // The discriminant-level `mismatched_container_close` must not also be emitted
     // (both ends are `BoutenRange`).
     assert_eq!(
         count_code(
@@ -445,7 +418,7 @@ fn mismatched_bouten_container_fires_as_error() {
 }
 
 #[test]
-fn matched_bouten_range_is_silent() {
+fn matched_bouten_range_reports_no_diagnostic() {
     // Same family, exact variant → no diagnostic.
     assert_eq!(
         count_code(

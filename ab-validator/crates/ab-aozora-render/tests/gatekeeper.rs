@@ -1,12 +1,10 @@
-//! 金庫番 (gatekeeper) tests for `aozora-render`.
-//!
-//! Pin user-visible HTML output contracts so a refactor cannot
-//! silently drift the on-disk shape:
+//! Tests of the user-visible HTML and serialize output contracts of
+//! `aozora-render`:
 //!
 //! * The five HTML-unsafe ASCII chars (`< > & " '`) each map to a
-//!   specific named/numeric entity. Bumping the apostrophe form
-//!   from `&#x27;` to `&#39;` (or vice versa) must be a deliberate,
-//!   reviewed change — and must update BOTH renderer paths.
+//!   specific named/numeric entity. The apostrophe form is `&#x27;`;
+//!   changing it requires changing both renderer paths (`escape_text`
+//!   and `escape_text_chunk`).
 //! * Empty input renders to empty output (not "empty paragraph").
 //! * Pure-text input round-trips byte-identical inside `<p>...</p>`.
 //! * Newline semantics: single newline → `<br />`, double newline →
@@ -27,16 +25,14 @@ fn ser(text: &str) -> String {
 }
 
 #[test]
-fn gatekeeper_html_entity_table_is_canonical() {
-    // Pinned individually so the failure mode names which entity
-    // drifted, rather than dumping a 5-char diff.
+fn html_entity_table_is_canonical() {
+    // One assertion per character, so a failure identifies the entity.
     assert!(html("<").contains("&lt;"), "< must escape to &lt;");
     assert!(html(">").contains("&gt;"), "> must escape to &gt;");
     assert!(html("&").contains("&amp;"), "& must escape to &amp;");
     assert!(html("\"").contains("&quot;"), "\" must escape to &quot;");
-    // Apostrophe MUST be the hex form `&#x27;`. The decimal form
-    // `&#39;` is forbidden — both renderer paths agreed on hex
-    // after the html.rs vs render_node.rs unification.
+    // The apostrophe escapes to the hex form `&#x27;`, not the decimal
+    // form `&#39;`; both renderer paths use the hex form.
     let html = html("'");
     assert!(
         html.contains("&#x27;"),
@@ -46,10 +42,10 @@ fn gatekeeper_html_entity_table_is_canonical() {
 }
 
 #[test]
-fn gatekeeper_html_unsafe_set_is_exactly_five_chars() {
-    // Every other ASCII printable must pass through as itself.
-    // This is what makes the html.rs's three-needle memchr scan
-    // valid — we depend on knowing every escapable byte.
+fn html_unsafe_set_is_exactly_five_chars() {
+    // Every other ASCII printable must pass through as itself. The
+    // `memchr` scan in `escape_text_chunk` is valid only if no other
+    // byte is escaped.
     let safe_ascii: Vec<u8> = (0x20..=0x7E)
         .filter(|b| !matches!(*b, b'<' | b'>' | b'&' | b'"' | b'\''))
         .collect();
@@ -65,24 +61,23 @@ fn gatekeeper_html_unsafe_set_is_exactly_five_chars() {
 }
 
 #[test]
-fn gatekeeper_empty_input_renders_to_empty_string() {
+fn empty_input_renders_to_empty_string() {
     // No `<p></p>`, no whitespace — completely empty.
     assert_eq!(html(""), "");
 }
 
 #[test]
-fn gatekeeper_pure_japanese_pass_through_unescaped() {
-    // Multi-byte UTF-8 must NEVER be escaped — only the 5 ASCII
-    // unsafe chars ever change form.
+fn pure_japanese_pass_through_unescaped() {
+    // Multi-byte UTF-8 is never escaped; only the five ASCII
+    // unsafe chars change form.
     let html = html("青空文庫の本文。");
     assert!(html.contains("青空文庫の本文。"), "got: {html}");
 }
 
 #[test]
-fn gatekeeper_single_newline_becomes_br_double_closes_paragraph() {
+fn single_newline_becomes_br_double_closes_paragraph() {
     // The renderer's paragraph state machine has only these two
-    // newline behaviours. Adding a third (e.g. CRLF handling) must
-    // be a deliberate change.
+    // newline behaviours.
     let single = html("a\nb");
     assert!(single.contains("a<br />\nb"), "got: {single}");
     assert!(
@@ -96,11 +91,11 @@ fn gatekeeper_single_newline_becomes_br_double_closes_paragraph() {
 }
 
 #[test]
-fn gatekeeper_serialize_is_fixed_point_for_canonical_markup() {
-    // The four canonical Aozora markup shapes a real document
-    // exercises must each round-trip byte-identical. If any
-    // sentinel encoding/decoding drifts, serialize will not be a
-    // fixed point — the second pass produces different bytes.
+fn serialize_is_fixed_point_for_canonical_markup() {
+    // Each of four canonical Aozora markup shapes must round-trip
+    // byte-identical. If sentinel encoding or decoding alters the
+    // bytes, serialize is not a fixed point and the second pass
+    // produces different bytes.
     for src in [
         "｜青梅《おうめ》",
         "前\n\n［＃改ページ］\n\n後",
@@ -114,14 +109,14 @@ fn gatekeeper_serialize_is_fixed_point_for_canonical_markup() {
 }
 
 #[test]
-fn gatekeeper_pua_sentinel_codepoints_in_source_dont_emit_block_tags() {
+fn pua_sentinel_codepoints_in_source_dont_emit_block_tags() {
     // The sanitize stage records a diagnostic but does not strip raw U+E001..
-    // U+E004 from input, so they must flow through as PLAIN text
-    // and never accidentally trigger structural rendering. This
-    // pins "PUA collision tolerance".
+    // U+E004 from input, so they must pass through as plain text
+    // and must not produce structural rendering (PUA collision
+    // tolerance).
     for sentinel in ALL_SENTINELS {
         let html = html(&sentinel.to_string());
-        // No `<div class="aozora-...">` should appear from a stray PUA.
+        // A PUA character in the source produces no `<div class="aozora-...">`.
         assert!(
             !html.contains(r#"<div class="aozora-page-break""#),
             "PUA {sentinel:?} accidentally produced a structural block: {html}",

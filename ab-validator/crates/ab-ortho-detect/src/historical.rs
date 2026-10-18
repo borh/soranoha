@@ -1,6 +1,6 @@
 //! Historical-kana → modern-kana surface modernizer
 //!
-//! Rewrites 歴史的仮名遣い to 現代仮名遣い at the **surface** level (keeping kanji and
+//! Rewrites 歴史的仮名遣い to 現代仮名遣い at the surface level (keeping kanji and
 //! rewriting historical kana only) so analyzers without historical dictionaries
 //! see identical modernized text for cross-analyzer comparability.
 //!
@@ -30,7 +30,7 @@ use crate::types::{OrthoAnnotation, OrthoDetectorId, OrthoNormalization};
 
 /// The minimal token view the modernizer needs from the segmentation oracle.
 ///
-/// Under M2 this is populated from a `kindai-bungo` UniDic morpheme: `surface`
+/// This is populated from a `kindai-bungo` UniDic morpheme: `surface`
 /// is the historical surface, `pron` its modern reading (katakana, `ー` for long
 /// vowels), `pos1` the coarse POS used only for the particle guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +58,7 @@ pub fn modernize_token(tok: &HistToken<'_>) -> Option<String> {
 }
 
 /// The raw rewrite. Returns the surface verbatim when nothing applies (so
-/// [`modernize_token`] can decide "no change"). Kept separate for direct testing.
+/// [`modernize_token`] can detect "no change"). Kept separate for direct testing.
 #[must_use]
 fn modernize(surface: &str, pron: &str, pos1: &str) -> String {
     // 1. Particle guard: 現代仮名遣い keeps the particles は/へ/を.
@@ -66,7 +66,7 @@ fn modernize(surface: &str, pron: &str, pos1: &str) -> String {
         return surface.to_owned();
     }
     // 2. Digraph / long vowel: reconstruct from the modern reading, but only for
-    //    all-kana tokens. `pron` is the reading of the WHOLE token, so applying it
+    //    all-kana tokens. `pron` is the reading of the whole token, so applying it
     //    to a kanji-bearing token (日曜, pron ニチヨー) would replace the kanji with
     //    kana (→にちよう). The ground-truth harness measured this path on all-kana
     //    tokens only; kanji-mixed tokens fall through to the kana-run rewrite (3).
@@ -157,12 +157,13 @@ fn vowel_of(c: char) -> char {
     }
 }
 
-/// A stable content hash of the modernization rule set. Bound into
-/// [`OrthoDetectorId::HistoricalRewriteV1`](crate::types::OrthoDetectorId) so a
-/// rule edit changes the detector and policy identity.
-/// Computed over a canonical dump of the rule tables (below), so editing the
-/// tables here moves the hash; the version tag guards against an accidental
-/// table-order permutation hashing the same.
+/// SHA-256 of the bytes of `RULES_CANON`, as `sha256:<hex>`, bound into
+/// [`OrthoDetectorId::HistoricalRewriteV1`](crate::types::OrthoDetectorId) as
+/// the rule-set part of the detector and policy identity. The hash covers the
+/// dump, not the rewrite code: a rule change alters the hash only when
+/// `RULES_CANON` is edited with it. The dump's first line,
+/// `historical-rewrite-rules-v1`, is a version tag; changing it changes the
+/// hash without editing any rule line.
 #[must_use]
 pub fn rules_hash() -> String {
     use sha2::{Digest, Sha256};
@@ -171,9 +172,10 @@ pub fn rules_hash() -> String {
     format!("sha256:{:x}", hasher.finalize())
 }
 
-/// Canonical, human-auditable dump of every rewrite rule. Kept in lockstep with
-/// [`modernize`]/[`expand_long_vowel`]; a test asserts the resulting hash so an
-/// edit to one without the other fails CI rather than silently drifting.
+/// Canonical, human-auditable dump of every rewrite rule. Must be edited
+/// together with [`modernize`]/[`expand_long_vowel`]; `rules_hash_is_stable`
+/// pins the resulting hash, so an edit to this dump fails that test until the
+/// pinned value is updated.
 const RULES_CANON: &str = concat!(
     "historical-rewrite-rules-v1\n",
     "particle-guard:助詞:は,へ,を\n",
@@ -184,7 +186,7 @@ const RULES_CANON: &str = concat!(
     "medial-hagyou:は->わ;ひ->い;ふ->う;へ->え;ほ->お\n",
 );
 
-/// One token from the historical-segmentation oracle (M2). Byte offsets are
+/// One token from the historical-segmentation oracle. Byte offsets are
 /// relative to the tokenized text (a single sentence), so the detector adds the
 /// sentence's `byte_offset` to lift them into source coordinates.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,7 +201,7 @@ pub struct HistOracleToken {
     pub pos1: Option<String>,
 }
 
-/// The segmentation/reading oracle the M2 modernizer runs on. Defined here so
+/// The segmentation/reading oracle the historical modernizer uses. Defined here so
 /// `ab-ortho-detect` stays free of any concrete analyzer crate; the adapter
 /// (`ab-morph-analyzers`) implements it over a `kindai-bungo` `VibratoAnalyzer`.
 pub trait HistoricalOracle: Send + Sync {
@@ -207,11 +209,11 @@ pub trait HistoricalOracle: Send + Sync {
     fn tokenize(&self, text: &str) -> Vec<HistOracleToken>;
 }
 
-/// The historical→modern surface detector (M2). Tokenizes each
-/// sentence with the historical oracle and emits **one token-granular
-/// [`OrthoAnnotation`] per rewritten token** (kind
+/// The historical→modern surface detector. Tokenizes each
+/// sentence with the historical oracle and emits one token-granular
+/// [`OrthoAnnotation`] per rewritten token (kind
 /// [`OrthoNormalization::HistoricalToModern`]), so every length-changing span
-/// (けふ 6B → きょう 9B) exactly covers its offset-map entry and remaps cleanly.
+/// (けふ 6B → きょう 9B) exactly covers its offset-map entry and remaps exactly.
 /// Unchanged tokens (already modern, protected particles) emit nothing.
 pub struct HistoricalRewriteV1 {
     oracle: Arc<dyn HistoricalOracle>,
@@ -222,7 +224,7 @@ impl HistoricalRewriteV1 {
     /// Build the detector over a segmentation oracle. `dictionary_hash` is the
     /// SHA-256 of the `kindai-bungo` archive the oracle uses; it is bound into
     /// [`OrthoDetectorId::HistoricalRewriteV1`] so the modernizing dictionary is
-    /// pinned into policy identity (I2-D17).
+    /// pinned into policy identity.
     #[must_use]
     pub fn new(oracle: Arc<dyn HistoricalOracle>, dictionary_hash: String) -> Self {
         Self {
@@ -396,7 +398,7 @@ mod tests {
 
     #[test]
     fn kanji_token_with_long_vowel_reading_is_not_replaced_by_reading() {
-        // Regression: 日曜 (pron ニチヨー) and 蝶々 (pron チョーチョー) must NOT take
+        // Regression: 日曜 (pron ニチヨー) and 蝶々 (pron チョーチョー) must not take
         // the pron path; that would erase the kanji (→にちよう / ちょうちょ).
         // Not all-kana ⇒ kana-run rewrite ⇒ no historical kana ⇒ unchanged.
         assert_eq!(modernize_token(&tok("日曜", "ニチヨー", "名詞")), None);
@@ -405,7 +407,7 @@ mod tests {
 
     #[test]
     fn all_kana_digraph_still_reconstructs() {
-        // The gate must not disturb the genuine all-kana digraph case.
+        // The all-kana check leaves the all-kana digraph case unchanged.
         assert_eq!(
             modernize_token(&tok("てふ", "チョー", "名詞")).as_deref(),
             Some("ちょう")
@@ -492,7 +494,7 @@ mod tests {
 
     #[test]
     fn detector_annotations_round_trip_through_ortho_normalize() {
-        // The emitted annotation must apply cleanly and remap back to source.
+        // The emitted annotation must apply and remap back to source.
         let sentence = SentenceSpan {
             text: "けふ",
             byte_offset: 0,
@@ -509,9 +511,9 @@ mod tests {
 
     #[test]
     fn rules_hash_is_stable() {
-        // Pin the rule-set identity. If you intentionally change a rule, update
-        // RULES_CANON in the same commit and re-pin this value; the golden and
-        // the policy hash both depend on it.
+        // Pin the rule-set identity. A rule change updates RULES_CANON and this
+        // pinned value in the same commit; the golden and the policy hash both
+        // depend on it.
         assert_eq!(
             rules_hash(),
             "sha256:ef00d5b53bc124e8ed2bc463b24b5e3ca98cb96fad3ca0c715c6cd00754545ee"

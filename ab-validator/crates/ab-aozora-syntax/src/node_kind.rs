@@ -1,16 +1,14 @@
 //! Cross-cutting "kind" tag for AST nodes.
 //!
 //! [`NodeKind`] enumerates every wire-distinct tag the owned-AST
-//! surfaces produce. It is used both for **internal** projection
-//! (`Node::kind`,
-//! `NodeRef::kind`) and for the
-//! **driver wire format** ([`crate`]'s host crate `aozora` projects
-//! the tag to a stable camelCase string via [`NodeKind::as_json_tag`]).
+//! surfaces produce. It is used both for internal projection
+//! (`Node::kind`, `NodeRef::kind`) and for the driver wire format
+//! ([`crate`]'s host crate `aozora` projects the tag to a stable
+//! camelCase string via [`NodeKind::as_json_tag`]).
 //!
-//! The typed enum (rather than a `&'static str` constant) lets every
-//! consumer pattern-match the tag exhaustively (the compiler points
-//! out a new variant landing without a wire mapping) and concentrates
-//! the camelCase string in a single authority.
+//! Because the tag is an enum, an exhaustive `match` over it is a compile
+//! error when a variant has no wire mapping, and [`NodeKind::as_json_tag`]
+//! is the only site that holds the camelCase strings.
 
 /// Cross-cutting tag for an AST node or `NodeRef` projection.
 ///
@@ -21,12 +19,11 @@
 /// close variants: the inline `Container` payload uses
 /// [`Self::Container`].
 ///
-/// `#[non_exhaustive]` so adding a new `Node` variant only needs
-/// to land here and on the per-call `match` sites; existing wire
-/// consumers see the new variant as an unrecognised tag and gracefully
-/// degrade (the camelCase mapping is exhaustive within this crate;
-/// downstream `match` over `NodeKind` is required to handle a `_` arm
-/// for forward-compat).
+/// The enum is `#[non_exhaustive]`: a new `Node` variant requires a variant
+/// here and an arm at each per-call `match` site, a downstream `match` over
+/// `NodeKind` must include a `_` arm, and an existing wire consumer receives
+/// the new variant as an unrecognised tag. The camelCase mapping is exhaustive
+/// within this crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum NodeKind {
@@ -64,7 +61,9 @@ pub enum NodeKind {
     ForcedBreak,
     /// Aozora heading (見出し).
     Heading,
-    /// Heading hint that informs downstream rendering decisions.
+    /// Heading hint (`［＃「X」は中見出し］`). The HTML renderer emits
+    /// it as a hidden `aozora-heading-hint` span carrying the level and target;
+    /// the ab-aat adapter projects it as a heading.
     HeadingHint,
     /// 挿絵 (sashie): illustration reference.
     Illustration,
@@ -72,7 +71,7 @@ pub enum NodeKind {
     Kunten,
     /// Supplied whole kana iteration mark.
     IterationMark,
-    /// Generic annotation that no specific recogniser claimed.
+    /// Generic annotation that no specific recogniser matched.
     Directive,
     /// Double-angle quotation (input `≪…≫`, display `《…》`).
     AngleQuote,
@@ -94,8 +93,8 @@ impl NodeKind {
     /// Every variant in declaration order.
     ///
     /// Used by `aozora kinds` (CLI introspection) and the
-    /// TypeScript / JSON-Schema codegen so the artefact list
-    /// tracks the enum without a hand-maintained parallel.
+    /// TypeScript / JSON-Schema codegen, so the generated artefact list
+    /// follows the enum without a hand-maintained copy.
     pub const ALL: [Self; 27] = [
         Self::Ruby,
         Self::Bouten,
@@ -170,9 +169,8 @@ impl NodeKind {
 mod tests {
     use super::*;
 
-    /// camelCase strings are pinned; accidental rename of one breaks
-    /// this test instead of silently breaking downstream tooling that
-    /// switches on the tag.
+    /// The camelCase strings are a wire contract: renaming one fails this
+    /// test, not only the downstream tooling that switches on the tag.
     #[test]
     fn camel_case_strings_are_stable() {
         assert_eq!(NodeKind::Ruby.as_json_tag(), "ruby");

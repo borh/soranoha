@@ -5,32 +5,30 @@
 //! Lexer-emitted observations.
 //!
 //! A [`Diagnostic`] is non-fatal: the lexer always produces a
-//! best-effort output and never aborts mid-stream. Callers decide how
-//! to surface the diagnostics: the CLI can render them via
-//! [`miette::Report`], tests can assert on the variants, library
-//! consumers can ignore them.
+//! best-effort output and never aborts mid-stream. Callers choose how
+//! to present the diagnostics: the CLI renders them via
+//! [`miette::Report`], tests assert on the variants, and library
+//! consumers may ignore them.
 //!
 //! Every variant carries a byte-range [`Span`] in the *sanitized* source
 //! (the sanitize-stage output: BOM stripped, CRLF→LF, 〔…〕 accents decomposed),
 //! which is the text the later stages tokenize. To render a snippet,
 //! attach that sanitized text (e.g. via `ab_aozora_facade::pipeline::lexer::sanitize`)
-//! so miette's caret lands on the right character; for input with no BOM /
+//! so that miette's caret points at the reported character; for input with no BOM /
 //! CRLF / accent digraphs the sanitized text equals the original bytes.
 //!
 //! # Severity and source axes
 //!
 //! Diagnostics split along two orthogonal axes:
 //!
-//! - **[`Severity`]**: `Error` / `Warning` / `Note`. Determines how
-//!   strictly a host (CLI, LSP, editor decorator) should treat the
-//!   observation. Defaults to `Error` for genuine syntax issues and
-//!   `Warning` for input that the parser can carry around but the
-//!   user should be told about.
+//! - **[`Severity`]**: `Error` / `Warning` / `Note`. A host (CLI, LSP,
+//!   editor decorator) selects its handling of the observation by
+//!   severity. Syntax errors are `Error`; input that the parser retains
+//!   but that the user should be told about is `Warning`.
 //! - **[`DiagnosticSource`]**: `Source` (problem traces back to
-//!   user input) vs. `Internal` (a pipeline-invariant violation;
-//!   appearance indicates a library bug). Hosts that filter by
-//!   `Internal` get a clear "library bug" channel without having to
-//!   match on individual variants.
+//!   user input) vs. `Internal` (a pipeline-invariant violation, which
+//!   indicates a library bug). A host can select library-bug
+//!   diagnostics by `Internal` without matching individual variants.
 //!
 //! Each variant exposes both axes through accessors
 //! ([`Diagnostic::severity`] / [`Diagnostic::source`]).
@@ -39,12 +37,12 @@
 //!
 //! The four library-bug consistency checks
 //! (`ResidualAnnotationMarker`, `UnregisteredSentinel`,
-//! `RegistryOutOfOrder`, `RegistryPositionMismatch`) live as a single
-//! [`Diagnostic::Internal`] variant whose `code` field
-//! ([`InternalCheckCode`]) tags the specific check. Tests and tooling
-//! match on that code via [`codes`]. Consumers that want to filter
-//! library-bug diagnostics out of the [`crate::Diagnostic`] stream
-//! reach for [`Diagnostic::source`].
+//! `RegistryOutOfOrder`, `RegistryPositionMismatch`) are one
+//! [`Diagnostic::Internal`] variant whose `check` field
+//! ([`InternalCheckCode`]) identifies the specific check. Tests and
+//! tooling match on that code via [`codes`]. Consumers filter
+//! library-bug diagnostics out of the [`crate::Diagnostic`] stream with
+//! [`Diagnostic::source`].
 
 use std::borrow::Cow;
 
@@ -57,9 +55,9 @@ use crate::Span;
 /// Stable identifier strings for known [`Diagnostic`] variants.
 ///
 /// [`Diagnostic::code`] returns one of these for any production
-/// diagnostic. They are guaranteed stable across patch and minor
-/// releases; major-release variant additions land new constants here
-/// without touching existing ones.
+/// diagnostic. They are stable across patch and minor releases; a
+/// major release that adds variants adds constants here and leaves the
+/// existing ones unchanged.
 pub mod codes {
     /// A region opener has no matching closer.
     pub const UNCLOSED_CONTAINER: &str = "aozora::lex::unclosed_container";
@@ -68,11 +66,13 @@ pub mod codes {
     /// Open delimiter reached end-of-input with no matching close.
     pub const UNCLOSED_BRACKET: &str = "aozora::lex::unclosed_bracket";
 
-    /// Close delimiter saw an empty stack or a mismatched stack top.
+    /// Close delimiter found an empty stack or a mismatched stack top.
     pub const UNMATCHED_CLOSE: &str = "aozora::lex::unmatched_close";
 
     /// A `〔…〕` accent digraph was decomposed during the sanitize stage.
     pub const ACCENT_DECOMPOSITION_APPLIED: &str = "aozora::lex::accent_decomposition_applied";
+    /// A retained spelling has no established accent interpretation.
+    pub const UNRESOLVED_ACCENT_NOTATION: &str = "aozora::lex::unresolved_accent_notation";
 
     /// A 外字 (gaiji) reference resolved to neither Unicode nor JIS X 0213.
     pub const UNRESOLVED_GAIJI: &str = "aozora::lex::unresolved_gaiji";
@@ -117,7 +117,7 @@ pub mod codes {
 
     /// A `［＃…］` body spelled as a near-miss of a recognized directive.
     ///
-    /// 送り仮名 drift, a synonym, or a malformed prefix / close, kept as
+    /// 送り仮名 variation, a synonym, or a malformed prefix / close, kept as
     /// Unknown; the notation-hygiene lint suggests its canonical spelling.
     /// The `aozora::lint::*` namespace marks an advisory authoring lint,
     /// distinct from the `aozora::lex::*` lex faults above.
@@ -125,13 +125,13 @@ pub mod codes {
 
     /// Prefix of every advisory notation-hygiene *lint* code.
     ///
-    /// The single authority for the lint-vs-lex split that
-    /// [`crate::Diagnostic::is_lint`] and the LSP filter on: a code in this
-    /// namespace is authoring guidance, not a malformed-input fault.
+    /// [`crate::Diagnostic::is_lint`] and the LSP separate lints from lex
+    /// faults by this prefix: a code in this namespace is authoring
+    /// guidance, not a malformed-input fault.
     pub const LINT_NAMESPACE: &str = "aozora::lint::";
 
-    /// Pipeline-internal: an `［＃` digraph survived classification
-    /// into the normalized text. Indicates a missing recogniser for
+    /// Pipeline-internal: an `［＃` digraph remains in the normalized
+    /// text after classification. Indicates a missing recogniser for
     /// the keyword.
     pub const RESIDUAL_ANNOTATION_MARKER: &str = "aozora::lex::residual_annotation_marker";
 
@@ -157,17 +157,17 @@ pub mod codes {
 ///
 /// Hosts route diagnostics by severity: `Error` blocks downstream
 /// rendering or fails CI, `Warning` decorates the editor surface,
-/// `Note` is informational. The `aozora` library never panics on a
-/// `Diagnostic`: the parser produces a best-effort output and
-/// surfaces this enum as the host's policy hook.
+/// `Note` is informational. The `aozora` library does not panic on a
+/// `Diagnostic`: the parser produces a best-effort output and reports
+/// this enum for the host to act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Severity {
-    /// Genuine error; downstream consumers should treat the parse as
+    /// Error; downstream consumers should treat the parse as
     /// suspect.
     Error,
     /// Recoverable observation; parse continues and output is
-    /// preserved, but the user should know.
+    /// preserved, and the observation is reported to the user.
     Warning,
     /// Informational note; editor surfaces may show it as a tooltip
     /// or annotation but it does not affect CI / build status.
@@ -175,8 +175,8 @@ pub enum Severity {
 }
 
 impl Severity {
-    /// Every variant in declaration order. Used by codegen so
-    /// downstream artefacts track the enum without drift.
+    /// Every variant in declaration order. Codegen generates downstream
+    /// artefacts from this list.
     pub const ALL: [Self; 3] = [Self::Error, Self::Warning, Self::Note];
 
     /// Stable lowercase wire-format identifier ("error" / "warning"
@@ -197,15 +197,15 @@ impl Severity {
 ///
 /// Production parses on well-formed input never emit `Internal`
 /// diagnostics. An `Internal` diagnostic indicates a bug in
-/// `aozora-pipeline` and SHOULD be reported upstream.
+/// `aozora-pipeline` and should be reported upstream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DiagnosticSource {
     /// Issue traces back to the user-provided source text.
     Source,
     /// Pipeline-internal invariant violation. Indicates a library
-    /// bug; the parse is still completed best-effort but downstream
-    /// tooling should surface this distinctly.
+    /// bug; the parse still completes best-effort, and downstream
+    /// tooling should report this separately.
     Internal,
 }
 
@@ -227,17 +227,17 @@ impl DiagnosticSource {
 /// Identifier of a specific pipeline-internal consistency check.
 ///
 /// Carried by the [`Diagnostic::Internal`] variant. Tooling that
-/// wants per-check assertions matches on this enum; legacy callers
-/// (logs, regex grep) can still reach for the stable
-/// `aozora::lex::*` string via [`Self::as_code`].
+/// asserts per check matches on this enum; string-based callers
+/// (logs, regex grep) read the stable `aozora::lex::*` string from
+/// [`Self::as_code`].
 ///
 /// `#[non_exhaustive]` so adding a new check variant is a minor
 /// release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum InternalCheckCode {
-    /// An `［＃` digraph survived classification into the normalized
-    /// text. Indicates a missing recogniser for the keyword.
+    /// An `［＃` digraph remains in the normalized text after
+    /// classification. Indicates a missing recogniser for the keyword.
     ResidualAnnotationMarker,
     /// A PUA sentinel codepoint is present in the normalized text at
     /// a position that is not recorded in the placeholder registry.
@@ -352,9 +352,9 @@ pub enum Diagnostic {
     },
 
     /// A `〔…〕` accent digraph (e.g. `〔e'〕` → `é`) was decomposed into
-    /// its Unicode-combined form during the sanitize stage. Purely
-    /// informational: the decomposition is intended behaviour,
-    /// surfaced as a `Note` so an editor can show what changed. The
+    /// its Unicode-combined form during the sanitize stage.
+    /// Informational: the decomposition is the specified behaviour,
+    /// reported as a `Note` so an editor can show what changed. The
     /// serializer reconstructs the original `〔…〕` form, so the transform
     /// is loss-free.
     #[error("accent digraph decomposed in sanitize stage")]
@@ -379,9 +379,25 @@ pub enum Diagnostic {
         span: Span,
     },
 
+    /// Unresolved spellings are retained under the [Aozora accent rules](https://www.aozora.gr.jp/annotation/external_character.html).
+    #[error("accent spelling is unresolved in this context")]
+    #[diagnostic(
+        code("aozora::lex::unresolved_accent_notation"),
+        url("https://www.aozora.gr.jp/annotation/external_character.html"),
+        severity(Warning),
+        help("use a separate accent scope around the intended encoded character")
+    )]
+    UnresolvedAccentNotation {
+        /// Caret range in sanitized text.
+        #[label("unresolved spelling retained here")]
+        at: miette::SourceSpan,
+        /// Byte range of the retained spelling in sanitized text.
+        span: Span,
+    },
+
     /// A 外字 (gaiji) reference (`※［＃…］`) resolved to neither a Unicode
-    /// scalar nor a JIS X 0213 cell, so the renderer falls back to the
-    /// description text rather than the intended glyph.
+    /// scalar nor a JIS X 0213 cell, so the renderer emits the
+    /// description text instead of the glyph.
     #[error("gaiji reference resolved to neither Unicode nor JIS X 0213")]
     #[diagnostic(
         code("aozora::lex::unresolved_gaiji"),
@@ -408,7 +424,7 @@ pub enum Diagnostic {
     /// `open_kind` / `close_kind` are the stable lowercase container-family
     /// tags (`indent` / `warichu` / `keigakomi` / `align-end`); they are
     /// `&'static str` rather than the `ab_aozora_syntax::ContainerKind` enum
-    /// because this crate sits below `aozora-syntax`.
+    /// because this crate does not depend on `aozora-syntax`.
     #[error("container opened as `{open_kind}` closed by a `{close_kind}` closer")]
     #[diagnostic(
         code("aozora::lex::mismatched_container_close"),
@@ -427,7 +443,7 @@ pub enum Diagnostic {
         at: miette::SourceSpan,
         /// Container family of the *open* marker on the pairing stack.
         open_kind: &'static str,
-        /// Container family named by the *close* marker.
+        /// Container family given by the *close* marker.
         close_kind: &'static str,
         /// Byte-range of the close marker in the sanitized source.
         span: Span,
@@ -435,8 +451,8 @@ pub enum Diagnostic {
 
     /// A `［＃…］` body spelled as a verified near-miss of a recognized
     /// directive, kept as `DirectiveKind::Unknown`; the canonical spelling
-    /// is offered as a fix. Advisory only, so it never blocks (exit 0 unless
-    /// `--strict`). See [`codes::NON_CANONICAL_DIRECTIVE`].
+    /// is offered as a fix. Advisory: the exit status remains 0 unless
+    /// `--strict` is given. See [`codes::NON_CANONICAL_DIRECTIVE`].
     #[error("non-canonical directive; the canonical form is `{canonical}`")]
     #[diagnostic(
         code("aozora::lint::non_canonical_directive"),
@@ -461,8 +477,8 @@ pub enum Diagnostic {
 
     /// An explicit-base ruby (`｜base《》`) supplied a base but an empty
     /// reading. The base is present (a `｜` precedes the `《`), so this is
-    /// a genuine authoring slip, not a bare `《》` literal run. The
-    /// construct degrades to plain text. The label spans the whole
+    /// an authoring error, not a bare `《》` literal run. The
+    /// construct is emitted as plain text. The label spans the whole
     /// `｜base《》`.
     #[error("ruby base given but reading is empty")]
     #[diagnostic(
@@ -503,8 +519,8 @@ pub enum Diagnostic {
     },
 
     /// A `［＃ここから…］` directive looked like a paired-container opener
-    /// but named no known container kind (`字下げ` / `地付き` /
-    /// `地から…字上げ`). It is kept as an `Directive{Unknown}` (so output
+    /// but matched no known container kind (`字下げ` / `地付き` /
+    /// `地から…字上げ`). It is kept as a `Directive{Unknown}` (so output
     /// is preserved) but not treated as a container. The label spans the
     /// directive.
     #[error("unrecognised container directive")]
@@ -528,9 +544,9 @@ pub enum Diagnostic {
         span: Span,
     },
 
-    /// A 縦中横 forward reference (`［＃「X」は縦中横］`) named a target `X`
+    /// A 縦中横 forward reference (`［＃「X」は縦中横］`) gives a target `X`
     /// that does not appear anywhere in the preceding text, so it has no
-    /// run to style. The directive degrades to an `Directive{Unknown}`.
+    /// run to style. The directive is kept as a `Directive{Unknown}`.
     /// The label spans the directive.
     #[error("縦中横 target not found in the preceding text")]
     #[diagnostic(
@@ -551,10 +567,10 @@ pub enum Diagnostic {
         span: Span,
     },
 
-    /// A forward-reference bouten (`［＃「X」に傍点］`) named a target `X`
-    /// that occurs more than once in the preceding text, so which run it
-    /// emphasises is ambiguous. The parser applies it to the match per its
-    /// look-back rule, but the author should disambiguate. The label spans
+    /// A detached forward-reference bouten (`［＃「X」に傍点］`) gives a target
+    /// `X` that occurs more than once in the preceding plain-text run, so
+    /// which run it emphasises is ambiguous. An immediately adjacent target
+    /// is definitive and does not produce this diagnostic. The label spans
     /// the directive.
     #[error("ambiguous bouten target: more than one candidate run precedes it")]
     #[diagnostic(
@@ -562,8 +578,8 @@ pub enum Diagnostic {
         url("https://p4suta.github.io/aozora/notation/diagnostics.html#bouten-target-ambiguous"),
         severity(Warning),
         help(
-            "the quoted target appears more than once before the `［＃…］`: the \
-             styled run may not be the intended one; reword so the target is unique"
+            "the detached quoted target appears more than once before the `［＃…］`: \
+             place the annotation immediately after its target or make the target unique"
         )
     )]
     BoutenTargetAmbiguous {
@@ -576,11 +592,11 @@ pub enum Diagnostic {
     },
 
     /// An inline-style forward reference (`［＃「X」は太字／斜体］`, `［＃「X」に傍点］`,
-    /// `は縦中横`, `は「□」囲み`, …) named a target `X` that *is* present in the
+    /// `は縦中横`, `は「□」囲み`, …) gives a target `X` that *is* present in the
     /// preceding text but cannot be styled in place: it is a ruby base
     /// (`我《われ》…［＃「我」に傍点］`), on an earlier line, inside another construct,
     /// or one of several quoted targets. The directive is retained and the text
-    /// round-trips, but the emphasis is **not** applied to the earlier run. The
+    /// round-trips, but the emphasis is not applied to the earlier run. The
     /// label spans the directive.
     #[error("forward-reference target found but not stylable in place")]
     #[diagnostic(
@@ -637,11 +653,11 @@ pub enum Diagnostic {
 
     /// A bracketed kaeriten of rank ≥ 2 (`［＃二］` / `［＃下］` / `［＃乙］` …)
     /// appeared in a document whose matching family base (`［＃一］` /
-    /// `［＃上］` / `［＃甲］`) is absent entirely; there is nothing for the
-    /// return mark to pair back to. The check is document-wide and
-    /// base-only: kanbun return-mark groups routinely span `、` / `。` and
-    /// line boundaries and 上下点 skips `中`, so any narrower scope misfires
-    /// on valid kanbun. The label points at the unpaired mark.
+    /// `［＃上］` / `［＃甲］`) is absent entirely, so the return mark has
+    /// no partner. The check is document-wide and base-only: kanbun
+    /// return-mark groups routinely span `、` / `。` and line boundaries
+    /// and 上下点 skips `中`, so any narrower scope flags valid kanbun.
+    /// The label points at the unpaired mark.
     #[error("bracketed kaeriten has no matching base mark in the document")]
     #[diagnostic(
         code("aozora::lex::bracketed_kaeriten_no_pair"),
@@ -666,7 +682,7 @@ pub enum Diagnostic {
     /// A kaeriten (`［＃二］` / `［＃レ］` / …) appeared outside a 漢文-like
     /// context: it is the only kaeriten in the document and its
     /// surroundings read as ordinary kana prose, so the mark is most likely
-    /// a stray annotation rather than a genuine return mark. Conservative
+    /// a stray annotation rather than a return mark. Conservative
     /// lookahead heuristic: a document with a cluster of kaeriten is never
     /// flagged. The label points at the lone mark.
     #[error("kaeriten outside a 漢文-like context")]
@@ -693,7 +709,7 @@ pub enum Diagnostic {
     /// one family (点 / 線) and closed by the other, e.g. a `［＃傍点］`
     /// opener closed by `［＃傍線終わり］`. The two families render
     /// differently (dots vs a line), so the run's emphasis is ambiguous.
-    /// The parser recovers by keying the run to the opener's variant. The
+    /// The parser recovers by assigning the run the opener's variant. The
     /// label points at the close marker. `open_family` / `close_family`
     /// are the stable family tags (`傍点` / `傍線`).
     #[error("傍点 range opened as `{open_family}` closed by a `{close_family}` closer")]
@@ -714,7 +730,7 @@ pub enum Diagnostic {
         at: miette::SourceSpan,
         /// Family of the *open* marker (`傍点` / `傍線`).
         open_family: &'static str,
-        /// Family named by the *close* marker.
+        /// Family given by the *close* marker.
         close_family: &'static str,
         /// Byte-range of the close marker in the sanitized source.
         span: Span,
@@ -723,11 +739,10 @@ pub enum Diagnostic {
     /// Pipeline-internal consistency check failure; production parses on
     /// well-formed input never emit this. The [`check`](Self::Internal)
     /// payload identifies the specific check via the typed
-    /// [`InternalCheckCode`] enum; tooling that prefers the stable
-    /// string identifier reaches via
-    /// [`Self::code`](Self::code). Library consumers that just want
-    /// to filter "library bugs" out of the stream check
-    /// [`source`](Self::source) instead.
+    /// [`InternalCheckCode`] enum; tooling that uses the stable
+    /// string identifier reads [`Self::code`](Self::code). Library
+    /// consumers that filter library bugs out of the stream check
+    /// [`source`](Self::source).
     #[error("internal aozora pipeline check failed: {}", check.as_code())]
     #[diagnostic(
         code("aozora::internal"),
@@ -743,10 +758,10 @@ pub enum Diagnostic {
         /// Caret location for miette rendering, matching the byte range of `span`.
         #[label("at this position")]
         at: miette::SourceSpan,
-        /// Typed identifier for the specific check that fired. Pin
-        /// per-check assertions on this rather than the stringly-typed
-        /// [`code`](Self::code) accessor so the compiler enforces
-        /// match exhaustiveness at the call site.
+        /// Typed identifier of the failed check. Per-check assertions
+        /// match on this field rather than on the string returned by
+        /// [`code`](Self::code), so the compiler checks match
+        /// exhaustiveness at the call site.
         check: InternalCheckCode,
         /// Byte-range covering the violation site.
         span: Span,
@@ -758,9 +773,9 @@ pub enum Diagnostic {
 ///
 /// Returned by [`Diagnostic::explain`]. `help` and `url` are read from
 /// the live [`miette::Diagnostic`] impl of a representative instance, and
-/// `body` from that instance's [`Diagnostic::detail_body`], so none of
-/// them can drift from what `aozora check` renders for the same
-/// diagnostic. `title` / `repro` / `fixed` are the static per-code entry
+/// `body` from that instance's [`Diagnostic::detail_body`], so each of
+/// them equals what `aozora check` renders for the same diagnostic.
+/// `title` / `repro` / `fixed` are the static per-code entry
 /// from the crate-private `DOCS` table.
 #[derive(Debug, Clone)]
 pub struct DiagnosticInfo {
@@ -802,10 +817,10 @@ struct DiagnosticDoc {
 }
 
 /// One [`DiagnosticDoc`] per [`Diagnostic::ALL_CODES`] entry, in the same
-/// order. The single authority for per-code title / reproduction / fixed
-/// prose; a coverage test pins `DOCS.len() == ALL_CODES.len()` and that
-/// every code resolves.
-const DOCS: [DiagnosticDoc; 22] = [
+/// order, holding the per-code title / reproduction / fixed prose. The
+/// `docs_table_has_one_entry_per_code_in_order` test asserts
+/// `DOCS.len() == ALL_CODES.len()` and that every code resolves.
+const DOCS: [DiagnosticDoc; 23] = [
     DiagnosticDoc {
         code: codes::UNCLOSED_CONTAINER,
         title: "閉じ指示のない範囲",
@@ -835,6 +850,12 @@ const DOCS: [DiagnosticDoc; 22] = [
         title: "アクセント分解が適用された（情報）",
         repro: "Cre〔e'〕vez",
         fixed: "（修正不要。保存時に元の〔…〕へ復元されます）",
+    },
+    DiagnosticDoc {
+        code: codes::UNRESOLVED_ACCENT_NOTATION,
+        title: "アクセント表記の読みが未確定",
+        repro: "〔L'art〕",
+        fixed: "L'art（句読点の場合はアクセント範囲から外す）",
     },
     DiagnosticDoc {
         code: codes::UNRESOLVED_GAIJI,
@@ -1025,6 +1046,16 @@ impl Diagnostic {
         }
     }
 
+    /// The range uses sanitized-text byte coordinates.
+    #[must_use]
+    pub fn unresolved_accent_notation(at: Span) -> Self {
+        let (offset, length) = span_to_miette_parts(at);
+        Self::UnresolvedAccentNotation {
+            at: miette::SourceSpan::new(offset.into(), length),
+            span: at,
+        }
+    }
+
     /// Constructor for [`Diagnostic::UnresolvedGaiji`].
     #[must_use]
     pub fn unresolved_gaiji(at: Span) -> Self {
@@ -1165,8 +1196,8 @@ impl Diagnostic {
     }
 
     /// Constructor for [`Diagnostic::Internal`]. Takes a typed
-    /// [`InternalCheckCode`]; the compiler enforces that every
-    /// production emit-site classifies the check correctly.
+    /// [`InternalCheckCode`], so every production emit-site states the
+    /// check as a typed variant.
     #[must_use]
     pub fn internal(at: Span, check: InternalCheckCode) -> Self {
         let (offset, length) = span_to_miette_parts(at);
@@ -1179,14 +1210,13 @@ impl Diagnostic {
 
     /// Severity routing axis. See [`Severity`].
     ///
-    /// `#[non_exhaustive]` puts the responsibility on every match
-    /// here for adding-new-variant time, not on a catch-all arm:
-    /// the compiler will refuse to build until the new variant is
-    /// classified.
+    /// The `match` has no catch-all arm, so a new variant does not
+    /// compile until it is classified here.
     #[must_use]
     pub fn severity(&self) -> Severity {
         match self {
             Self::UnresolvedGaiji { .. }
+            | Self::UnresolvedAccentNotation { .. }
             | Self::UnrecognisedContainerDirective { .. }
             | Self::TcyTargetNotFound { .. }
             | Self::BoutenTargetAmbiguous { .. }
@@ -1231,6 +1261,7 @@ impl Diagnostic {
             | Self::UnclosedBracket { .. }
             | Self::UnmatchedClose { .. }
             | Self::AccentDecompositionApplied { .. }
+            | Self::UnresolvedAccentNotation { .. }
             | Self::UnresolvedGaiji { .. }
             | Self::MismatchedContainerClose { .. }
             | Self::EmptyRubyReading { .. }
@@ -1257,6 +1288,7 @@ impl Diagnostic {
             | Self::UnclosedBracket { span, .. }
             | Self::UnmatchedClose { span, .. }
             | Self::AccentDecompositionApplied { span, .. }
+            | Self::UnresolvedAccentNotation { span, .. }
             | Self::UnresolvedGaiji { span, .. }
             | Self::MismatchedContainerClose { span, .. }
             | Self::EmptyRubyReading { span, .. }
@@ -1278,17 +1310,16 @@ impl Diagnostic {
     ///
     /// Translates the `span` (and the miette `at` caret, which the
     /// constructors always derive from `span`) by `by`. Used by the
-    /// incremental re-parse engine to lift a diagnostic produced
+    /// incremental re-parse engine to translate a diagnostic produced
     /// by lexing a document segment whose offsets are segment-local
-    /// back into whole-document coordinates by adding the segment's start
+    /// into whole-document coordinates by adding the segment's start
     /// offset.
     ///
-    /// The single consolidated `|`-pattern arm relies on every variant
-    /// sharing the `{ at, span, .. }` shape; the absence of a `_` arm
-    /// means a future variant (the enum is `#[non_exhaustive]`) forces a
-    /// compile error here rather than silently skipping the rebase,
-    /// matching the [`span`](Self::span) / [`severity`](Self::severity)
-    /// accessors' exhaustive style.
+    /// The single `|`-pattern arm requires every variant to have the
+    /// `{ at, span, .. }` shape. It has no `_` arm, so a new variant (the
+    /// enum is `#[non_exhaustive]`) does not compile until it is added
+    /// here, as in the [`span`](Self::span) / [`severity`](Self::severity)
+    /// accessors.
     #[must_use]
     pub fn shifted(mut self, by: i64) -> Self {
         let (at, span): (&mut miette::SourceSpan, &mut Span) = match &mut self {
@@ -1297,6 +1328,7 @@ impl Diagnostic {
             | Self::UnclosedBracket { at, span, .. }
             | Self::UnmatchedClose { at, span, .. }
             | Self::AccentDecompositionApplied { at, span, .. }
+            | Self::UnresolvedAccentNotation { at, span, .. }
             | Self::UnresolvedGaiji { at, span, .. }
             | Self::MismatchedContainerClose { at, span, .. }
             | Self::EmptyRubyReading { at, span, .. }
@@ -1330,6 +1362,7 @@ impl Diagnostic {
             Self::UnclosedBracket { .. } => codes::UNCLOSED_BRACKET,
             Self::UnmatchedClose { .. } => codes::UNMATCHED_CLOSE,
             Self::AccentDecompositionApplied { .. } => codes::ACCENT_DECOMPOSITION_APPLIED,
+            Self::UnresolvedAccentNotation { .. } => codes::UNRESOLVED_ACCENT_NOTATION,
             Self::UnresolvedGaiji { .. } => codes::UNRESOLVED_GAIJI,
             Self::MismatchedContainerClose { .. } => codes::MISMATCHED_CONTAINER_CLOSE,
             Self::EmptyRubyReading { .. } => codes::EMPTY_RUBY_READING,
@@ -1351,9 +1384,8 @@ impl Diagnostic {
     ///
     /// A code in the [`codes::LINT_NAMESPACE`] (`aozora::lint::*`), surfaced by
     /// `aozora lint` and the LSP as authoring guidance, as opposed to the
-    /// `aozora::lex::*` faults that report malformed input. The single
-    /// authority for the lint-vs-lex split, so callers never string-match the
-    /// prefix themselves.
+    /// `aozora::lex::*` faults that report malformed input. Callers use
+    /// this method instead of matching the prefix themselves.
     #[must_use]
     pub fn is_lint(&self) -> bool {
         self.code().starts_with(codes::LINT_NAMESPACE)
@@ -1365,13 +1397,14 @@ impl Diagnostic {
     /// Instance-aware: variants that carry data (the offending
     /// codepoint, delimiter family, container tags, canonical spelling)
     /// interpolate the real values, so a host renders the exact detail
-    /// for the diagnostic in hand. The single authority for this prose:
-    /// `explain` renders it from a representative sample, a host renders
-    /// it from the live diagnostic, and both read it from here.
+    /// for the diagnostic in hand. `explain` renders it from a
+    /// representative sample and a host renders it from the live
+    /// diagnostic; both call this method.
     ///
-    /// No `_` arm: like [`severity`](Self::severity) / [`code`](Self::code),
-    /// a future `#[non_exhaustive]` variant must be classified here rather
-    /// than silently fall through to a generic message.
+    /// The `match` has no `_` arm, as in [`severity`](Self::severity) /
+    /// [`code`](Self::code): a new `#[non_exhaustive]` variant does not
+    /// compile until it has a body here, instead of receiving a generic
+    /// message.
     #[must_use]
     #[allow(
         clippy::too_many_lines,
@@ -1403,6 +1436,8 @@ impl Diagnostic {
                  これは意図された挙動で、情報提供のための Note です。\n\n\
                  直し方: 対応は不要です。保存（serialize）すると元の 〔…〕 形へ復元され、変換は無損失です。"
                     .to_owned(),
+            Self::UnresolvedAccentNotation { .. } =>
+                "この範囲ではアクセント表記の読みを確定できないため、元の綴りを保持しています。意図したアクセント付き文字だけを〔〕で囲んでください。".to_owned(),
             Self::UnresolvedGaiji { .. } =>
                 "外字参照（※［＃…］）が Unicode 文字にも JIS X 0213 の面区点にも解決できませんでした。\n\n\
                  このため描画では意図した字形ではなく、説明テキストがそのまま表示されます。\n\n\
@@ -1516,16 +1551,14 @@ impl Diagnostic {
         }
     }
 
-    /// Every stable diagnostic code [`Self::code`] can return, in
-    /// catalogue order: the eighteen source-level codes followed by the
-    /// four pipeline-internal check codes. Backs `aozora explain`'s
-    /// catalogue and the round-trip coverage test.
-    pub const ALL_CODES: [&'static str; 22] = [
+    /// Stable codes, ordered with source diagnostics before internal checks.
+    pub const ALL_CODES: [&'static str; 23] = [
         codes::UNCLOSED_CONTAINER,
         codes::UNMATCHED_CONTAINER_CLOSE,
         codes::UNCLOSED_BRACKET,
         codes::UNMATCHED_CLOSE,
         codes::ACCENT_DECOMPOSITION_APPLIED,
+        codes::UNRESOLVED_ACCENT_NOTATION,
         codes::UNRESOLVED_GAIJI,
         codes::MISMATCHED_CONTAINER_CLOSE,
         codes::EMPTY_RUBY_READING,
@@ -1551,8 +1584,8 @@ impl Diagnostic {
     ///
     /// `severity` / `source` come from the inherent accessors; `help` /
     /// `url` are read from the live [`miette::Diagnostic`] impl of a
-    /// representative instance, so the explanation always agrees with
-    /// what `aozora check` prints for the same diagnostic.
+    /// representative instance, so the explanation equals what
+    /// `aozora check` prints for the same diagnostic.
     #[must_use]
     pub fn explain(code: &str) -> Option<DiagnosticInfo> {
         let sample = Self::sample_for_code(code)?;
@@ -1577,7 +1610,7 @@ impl Diagnostic {
 
     /// A representative instance of the variant a `code` names, for
     /// introspection (reading miette help/url without a real parse).
-    /// Spans are placeholder-empty; the four internal codes all map to
+    /// Spans are empty placeholders; the four internal codes all map to
     /// the single [`Self::Internal`] variant, which shares one help/url.
     fn sample_for_code(code: &str) -> Option<Self> {
         let at = Span::new(0, 0);
@@ -1589,6 +1622,7 @@ impl Diagnostic {
             codes::UNCLOSED_BRACKET => Self::unclosed_bracket(at, PairKind::Bracket),
             codes::UNMATCHED_CLOSE => Self::unmatched_close(at, PairKind::Bracket),
             codes::ACCENT_DECOMPOSITION_APPLIED => Self::accent_decomposition_applied(at),
+            codes::UNRESOLVED_ACCENT_NOTATION => Self::unresolved_accent_notation(at),
             codes::UNRESOLVED_GAIJI => Self::unresolved_gaiji(at),
             codes::MISMATCHED_CONTAINER_CLOSE => {
                 Self::mismatched_container_close(at, "indent", "align-end")
@@ -1625,7 +1659,7 @@ impl Diagnostic {
     }
 }
 
-/// Split a [`Span`] into the `(offset, length)` pair miette wants.
+/// Split a [`Span`] into the `(offset, length)` pair that miette takes.
 const fn span_to_miette_parts(span: Span) -> (usize, usize) {
     let offset = span.start as usize;
     let length = (span.end - span.start) as usize;
@@ -1641,7 +1675,7 @@ mod tests {
         let diag = Diagnostic::unclosed_bracket(Span::new(5, 8), PairKind::Bracket);
         let moved = diag.shifted(100);
         assert_eq!(moved.span(), Span::new(105, 108));
-        // `at` is derived from `span`; confirm it tracks the shift so a
+        // `at` is derived from `span`; it must move with the shift so a
         // miette render points at the rebased location.
         let Diagnostic::UnclosedBracket { at, .. } = moved else {
             panic!("variant must survive the shift");
@@ -1779,9 +1813,9 @@ mod tests {
         }
     }
 
-    /// Codes are stable identifiers; pin every constant so accidental
-    /// rename of one breaks this test rather than silently breaking
-    /// downstream tooling that grep-matches on the string.
+    /// Codes are stable identifiers that downstream tooling matches as
+    /// strings; this test asserts every constant, so renaming one fails
+    /// here.
     #[test]
     fn code_constants_are_stable() {
         assert_eq!(codes::UNCLOSED_BRACKET, "aozora::lex::unclosed_bracket");
@@ -1847,9 +1881,8 @@ mod tests {
         );
     }
 
-    /// Severity and source axes are independent; test the cross-product
-    /// for the four production variants to ensure both axes are explicitly
-    /// specified when adding future variants.
+    /// Severity and source axes are independent; this test asserts both
+    /// axes for each of the four production variants.
     #[test]
     fn severity_source_cross_product_is_pinned() {
         let unclosed = Diagnostic::unclosed_bracket(Span::new(0, 3), PairKind::Bracket);
@@ -1933,13 +1966,13 @@ mod tests {
     }
 
     /// Every catalogued code resolves to a representative instance with
-    /// non-empty help and an https URL, guarding `explain` against a code
-    /// that has no sample (and pins the catalogue length).
+    /// non-empty help and an https URL; a code without a sample fails
+    /// this test, which also asserts the catalogue length.
     #[test]
     fn explain_covers_every_catalogued_code() {
         assert_eq!(
             Diagnostic::ALL_CODES.len(),
-            22,
+            23,
             "ALL_CODES must list every code code() can return"
         );
         for &code in &Diagnostic::ALL_CODES {
@@ -1978,7 +2011,7 @@ mod tests {
 
     #[test]
     fn detail_body_is_instance_aware_for_carrying_variants() {
-        // The unclosed-bracket body names the offending delimiter family,
+        // The unclosed-bracket body states the opener's delimiter family,
         // so a Ruby opener and a Bracket opener produce different prose.
         let bracket =
             Diagnostic::unclosed_bracket(Span::new(0, 1), PairKind::Bracket).detail_body();
@@ -1990,7 +2023,7 @@ mod tests {
 
     #[test]
     fn explain_rejects_unknown_and_unprefixed_codes() {
-        // explain wants the full code; the CLI expands short forms.
+        // explain accepts only the full code; the CLI expands short forms.
         assert!(Diagnostic::explain(codes::UNCLOSED_BRACKET).is_some());
         assert!(Diagnostic::explain("unclosed_bracket").is_none());
         assert!(Diagnostic::explain("ruby").is_none());
@@ -2012,7 +2045,7 @@ mod tests {
 
     #[test]
     fn is_lint_selects_only_the_lint_namespace() {
-        // The one lint code today is `aozora::lint::non_canonical_directive`.
+        // The only lint code is `aozora::lint::non_canonical_directive`.
         let lint = Diagnostic::non_canonical_directive(Span::new(0, 3), "ここで字下げ終わり");
         assert!(lint.is_lint(), "notation-hygiene lint must be a lint");
         assert!(lint.code().starts_with(codes::LINT_NAMESPACE));

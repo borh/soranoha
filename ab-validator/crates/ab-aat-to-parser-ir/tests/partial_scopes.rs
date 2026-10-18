@@ -1,4 +1,4 @@
-//! Source paragraphs survive independently scoped typography.
+//! Source paragraphs remain intact under independently scoped typography.
 
 use std::path::Path;
 

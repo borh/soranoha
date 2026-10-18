@@ -11,17 +11,18 @@
 //!
 //! - [`html::render_html`] — HTML rendering. Pair with
 //!   [`ab_aozora_pipeline::lex`].
-//! - [`html::render_html_normalized`] — the opt-in twin that first
-//!   normalises Tier1 directive near-misses to canonical form (via the
-//!   formatter rewrite) so a known 揺れ renders non-inert. See
-//!   [`html::RenderOptions`].
-//! - [`serialize::serialize`] — round-trip the parsed tree back to
-//!   Aozora source text.
+//! - [`html::render_html_normalized`] — HTML rendering that first rewrites
+//!   Tier1 directive near-misses to canonical form (via the formatter
+//!   rewrite), so a known 揺れ variant renders as its directive instead of
+//!   as inert text. See [`html::RenderOptions`].
+//! - [`serialize::serialize`] — serialization of the parsed tree to Aozora
+//!   source text.
 //!
-//! The [`spelling`] module holds the shared, lifetime-free byte-spelling
-//! helpers every renderer reuses (container tags, marker spellings, the text
-//! escaper); [`spelling::source::container_close_source`] /
-//! `container_open_source` are the splice layer's canonical marker source.
+//! The [`spelling`] module contains the lifetime-free byte-spelling
+//! functions that both renderers call (container tags, marker spellings, the
+//! text escaper); [`spelling::source::container_close_source`] and
+//! `container_open_source` produce the canonical marker source that the
+//! splice layer uses.
 
 #![forbid(unsafe_code)]
 

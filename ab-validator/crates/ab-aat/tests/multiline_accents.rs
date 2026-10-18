@@ -4,6 +4,19 @@ use ab_aat::aat_json_from_bytes;
 use encoding_rs::SHIFT_JIS;
 use serde_json::Value;
 
+fn visible_text(nodes: &Value) -> String {
+    nodes
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| match node["kind"].as_str() {
+            Some("text") => node["value"].as_str(),
+            Some("accent") => node["resolved"].as_str(),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn encoded_stanza_preserves_paragraphs_and_following_source_marker() {
     let marker = "［＃未対応の注記］";
@@ -14,13 +27,22 @@ fn encoded_stanza_preserves_paragraphs_and_following_source_marker() {
     for bytes in [source.as_bytes(), encoded.as_slice()] {
         let aat: Value = serde_json::from_slice(&aat_json_from_bytes(bytes).unwrap()).unwrap();
         assert_eq!(
-            aat["blocks"][0]["content"][0]["value"],
+            visible_text(&aat["blocks"][0]["content"]),
             "Pardonnez à mon bavardage\n"
         );
         assert_eq!(
-            aat["blocks"][1]["content"][0]["value"],
+            visible_text(&aat["blocks"][1]["content"]),
             "J'en suis à mon premier voyage.\n"
         );
+        for block in &aat["blocks"].as_array().unwrap()[..2] {
+            assert!(
+                block["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|node| node["kind"] == "accent")
+            );
+        }
         let retained = &aat["blocks"][2]["content"][0];
         assert_eq!(retained["source"], marker);
         let start = usize::try_from(retained["span"]["byte_start"].as_u64().unwrap()).unwrap();

@@ -122,6 +122,18 @@ fn projects_typed_nodes_and_container_markers() {
 
 #[test]
 fn projects_typed_editorial_directives_as_recognized_annotations() {
+    let question = projection("［＃一字下げ忘れか？200-14］本文");
+    assert_eq!(
+        question
+            .first()
+            .map(|fact| (fact.2, fact.3, fact.4, fact.5)),
+        Some((
+            ConstructId::IndentationQuestion,
+            Role::SourceAnnotation,
+            Disposition::EmittedSemanticValue,
+            EvidenceClass::TypedNode,
+        ))
+    );
     let sic = projection("青空［＃「青空」はママ］");
     assert_eq!(
         sic.last().map(|fact| (fact.2, fact.3, fact.4, fact.5)),
@@ -156,6 +168,42 @@ fn projects_typed_editorial_directives_as_recognized_annotations() {
     assert_eq!(
         projection("［＃］").first().map(|fact| fact.2),
         Some(ConstructId::EmptyDirective)
+    );
+}
+
+#[test]
+fn unquoted_and_stray_quote_sic_spellings_are_sic_notes() {
+    for source in [
+        "話［＃底本ママ］",
+        "話［＃底本のママ］",
+        "話［＃底本のママ。］",
+        "話［＃原文まま］",
+        "話《はなし》［＃ルビは底本ママ］",
+        "話［＃「話」はママ」］",
+        "話［＃「話」は底本のまま］",
+        "話［＃「話」は底本ママ］",
+    ] {
+        assert_eq!(
+            projection(source).last().map(|fact| fact.2),
+            Some(ConstructId::Sic),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn a_quoted_ruby_note_binds_the_preceding_ruby() {
+    assert_eq!(
+        projection("お伽話《フェヤリー》［＃「お伽話」のルビ］")
+            .last()
+            .map(|fact| fact.2),
+        Some(ConstructId::RubyRetarget)
+    );
+    assert_ne!(
+        projection("謝肉［＃「謝肉」の左に「カルネワル」のルビ］")
+            .last()
+            .map(|fact| fact.2),
+        Some(ConstructId::RubyRetarget)
     );
 }
 

@@ -14,8 +14,7 @@ default = []
 # Opt-in classify-stage sub-system instrumentation. When enabled, the
 # `classify` recogniser entry points push their elapsed-ns
 # into a thread-local `instrumentation::TimingTable` keyed by
-# `Subsystem`. The `aozora-bench` `classify_subsystems` example reads
-# this table. Default OFF: every guard collapses to dead code at
+# `Subsystem`. Default OFF: every guard collapses to dead code at
 # compile time so release builds pay zero cost.
 classify-instrument = []
 

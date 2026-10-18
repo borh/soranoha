@@ -16,16 +16,27 @@ use crate::{ForwardAttr, PartialLayout};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PartialLayoutId(NonZeroU32);
 
+use super::FormattingInstruction;
 use super::intern::{StrId, StrInterner};
-use super::payload::{Content, Illustration, Segment, TranscribedNotes};
+use super::payload::{Content, Illustration, MarginNotePair, Segment, TranscribedNotes};
 
 /// Document-owned illustration metadata, kept out of the common node payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IllustrationId(NonZeroU32);
 
+/// Document-owned boundaries of a resolved paired margin note, kept out of the
+/// common node payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarginNotePairId(NonZeroU32);
+
 /// Document-owned associations between separately transcribed notes and targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TranscribedNotesId(NonZeroU32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Opaque handle whose instruction remains owned by its allocating document.
+pub struct FormattingInstructionId(NonZeroU32);
 
 /// Half-open run of [`Content`] in [`NodeStore::resolve_content_range`];
 /// `len >= 1` (a content run is never empty).
@@ -90,10 +101,33 @@ pub struct NodeStore {
     forward_attrs: Vec<ForwardAttr>,
     partial_layouts: Vec<PartialLayout>,
     illustrations: Vec<Illustration>,
+    margin_note_pairs: Vec<MarginNotePair>,
     transcribed_notes: Vec<TranscribedNotes>,
+    formatting_instructions: Vec<FormattingInstruction>,
 }
 
 impl NodeStore {
+    pub(crate) fn push_formatting_instruction(
+        &mut self,
+        instruction: FormattingInstruction,
+    ) -> FormattingInstructionId {
+        let next = u32::try_from(self.formatting_instructions.len())
+            .expect("formatting instruction pool exceeds u32")
+            .checked_add(1)
+            .expect("formatting instruction pool exceeds u32");
+        self.formatting_instructions.push(instruction);
+        FormattingInstructionId(NonZeroU32::new(next).unwrap())
+    }
+
+    /// Resolve against the document that allocated the instruction.
+    #[must_use]
+    pub fn resolve_formatting_instruction(
+        &self,
+        id: FormattingInstructionId,
+    ) -> &FormattingInstruction {
+        &self.formatting_instructions[(id.0.get() - 1) as usize]
+    }
+
     pub(crate) fn push_transcribed_notes(&mut self, notes: TranscribedNotes) -> TranscribedNotesId {
         let next = u32::try_from(self.transcribed_notes.len())
             .expect("note group pool exceeds u32")
@@ -107,6 +141,21 @@ impl NodeStore {
     #[must_use]
     pub fn resolve_transcribed_notes(&self, id: TranscribedNotesId) -> &TranscribedNotes {
         &self.transcribed_notes[(id.0.get() - 1) as usize]
+    }
+
+    pub(crate) fn push_margin_note_pair(&mut self, pair: MarginNotePair) -> MarginNotePairId {
+        let next = u32::try_from(self.margin_note_pairs.len())
+            .expect("margin note pair pool exceeds u32")
+            .checked_add(1)
+            .expect("margin note pair pool exceeds u32");
+        self.margin_note_pairs.push(pair);
+        MarginNotePairId(NonZeroU32::new(next).unwrap())
+    }
+
+    /// Resolve against the document that allocated the pair.
+    #[must_use]
+    pub fn resolve_margin_note_pair(&self, id: MarginNotePairId) -> MarginNotePair {
+        self.margin_note_pairs[(id.0.get() - 1) as usize]
     }
 
     pub(crate) fn push_illustration(&mut self, image: Illustration) -> IllustrationId {
@@ -275,7 +324,6 @@ impl NodeStore {
 mod tests {
     use super::*;
 
-    // UNIT TEST 4: ranges resolve to the correct sub-slices.
     #[test]
     fn ranges_resolve_to_correct_sub_slices() {
         let mut store = NodeStore::new();

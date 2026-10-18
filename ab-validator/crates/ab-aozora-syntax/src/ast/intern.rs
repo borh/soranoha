@@ -1,24 +1,23 @@
 //! Owned, lifetime-free string interner.
 //!
-//! Owns all interned bytes in a single `String` and hands back a [`StrId`]
+//! Owns all interned bytes in a single `String` and returns a [`StrId`]
 //! index. It offers two observable contracts:
 //!
 //! - **Dedup**: byte-equal `intern` calls return the same handle.
 //! - **[`InternStats`]**: the full counter set the corpus-sweep dedup-ratio
 //!   report reads (`calls`, `cache_hits`, `table_hits`, `allocs`,
-//!   `long_bypass`, `resizes`, `probe_steps`). The probe table is a real
-//!   open-addressing algorithm, so the hash-health counters carry real
-//!   signal here, not zero placeholders.
+//!   `long_bypass`, `resizes`, `probe_steps`). The probe table uses open
+//!   addressing, so the hash-health counters record actual probe behaviour.
 //!
 //! ## Backing
 //!
 //! Open addressing with linear probing over a `Vec<Option<StrId>>` probe
 //! table. Each slot stores a [`StrId`], resolved against `buf` + `spans` to
-//! compare bytes on a probe. A `fx_hash` mix, power-of-two capacity, 7/8
-//! load-factor resize, 1-slot inline cache, and 64-byte table bypass round
-//! out the design.
+//! compare bytes on a probe. The table uses an `fx_hash` mix, power-of-two
+//! capacity, a 7/8 load-factor resize, a 1-slot inline cache, and a 64-byte
+//! table bypass.
 //!
-//! The *handle contract* (dedup + resolve) is the invariant.
+//! The invariant is the handle contract: dedup and resolve.
 
 /// FxHash-style mix constant. The same constant rustc internally uses for
 /// `FxHasher`; chosen for fast diffusion on short inputs.
@@ -49,7 +48,7 @@ pub struct InternStats {
     pub calls: u64,
     /// Calls served from the inline cache.
     pub cache_hits: u64,
-    /// Calls that landed on an existing table entry (no allocation).
+    /// Calls that matched an existing table entry (no allocation).
     pub table_hits: u64,
     /// Calls that allocated a new entry.
     pub allocs: u64,
@@ -58,8 +57,8 @@ pub struct InternStats {
     pub long_bypass: u64,
     /// Total resize events the table performed.
     pub resizes: u64,
-    /// Total probe steps walked across all `intern` calls. Divided by
-    /// `calls - cache_hits` gives the average probe length, the canonical
+    /// Total probe steps across all `intern` calls. Dividing by
+    /// `calls - cache_hits` gives the average probe length, the standard
     /// hash-table health metric.
     pub probe_steps: u64,
 }
@@ -92,13 +91,12 @@ pub struct StrId(pub u32);
 /// `(start, len)` span per id (`spans`). Dedup is served by an
 /// open-addressing probe table (`table`).
 ///
-/// Derives `Clone` (the owned output may be cached/cloned by the
-/// incremental cache). It does **not** derive `Copy` (owns heap storage) nor
-/// `PartialEq`/`Eq`: the reused `stats: InternStats` field does not implement
-/// `PartialEq`, so deriving it here would not compile, and structural
-/// equality of an interner is not a meaningful operation. `Default` is the
-/// trivially-empty interner (empty probe table; the first short intern sizes
-/// it to `INITIAL_CAPACITY`).
+/// Derives `Clone` because the incremental cache may clone the owned output.
+/// It derives neither `Copy` (it owns heap storage) nor `PartialEq`/`Eq`:
+/// the `stats: InternStats` field does not implement `PartialEq`, and
+/// structural equality of an interner is not a meaningful operation.
+/// `Default` is the empty interner (empty probe table; the first short intern
+/// sizes it to `INITIAL_CAPACITY`).
 #[derive(Debug, Clone, Default)]
 pub struct StrInterner {
     /// Every unique string's bytes, concatenated in intern order.
@@ -121,7 +119,7 @@ pub struct StrInterner {
     /// Inline cache of the last interned id, short-circuiting so long
     /// identical runs count as `cache_hits`.
     last: Option<StrId>,
-    /// Diagnostic counters feeding the dedup-ratio reporting.
+    /// Diagnostic counters read by the dedup-ratio report.
     pub stats: InternStats,
 }
 
@@ -202,9 +200,9 @@ impl StrInterner {
         }
     }
 
-    /// Append `s`'s bytes to `buf`, record its span, and mint a fresh
-    /// [`StrId`]. Does not touch the probe table; callers (the fresh-slot and
-    /// long-bypass paths) own that bookkeeping.
+    /// Append `s`'s bytes to `buf`, record its span, and return a new
+    /// [`StrId`]. Leaves the probe table unchanged; the callers (the
+    /// fresh-slot and long-bypass paths) update it.
     fn alloc(&mut self, s: &str) -> StrId {
         let start =
             u32::try_from(self.buf.len()).expect("owned interner buffer exceeds u32 byte range");
@@ -277,8 +275,7 @@ impl StrInterner {
     }
 
     /// Average probe length per non-cache-hit lookup. Returns `0.0` when no
-    /// probed lookups have occurred. Meaningful because the probe table is a
-    /// real open-addressing algorithm, so `probe_steps` carries real signal.
+    /// probed lookups have occurred.
     #[must_use]
     pub fn avg_probe_length(&self) -> f64 {
         let probed = self.stats.calls.saturating_sub(self.stats.cache_hits);
@@ -299,7 +296,6 @@ impl StrInterner {
 mod tests {
     use super::*;
 
-    // UNIT TEST 2 (interner cluster).
     #[test]
     fn intern_dedups_and_resolves_round_trip() {
         let mut i = StrInterner::new();
@@ -388,8 +384,8 @@ mod tests {
         assert_eq!(i.capacity(), 0, "no short intern yet: table unsized");
 
         // A different long string re-primes the cache, so a later identical
-        // long string can no longer short-circuit, and, with no table dedup,
-        // re-allocates a *distinct* id whose bytes are still identical
+        // long string cannot short-circuit, and, with no table dedup,
+        // re-allocates a distinct id whose bytes are still identical
         // (output-invariant despite the duplicate allocation).
         let other = "y".repeat(128);
         let _ = i.intern(&other);

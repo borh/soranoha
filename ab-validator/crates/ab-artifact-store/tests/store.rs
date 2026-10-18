@@ -124,7 +124,7 @@ fn publication_rejects_symlink_ancestor_and_destination() {
 }
 
 #[test]
-fn concurrent_identical_publishers_accept_one_shared_winner() {
+fn concurrent_identical_publishers_return_one_shared_publication() {
     let root = Arc::new(tempdir().unwrap());
     let barrier = Arc::new(Barrier::new(8));
     let threads = (0..8)

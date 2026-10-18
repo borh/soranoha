@@ -1,4 +1,4 @@
-//! An emphasis selector that names what to leave out marks everything else.
+//! An emphasis selector that quotes what to exclude marks everything else.
 use std::path::Path;
 
 use ab_aat_to_parser_ir::{ConversionOptions, ConversionRequest, MappingDocument, SchemaSet};
@@ -59,7 +59,8 @@ fn problems(ir: &Value) -> Vec<&str> {
 
 #[test]
 fn an_exclusion_selector_marks_every_range_the_cut_out_leaves() {
-    // The source names the separator once and means all three of them.
+    // The source quotes the separator once; the exclusion applies to all
+    // three occurrences.
     let ir =
         convert("自律・自由・人格・性格［＃「自律・自由・人格・性格」の「・」を除く部分に傍点］");
     assert_eq!(
@@ -80,7 +81,7 @@ fn an_exclusion_selector_marks_every_range_the_cut_out_leaves() {
 }
 
 #[test]
-fn the_marked_ranges_carry_the_mark_the_source_named() {
+fn the_marked_ranges_carry_the_mark_the_source_states() {
     let ir = convert("行・実践［＃「行・実践」の「・」を除く部分に傍点］");
     let marked: Vec<_> = ir["nodes"]
         .as_array()
@@ -98,8 +99,8 @@ fn the_marked_ranges_carry_the_mark_the_source_named() {
 
 #[test]
 fn the_selector_reads_whatever_run_the_source_cuts_out() {
-    // Nothing about the cut-out is punctuation-specific; the source says which
-    // characters it means and that is the whole of it.
+    // The cut-out is not punctuation-specific; the source quotes the excluded
+    // characters, and the conversion uses nothing else.
     let ir = convert("自分＝モラル＝文学［＃「自分＝モラル＝文学」の「＝」を除く部分に傍点］");
     assert_eq!(
         sequence(&ir),
@@ -135,8 +136,8 @@ fn the_marker_is_claimed_once_across_every_range_it_selects() {
 
 #[test]
 fn a_cut_out_the_context_does_not_contain_leaves_the_marker_unread() {
-    // Marking the whole context would be a guess about what the source meant
-    // by a run that is not there.
+    // The quoted run is absent from the context, so marking the whole context
+    // would be a guess.
     let ir = convert("行・実践［＃「行・実践」の「＝」を除く部分に傍点］");
     assert_eq!(problems(&ir), ["unknown-notation"], "{ir}");
     assert_eq!(
@@ -171,9 +172,9 @@ fn cutting_out_the_whole_context_leaves_nothing_to_mark() {
 }
 
 #[test]
-fn naming_a_range_still_marks_that_range_rather_than_its_complement() {
-    // The connector is the same in both readings, so the suffix is the only
-    // thing that tells them apart.
+fn quoting_a_range_marks_that_range_rather_than_its_complement() {
+    // The connector is the same in both readings, so only the suffix
+    // distinguishes them.
     let ir = convert("行・実践［＃「行・実践」の「実践」に傍点］");
     assert_eq!(
         sequence(&ir),

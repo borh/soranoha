@@ -1,4 +1,5 @@
-//! Equivalent emphasis wording keeps existing target and mark ownership.
+//! Alternative emphasis wordings parse to the same target and mark as their
+//! canonical wording.
 use ab_aozora_facade::Document;
 
 #[test]

@@ -110,14 +110,15 @@ impl HeuristicV1 {
         let token_features = self.first_pass_tokenize(sentence);
 
         // If all tokens are known and mostly proper nouns → list of names, not era-ortho
-        // (Branch B: oov_count is always 0, so this reduces to the proper-noun check alone.)
+        // (oov_count is always 0, so this reduces to the proper-noun check alone.)
         if token_features.oov_count == 0
             && token_features.proper_noun_char_ratio > self.config.proper_noun_char_ratio_threshold
         {
             return false;
         }
 
-        // High OOV → likely garbage (always false in Branch B; kept for config parity)
+        // High OOV → likely noise (always false while oov_count is 0; the check
+        // applies the config's oov_ratio_threshold)
         if token_features.oov_ratio > self.config.oov_ratio_threshold {
             return false;
         }
@@ -258,8 +259,7 @@ mod tests {
         // ratio 5/9 ≈ 0.556 > 0.5. No hiragana, ≥8 chars, uniqueness 9/9 = 1.0,
         // max_bigram_repeat 1/9, char_run_repeat 0/9, repeated_bigram_pattern 0/9,
         // does not end in [？！]」. Passes every gate.
-        // (Original draft sentence 私ハ毎日学校ヘ行ク had ratio 3/9 < 0.5 and was
-        // rejected; this sentence is the plan-author's documented substitution.)
+        // (私ハ毎日学校ヘ行ク has ratio 3/9 < 0.5 and is rejected.)
         let spans = &[make_span("吾輩ハ猫デアル果テ")];
         let annotations = detector.detect(spans);
         assert!(

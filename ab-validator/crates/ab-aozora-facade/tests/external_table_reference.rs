@@ -2,7 +2,7 @@
 use ab_aozora_facade::{DirectiveKind, Document, Node, NodeRef};
 
 #[test]
-fn supplied_table_instruction_is_known_without_inserting_content() {
+fn supplied_table_instruction_is_recognized_without_inserting_content() {
     let source = "前［＃ここに表組入る、別ファイル（densyanokonzatsu_table.txt）参照］後";
     let document = Document::new(source);
     let tree = document.parse();

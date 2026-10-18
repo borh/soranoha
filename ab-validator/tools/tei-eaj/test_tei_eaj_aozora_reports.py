@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from unittest import mock
 
-
 TOOL_DIR = pathlib.Path(__file__).resolve().parent
 
 
@@ -23,9 +22,8 @@ reports = load_reports()
 
 
 class DefaultAbcTeiDirsTest(unittest.TestCase):
-    """default_abc_tei_dirs honors only explicit ABC_TEI_EAJ_ABC_TEI_DIRS
-    values; the implicit target/soranoha/.../artifacts fallback that named the
-    retired snapshot producer's place was removed and must not reappear."""
+    """default_abc_tei_dirs returns only explicit ABC_TEI_EAJ_ABC_TEI_DIRS
+    values, and no target/soranoha/.../artifacts directory by default."""
 
     def test_explicit_env_values_are_returned_in_order(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -43,7 +41,7 @@ class DefaultAbcTeiDirsTest(unittest.TestCase):
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(reports.default_abc_tei_dirs(cwd), [])
 
-    def test_coincidental_old_target_dir_is_not_picked_up(self):
+    def test_existing_target_artifacts_dir_is_not_read(self):
         with tempfile.TemporaryDirectory() as raw:
             cwd = pathlib.Path(raw)
             legacy = cwd / "target" / "soranoha" / "full-corpus-publication-basic-ja" / "artifacts"

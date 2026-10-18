@@ -21,7 +21,7 @@
     };
 
     aozorabunko-src = {
-      url = "git+ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git?rev=9bac324dfa6af3a5a035542440934266f76fb45d&shallow=1";
+      url = "git+ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git?rev=795f89df7bf0a995727f58ad998101458d5d91c2&shallow=1";
       flake = false;
     };
 
@@ -88,30 +88,119 @@
 
         source = cleanProjectSource ./.;
 
-        # Cargo resolves every workspace member even for a single-package build.
-        # Keep the workspace Rust inputs and nothing else.
-        publicationRustFiles = lib.fileset.unions [
+        # Cargo loads every workspace member's manifest even for a
+        # single-package build. Each tool's source keeps every Cargo.toml but
+        # only the Rust files of the crates it links, so an edit elsewhere in
+        # the workspace does not rebuild it; stubCrateTargets gives the other
+        # members empty target files so cargo can load their manifests.
+        workspaceManifests = lib.fileset.unions [
           ./Cargo.toml
           ./Cargo.lock
-          (lib.fileset.fileFilter (file: file.name == "Cargo.toml" || file.hasExt "rs") ./crates)
-          ./crates/ab-aozora-encoding/data
-          ./crates/ab-aozora-render/assets
-          ./crates/ab-aozora-facade/README.md
+          (lib.fileset.fileFilter (file: file.name == "Cargo.toml") ./crates)
         ];
-        aozoraSource = lib.fileset.toSource {
-          root = ./.;
-          fileset = publicationRustFiles;
+        crateRustFiles = name: lib.fileset.fileFilter (file: file.hasExt "rs") (./crates + "/${name}");
+        rustSource =
+          {
+            crates,
+            extra ? [ ],
+          }:
+          lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions ([ workspaceManifests ] ++ map crateRustFiles crates ++ extra);
+          };
+        stubCrateTargets = ''
+          for manifest in crates/*/Cargo.toml; do
+            crate="$(dirname "$manifest")"
+            [ -d "$crate/src" ] && continue
+            mkdir -p "$crate/src"
+            : > "$crate/src/lib.rs"
+            awk '
+              function emit() {
+                if (kind != "") print (path != "" ? path : dir[kind] "/" name ".rs")
+                kind = ""; name = ""; path = ""
+              }
+              BEGIN { dir["bin"] = "src/bin"; dir["bench"] = "benches"; dir["example"] = "examples"; dir["test"] = "tests" }
+              /^\[\[(bin|bench|example|test)\]\]/ { emit(); kind = $0; gsub(/[][]/, "", kind); next }
+              /^\[/ { emit(); next }
+              kind != "" && /^name = / { name = $3; gsub(/"/, "", name) }
+              kind != "" && /^path = / { path = $3; gsub(/"/, "", path) }
+              END { emit() }
+            ' "$manifest" | while read -r target; do
+              mkdir -p "$crate/$(dirname "$target")"
+              : > "$crate/$target"
+            done
+          done
+        '';
+        aatSchemas = [
+          ./schemas/outputs/aat-schema-v1.json
+          ./schemas/outputs/aat-schema.json
+        ];
+        aozoraSource = rustSource {
+          crates = [
+            "ab-aat"
+            "ab-aozora"
+            "ab-aozora-encoding"
+            "ab-aozora-facade"
+            "ab-aozora-pipeline"
+            "ab-aozora-render"
+            "ab-aozora-spec"
+            "ab-aozora-syntax"
+            "ab-artifact-store"
+            "ab-encoding"
+            "ab-source-syntax"
+          ];
+          extra = [
+            ./crates/ab-aozora-encoding/data
+            ./crates/ab-aozora-render/assets
+            ./crates/ab-aozora-facade/README.md
+            ./data/source-emendations.toml
+          ];
         };
-        parserIrSource = lib.fileset.toSource {
-          root = ./.;
-          fileset = lib.fileset.unions [
-            publicationRustFiles
-            ./data/aat-schema-v1.json
-            ./data/aat-schema.json
-            ./data/aat-parser-ir-divergence-bundle-v1.schema.json
+        checkSource = rustSource {
+          crates = [
+            "ab-check"
+            "ab-encoding"
+            "ab-plaintext"
+            "ab-source-syntax"
+          ];
+          extra = aatSchemas ++ [
+            ./schemas/records/aat-oracle-cases.schema.json
+            ./data/source-emendations.toml
+          ];
+        };
+        coverageSource = rustSource {
+          crates = [
+            "ab-aozora-encoding"
+            "ab-aozora-spec"
+            "ab-aozora-syntax"
+            "ab-coverage"
+            "ab-encoding"
+            "ab-source-syntax"
+          ];
+          extra = [
+            ./crates/ab-aozora-encoding/data
+            ./data/source-emendations.toml
+          ];
+        };
+        parserIrSource = rustSource {
+          crates = [
+            "ab-aat-to-parser-ir"
+            "ab-check"
+            "ab-diff-utils"
+            "ab-encoding"
+            "ab-morph-analyzers"
+            "ab-morph-diff"
+            "ab-ortho-detect"
+            "ab-plaintext"
+            "ab-source-syntax"
+          ];
+          extra = aatSchemas ++ [
+            ./schemas/records/aat-oracle-cases.schema.json
+            ./schemas/outputs/aat-parser-ir-divergence-bundle-v1.schema.json
             ./schemas/aat-parser-ir-mapping.schema.json
             ./schemas/parser-ir.schema.json
             ./schemas/aat-parser-ir-divergence.schema.json
+            ./data/source-emendations.toml
           ];
         };
 
@@ -172,11 +261,10 @@
         mecabDicConverterCargoLock = {
           lockFile = mecab-dic-converter-src + "/Cargo.lock";
           outputHashes = {
-            # NOTE: this vibrato-rkyv-0.7.7 hash intentionally differs from the
-            # like-named key in `cargoGitOutputHashes` below; mecab-dic-converter
-            # pins a different rev/tree of the fork than the ab-validator
-            # workspace does, so the vendored source hashes are not the same key
-            # by coincidence. Do not "deduplicate" these two values.
+            # This vibrato-rkyv-0.7.7 hash differs from the like-named key in
+            # `cargoGitOutputHashes` below: mecab-dic-converter pins a different
+            # rev/tree of the fork than the ab-validator workspace, so the two
+            # vendored sources have different hashes under the same key.
             "vibrato-rkyv-0.7.7" = "sha256-M6ALFpSjs9M+6tvCmn2ZTevUS7NBL6RmnE5GB/qVMEo=";
             "crawdad-rkyv-0.4.0-rkyv.2" = "sha256-FlSXUYHNFUIuEK4sLhbCKJsgRm/EKnHDu7VPpdpvu10=";
           };
@@ -266,7 +354,7 @@
 
         # 近世 (Edo-period) editions: for the ~2% of Aozora authored by pre-Meiji
         # writers (曲亭馬琴, 井原西鶴, …) whose raw 旧字旧仮名 texts the 近代/現代
-        # dictionaries mis-segment. Not in the default run set; opt in by name.
+        # dictionaries mis-segment. Not in the default run set; select by name.
         vibratoDictKinseiEdo = buildUnidicVibratoDict {
           name = "unidic-kinsei-edo";
           url = "https://clrd.ninjal.ac.jp/unidic_archive/2512/unidic-kinsei-edo-v202512.zip";
@@ -344,9 +432,9 @@
         workspaceExtraBuildInputs = lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
 
         # Common skeleton for a workspace Rust binary built from `source` against
-        # the shared abCargoDeps vendor dir. Each call site passes only its real
+        # the shared abCargoDeps vendor dir. Each call site passes only its
         # differences (package flags, extra deps, doCheck). `env` holds the
-        # variables baked into the build; a simple bin passes
+        # variables set for the build; a simple bin passes
         # `nativeBuildInputs = [ ]` to drop the pkg-config default.
         mkRustBin =
           {
@@ -370,6 +458,7 @@
               version = "0.1.0";
               src = source;
               cargoDeps = abCargoDeps;
+              postPatch = stubCrateTargets;
             }
             // lib.optionalAttrs (cargoBuildFlags != null) { inherit cargoBuildFlags; }
             // extra
@@ -545,6 +634,7 @@
         taxonomyGenerator = mkRustBin {
           pname = "ab-taxonomy-generator";
           nativeBuildInputs = [ ];
+          extra.src = coverageSource;
           cargoBuildFlags = [
             "--package"
             "ab-coverage"
@@ -561,8 +651,25 @@
             "ab-coverage"
             "--bin"
             "ab-source-inventory"
+            "--bin"
+            "ab-occurrence-alignment"
+            "--bin"
+            "ab-edition-diff"
+            "--bin"
+            "ab-fidelity-report"
           ];
-          extra.src = aozoraSource;
+          extra.src = coverageSource;
+        };
+
+        abCheck = mkRustBin {
+          pname = "ab-check";
+          extra.src = checkSource;
+          cargoBuildFlags = [
+            "--package"
+            "ab-check"
+            "--bin"
+            "ab-check"
+          ];
         };
 
         sourceInventorySmokeCheck = mkSmokeCheck {
@@ -591,31 +698,19 @@
           };
         };
 
-        taxonomyDriftCheck =
-          pkgs.runCommand "taxonomy-drift-check"
+        featureTaxonomy =
+          pkgs.runCommand "feature-taxonomy"
             {
-              nativeBuildInputs = [
-                taxonomyGenerator
-                pkgs.diffutils
-              ];
+              nativeBuildInputs = [ taxonomyGenerator ];
             }
             ''
-              generated="$TMPDIR/generated-feature-taxonomy.md"
-
+              mkdir -p "$out"
               generate_taxonomy \
                 --annotation-dir "${aozorabunko-src}/annotation" \
                 --corpus-dir "${aozorabunko-src}/cards" \
                 --corpus-limit 0 \
                 --reference "$TMPDIR/parser-report-not-present.md" \
-                --write "$generated"
-
-              if ! cmp -s "${source}/data/generated-feature-taxonomy.md" "$generated"; then
-                echo "data/generated-feature-taxonomy.md is out of date. Regenerated diff:" >&2
-                diff -u --binary "${source}/data/generated-feature-taxonomy.md" "$generated" >&2
-                exit 1
-              fi
-
-              touch "$out"
+                --write "$out/generated-feature-taxonomy.md"
             '';
 
         monorepoWorkspaceLayoutSmokeCheck = mkSmokeCheck {
@@ -643,8 +738,8 @@
           ];
         };
 
-        # The one analyzer entry point that survives in the tree. The Sudachi
-        # resource directory is baked in as the binary's default (see
+        # The only analyzer entry point in the tree. The Sudachi resource
+        # directory is compiled in as the binary's default (see
         # ab-morph-analyzers::sudachi); the crate's own default is the
         # build-sandbox path and does not exist at run time.
         tokenizeBin = mkRustBin {
@@ -667,7 +762,7 @@
 
         # `nix run .#tokenize -- --analyzer vibrato:unidic-cwj-202512 <<< text`
         # runs one analyzer against the flake dictionaries, for checking a
-        # phrase by hand. AB_VIBRATO_CACHE_DIR still redirects the
+        # phrase by hand. AB_VIBRATO_CACHE_DIR redirects the
         # decompressed-dictionary cache (about 1 GB per dictionary).
         tokenizeApp = pkgs.writeShellApplication {
           name = "tokenize";
@@ -687,8 +782,9 @@
             "ab-aozora"
           ];
           # Release identity is authenticated by reproducible build hash, not a
-          # mutable git rev. Baking self.rev changed the hash every commit; pin
-          # "unknown" so the recorded parser_build_hash is stable/reproducible.
+          # mutable git rev. Embedding self.rev would change the hash on every
+          # commit, so the value is "unknown" and the recorded parser_build_hash
+          # is reproducible.
           env = {
             AB_AOZORA_GIT_REV = "unknown";
           };
@@ -716,6 +812,7 @@
           ab-aat-to-parser-ir = abAatToParserIr;
           ab-aozora = abAozora;
           ab-source-inventory = sourceInventoryBin;
+          ab-check = abCheck;
           tokenize = tokenizeBin;
           sudachi-dictionary-full = sudachiDictionaryFull;
           mecab-dic-converter = mecabDicConverter;
@@ -727,6 +824,7 @@
           vibrato-dict-kinsei-edo = vibratoDictKinseiEdo;
           vibrato-dict-kinsei-bungo = vibratoDictKinseiBungo;
           vibrato-dictionaries = vibratoDictionaries;
+          feature-taxonomy = featureTaxonomy;
         };
 
         apps =
@@ -753,7 +851,7 @@
           cargo-check = cargoCheck;
           cargo-clippy = cargoClippyCheck;
           cargo-deny = cargoDenyCheck;
-          taxonomy-drift = taxonomyDriftCheck;
+          feature-taxonomy = featureTaxonomy;
           monorepo-workspace-layout-smoke = monorepoWorkspaceLayoutSmokeCheck;
           aat-to-parser-ir-smoke = abAatToParserIrCheck;
           source-inventory-smoke = sourceInventorySmokeCheck;

@@ -3,8 +3,8 @@
 //! [`SourceNode`] pairs a sanitized-source span with the node it
 //! classified there; [`LexOutput`] holds the lexer's output, with a
 //! `store: NodeStore` that backs the `StrId`/range payloads. The whole struct
-//! is `Send + Sync` (static assertion below); the point of the owned
-//! representation for the incremental cache / LSP consumer.
+//! is `Send + Sync` (static assertion below), as the incremental cache and
+//! the LSP consumer require.
 
 use ab_aozora_spec::{Diagnostic, PairLink, SourceOffset, Span};
 
@@ -15,16 +15,14 @@ use super::store::NodeStore;
 
 /// Source-keyed registry entry.
 ///
-/// Pairs a sanitized-source byte span with the classified node landed there.
-/// Derives `Debug, Clone, Copy`; omits `PartialEq`/`Eq`. `Copy` requires
-/// [`NodeRef`] to be `Copy`.
+/// Pairs a sanitized-source byte span with the node classified from it.
 #[derive(Debug, Clone, Copy)]
 pub struct SourceNode {
     /// Half-open byte range, in sanitized-source coordinates, this node was
-    /// classified from. Entries are sorted by `start`. (`Span` reused.)
+    /// classified from. Entries are sorted by `start`.
     pub source_span: Span,
-    /// The classified node landed at `source_span`, tagged with where it sits
-    /// in the normalized stream.
+    /// The node classified from `source_span`, tagged with its position in
+    /// the normalized stream.
     pub node: NodeRef,
 }
 
@@ -32,8 +30,7 @@ pub struct SourceNode {
 ///
 /// Every field is owned (`String`, [`Registry`], `Vec<_>`), with a
 /// `store: NodeStore` that backs the `StrId`/range payloads referenced by the
-/// owned nodes. `Send + Sync` (see static assertion below). Not `Copy`.
-/// Derives `Debug` only.
+/// owned nodes. `Send + Sync` (see static assertion below).
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct LexOutput {
@@ -65,14 +62,14 @@ pub struct LexOutput {
 }
 
 impl LexOutput {
-    /// Assemble an [`LexOutput`] from its already-owned field set.
+    /// Assemble a [`LexOutput`] from its already-owned field set.
     ///
     /// The only constructor for this `#[non_exhaustive]` struct reachable from
     /// outside `aozora-syntax`; the pipeline's native owned producer
     /// (`ab_aozora_pipeline::lex` / `Pipeline::build`) builds the
     /// [`Registry`], [`SourceNode`] table, and [`NodeStore`] (the
     /// classify stage allocates owned nodes directly into the store via
-    /// `Allocator`), then hands the whole field set here. Every argument
+    /// `Allocator`), then passes the whole field set here. Every argument
     /// maps to the identically-named field.
     #[must_use]
     #[allow(
@@ -123,8 +120,8 @@ impl LexOutput {
     }
 }
 
-/// Required static assertion: the owned lex output crosses thread boundaries
-/// (the whole point of the owned representation for the LSP consumer).
+/// Static assertion that the owned lex output can cross thread boundaries,
+/// which the LSP consumer requires.
 const _: fn() = || {
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<LexOutput>();

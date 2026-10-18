@@ -40,20 +40,38 @@ fn unresolved_selectors_do_not_create_realization_claims() {
 }
 
 #[test]
-fn native_composition_survives_projection_once_with_original_spans() {
-    for (body, expected) in [
-        ("〔ru_pam［＃mは上ドット付き］〕", "rūpaṁ"),
-        ("Bzan［＃nは上ドット付き］", "Bzaṅ"),
-        ("Sas［＃sは下ドット付き］", "Saṣ"),
+fn native_composition_is_projected_once_with_original_spans() {
+    for (body, expected, markers) in [
+        (
+            "〔ru_pam［＃mは上ドット付き］〕",
+            "rūpaṁ",
+            &["［＃mは上ドット付き］", "〔", "〕"][..],
+        ),
+        (
+            "Bzan［＃nは上ドット付き］",
+            "Bzaṅ",
+            &["［＃nは上ドット付き］"],
+        ),
+        (
+            "Sas［＃sは下ドット付き］",
+            "Saṣ",
+            &["［＃sは下ドット付き］"],
+        ),
         (
             "〔rattha-sva_mi_〕［＃tはともに下ドット付き］",
             "raṭṭha-svāmī",
+            &["［＃tはともに下ドット付き］", "〔", "〕"],
         ),
         (
             "Konkana［＃前のnは上ドット付き、後のnは下ドット付き］",
             "Koṅkaṇa",
+            &["［＃前のnは上ドット付き、後のnは下ドット付き］"],
         ),
-        ("Venus［＃「e」はアクサン（´）付き］", "é"),
+        (
+            "Venus［＃「e」はアクサン（´）付き］",
+            "é",
+            &["［＃「e」はアクサン（´）付き］"],
+        ),
     ] {
         let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
         let aat: Value =
@@ -66,11 +84,17 @@ fn native_composition_survives_projection_once_with_original_spans() {
         let start = usize::try_from(accent["span"]["byte_start"].as_u64().unwrap()).unwrap();
         let end = usize::try_from(accent["span"]["byte_end"].as_u64().unwrap()).unwrap();
         assert_eq!(accent["source"], &source[start..end]);
-        assert!(
-            accent["interpretation_marker_spans"]
-                .as_array()
-                .is_some_and(|spans| spans.len() == 1)
-        );
+        let marker_sources: Vec<_> = accent["interpretation_marker_spans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|span| {
+                let start = usize::try_from(span["byte_start"].as_u64().unwrap()).unwrap();
+                let end = usize::try_from(span["byte_end"].as_u64().unwrap()).unwrap();
+                &source[start..end]
+            })
+            .collect();
+        assert_eq!(marker_sources, markers, "{body}");
         assert!(
             !aat.to_string().contains("uninterpreted-formatting"),
             "{aat}"
@@ -161,7 +185,7 @@ fn accent_scope_ownership_does_not_widen_unscoped_or_ambiguous_targets() {
 }
 
 #[test]
-fn realized_accent_scope_survives_quote_rebasing() {
+fn realized_accent_scope_is_retained_through_quote_rebasing() {
     for body in [
         "≪〔samgha_disesa.v〕［＃mは上ドット付き］≫",
         "〔sa_.m〕［＃mは上ドット付き］",
@@ -183,4 +207,28 @@ fn realized_accent_scope_survives_quote_rebasing() {
             }
         }
     }
+}
+
+#[test]
+fn supplied_dot_after_a_gaiji_reading_realizes_the_accented_ruby_base() {
+    let source = "題\n作者\n\n〔avac,esa〕《ア※［＃濁点付き片仮名ワ、1-7-82］シエーシヤ》［＃sは下ドット付き］\n";
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let mut found = Vec::new();
+    accents(&aat["blocks"], &mut found);
+    assert_eq!(found.len(), 1, "{aat}");
+    assert_eq!(found[0]["text"], "avaçeṣa");
+    assert_eq!(found[0]["source"], "avac,esa");
+    let markers: Vec<_> = found[0]["interpretation_marker_spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|span| {
+            let start = usize::try_from(span["byte_start"].as_u64().unwrap()).unwrap();
+            let end = usize::try_from(span["byte_end"].as_u64().unwrap()).unwrap();
+            &source[start..end]
+        })
+        .collect();
+    assert_eq!(markers, ["［＃sは下ドット付き］", "〔", "〕"]);
+    assert!(!aat.to_string().contains("unknown-notation"), "{aat}");
 }

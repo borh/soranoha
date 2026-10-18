@@ -2,27 +2,29 @@
 //! Complete instructions use their typed values; partial instructions resolve
 //! the retained original body through the owning node store.
 
-use ab_aozora_syntax::ast::NodeStore;
+use ab_aozora_syntax::ast::{NodeStore, PartialLayoutId};
 use core::fmt::{self, Write};
+use core::num::NonZeroU8;
 
 use ab_aozora_syntax::{
-    BlockPurpose, BlockStyles, BoutenPosition, CaptionScope, ForwardAttr, HeadingKind,
-    HeadingStyle, IndentBlock, IndentLayout, LineFormat, RegionClose, RegionFormat, SectionKind,
+    BlockPurpose, BlockStyles, BoutenPosition, CaptionScope, DecorationPosition, EnclosureKind,
+    ForwardAttr, HeadingKind, HeadingStyle, IndentBlock, IndentLayout, LineFormat,
+    PageVerticalPlacement, RegionClose, RegionFormat, SectionKind,
 };
 
-/// The source text of the container **open** marker for `open`.
+/// The source text of the container open marker for `open`.
 ///
 /// `RegionFormat::Indent(2字下げ)` → `［＃ここから2字下げ］`, preserving every
 /// payload (N / width / offset / 字組み clause). The inverse of the
 /// classifier's open recognition.
 ///
-/// Used by the minimal-diff source splice) to canonicalize a
-/// container's open marker. The serialization rule lives here (the single
-/// source of truth for marker spelling); the splice layer only calls it.
+/// Used by the minimal-diff source splice to canonicalize a container's open
+/// marker. The marker spelling is defined only here; the splice layer calls
+/// this function.
 ///
 /// # Panics
 ///
-/// Does not panic in normal use: `String` cannot fail as a [`Write`] sink.
+/// Does not panic: writing to a `String` through [`Write`] cannot fail.
 #[must_use]
 pub fn container_open_source(open: RegionFormat, store: &NodeStore) -> String {
     let mut s = String::new();
@@ -30,23 +32,25 @@ pub fn container_open_source(open: RegionFormat, store: &NodeStore) -> String {
     s
 }
 
-/// The source text of the container **close** marker that matches `open`.
+/// The source text of the container close marker that matches `open`.
 ///
 /// `RegionFormat::Indent(2字下げ)` → `［＃ここで字下げ終わり］`; a 字組み compound
 /// keeps its width. The close is a pure function of the open
 /// ([`RegionClose::of`]).
 ///
-/// Used by the minimal-diff source splice): when a container's family
+/// Used by the minimal-diff source splice: when a container's family
 /// changes, the paired close marker must be rewritten to match the new open,
-/// and this derives it without the splice layer re-implementing the spelling.
+/// and this function produces it, so the splice layer holds no copy of the
+/// spelling.
 ///
 /// # Panics
 ///
-/// Does not panic in normal use: `String` cannot fail as a [`Write`] sink.
+/// Does not panic: writing to a `String` through [`Write`] cannot fail.
 #[must_use]
 pub fn container_close_source(open: RegionFormat) -> String {
     let mut s = String::new();
-    emit_container_close(RegionClose::of(open), &mut s).expect("String write is infallible");
+    emit_container_close(RegionClose::of(open), &NodeStore::new(), &mut s)
+        .expect("String write is infallible");
     s
 }
 
@@ -60,7 +64,8 @@ pub(crate) fn emit_line<W: Write>(lf: LineFormat, out: &mut W) -> fmt::Result {
     match lf {
         // Both-margin compound: a head indent plus a foot-edge lift. `字あき`
         // is canonicalised to the `地よりM字上げで` spelling (same foot-edge
-        // semantics; the `て`/bare-join input variants converge here too).
+        // semantics; the `て`/bare-join input variants serialize to the same
+        // spelling).
         LineFormat::Indent {
             amount,
             end_offset: Some(offset),
@@ -80,7 +85,20 @@ pub(crate) fn emit_line<W: Write>(lf: LineFormat, out: &mut W) -> fmt::Result {
         } => emit_line_align_end(offset, gothic, font, out),
         LineFormat::Center { page: true } => out.write_str("［＃ページの左右中央］"),
         LineFormat::Center { page: false } => out.write_str("［＃中央揃え］"),
+        LineFormat::Framed(EnclosureKind::Unspecified) => out.write_str("［＃この行は枠囲み］"),
+        LineFormat::Framed(EnclosureKind::DashedRule) => {
+            out.write_str("［＃この行全体はミシン罫囲み］")
+        }
         LineFormat::Framed(_) => out.write_str("［＃罫囲み］"),
+        LineFormat::PagePlacement {
+            vertical: PageVerticalPlacement::Top,
+            ..
+        } => out.write_str("［＃横組みで、ページの上部、左右中央に］"),
+        LineFormat::PagePlacement {
+            horizontal_center: true,
+            ..
+        } => out.write_str("［＃ページの天地左右中央に］"),
+        LineFormat::PagePlacement { .. } => out.write_str("［＃ページの天地中央］"),
         LineFormat::Gothic => out.write_str("［＃この行はゴシック体］"),
         // Absolute font-size line directive. `bold` canonicalises to `、太字`
         // (the classifier only admits that spelling, so the round-trip is exact).
@@ -92,7 +110,8 @@ pub(crate) fn emit_line<W: Write>(lf: LineFormat, out: &mut W) -> fmt::Result {
                 if bold { "、太字" } else { "" }
             )
         }
-        // `LineFormat` is `#[non_exhaustive]`; forward-compat skip.
+        // `LineFormat` is `#[non_exhaustive]`; a variant added later emits
+        // nothing.
         _ => Ok(()),
     }
 }
@@ -120,18 +139,18 @@ pub(crate) const fn heading_level_word(kind: HeadingKind) -> &'static str {
 }
 
 /// `左に` left-side prefix for a bouten range marker, or `""`.
-const fn bouten_left_prefix(position: BoutenPosition) -> &'static str {
+const fn bouten_left_prefix(position: DecorationPosition) -> &'static str {
     match position {
-        BoutenPosition::Left => "左に",
-        BoutenPosition::Both => "両側に",
+        DecorationPosition::Left => "左に",
+        DecorationPosition::Both => "両側に",
         _ => "",
     }
 }
 
 /// Serialize a container open marker from its [`RegionFormat`]. 傍点 / 傍線
-/// ranges reconstruct `［＃<左に?><variant>］`; every other family spells its
-/// own opener (preserving every payload — dropping N / width / offset / the
-/// 字組み clause would be a §7.6 fixed-point violation).
+/// ranges reconstruct `［＃<左に?><variant>］`; every other family writes its
+/// own opener with every payload (omitting N / width / offset / the 字組み
+/// clause would violate the §7.6 fixed point).
 pub(crate) fn emit_container_open<W: Write>(
     open: RegionFormat,
     store: &NodeStore,
@@ -148,6 +167,7 @@ pub(crate) fn emit_container_open<W: Write>(
         RegionFormat::Bold { padded: false } => out.write_str("［＃太字］"),
         RegionFormat::Bold { padded: true } => out.write_str("［＃ここから太字］"),
         RegionFormat::Textbook => out.write_str("［＃ここから教科書体］"),
+        RegionFormat::Handwritten => out.write_str("［＃ここから手書き文字］"),
         RegionFormat::Gothic { padded: false } => out.write_str("［＃ゴシック体］"),
         RegionFormat::Gothic { padded: true } => out.write_str("［＃ここからゴシック体］"),
         RegionFormat::Italic { padded: false } => out.write_str("［＃斜体］"),
@@ -175,6 +195,11 @@ pub(crate) fn emit_container_open<W: Write>(
                 );
             }
             write!(out, "［＃ここから{}段組み", block.count.0)?;
+            match block.part.map(NonZeroU8::get) {
+                Some(1) => out.write_str("、上段")?,
+                Some(2) => out.write_str("、下段")?,
+                _ => {}
+            }
             emit_block_styles(block.styles, out)?;
             if block.column_rule {
                 out.write_str("、段間に罫")?;
@@ -228,21 +253,21 @@ pub(crate) fn emit_container_open<W: Write>(
         // `Directive{WarichuOpen}`), so it serializes to the ここから form.
         RegionFormat::Warichu => out.write_str("［＃ここから割り注］"),
         RegionFormat::Framed(_) => out.write_str("［＃罫囲み］"),
-        // `RegionFormat` is `#[non_exhaustive]`; a future family falls back to
-        // the most common opener until it is given a spelling here.
+        // `RegionFormat` is `#[non_exhaustive]`; a family without an arm here
+        // is written as the most common opener.
         _ => out.write_str("［＃ここから字下げ］"),
     }
 }
 
 /// Serialize a `［＃ここから…字下げ…］` opener from its [`IndentBlock`].
 ///
-/// Built incrementally in a fixed **canonical clause order** (wrap → page placement
+/// Built incrementally in a fixed canonical clause order (wrap → page placement
 /// → alignment → end margin → line layout → decorative styles), independent of the source
 /// order, so the compound is a 1-pass serialize fixed point. The order and
-/// keywords mirror `render_container_open` and [`BlockStyles::iter_formats`].
-/// The `..`-free destructure means a new [`IndentBlock`] / [`BlockStyles`]
-/// field is compiler-flagged here rather than silently dropped from the marker
-/// (the §7.6 param-drop bug class).
+/// keywords match `render_container_open` and [`BlockStyles::iter_formats`].
+/// The destructure has no `..`, so the compiler reports a new [`IndentBlock`] /
+/// [`BlockStyles`] field here instead of the marker omitting it (the §7.6
+/// parameter-drop defect class).
 fn emit_indent_open<W: Write>(block: IndentBlock, store: &NodeStore, out: &mut W) -> fmt::Result {
     let IndentBlock {
         purpose,
@@ -250,6 +275,7 @@ fn emit_indent_open<W: Write>(block: IndentBlock, store: &NodeStore, out: &mut W
         column_count,
         amount,
         wrap,
+        first_line,
         page_horizontal_center,
         align,
         end_offset,
@@ -269,12 +295,13 @@ fn emit_indent_open<W: Write>(block: IndentBlock, store: &NodeStore, out: &mut W
         font,
     } = styles;
 
-    // The idiomatic no-number `［＃ここから字下げ］` form is reserved for a bare
+    // The no-number `［＃ここから字下げ］` form is used only for a bare
     // single-char indent with no clauses; anything else takes the numbered form.
     let bare = purpose.is_none()
         && !table_rules_absent
         && column_count.is_none()
         && wrap.is_none()
+        && first_line.is_none()
         && !page_horizontal_center
         && align.is_none()
         && end_offset.is_none()
@@ -291,6 +318,14 @@ fn emit_indent_open<W: Write>(block: IndentBlock, store: &NodeStore, out: &mut W
     write!(out, "［＃ここから{amount}字下げ")?;
     if let Some(wrap) = wrap {
         write!(out, "、折り返して{wrap}字下げ")?;
+    }
+    if let Some(first_line) = first_line {
+        write!(
+            out,
+            "、ただし冒頭の{}のみは{}字下げ",
+            store.resolve_str(first_line.quoted),
+            first_line.amount
+        )?;
     }
     if page_horizontal_center {
         out.write_str("、ページの左右中央に")?;
@@ -331,7 +366,7 @@ fn emit_indent_open<W: Write>(block: IndentBlock, store: &NodeStore, out: &mut W
 /// A fused source spelling (`表罫囲み`, `横組みの表`) is written as the separate
 /// clauses it was read as; re-parsing them yields the same payload. A marker
 /// carrying a clause the reading did not cover is written back verbatim, so
-/// nothing of it is lost to the round trip.
+/// the round trip keeps all of it.
 fn emit_table_open<W: Write>(
     block: ab_aozora_syntax::TableBlock,
     store: &NodeStore,
@@ -349,7 +384,7 @@ fn emit_table_open<W: Write>(
     out.write_str("］")
 }
 
-/// Write a table close back, restating whatever axes it names.
+/// Write a table close back, repeating the axes it states.
 fn emit_table_close<W: Write>(styles: BlockStyles, out: &mut W) -> fmt::Result {
     out.write_str("［＃ここで表")?;
     emit_block_styles(styles, out)?;
@@ -384,6 +419,7 @@ fn emit_block_styles<W: Write>(styles: BlockStyles, out: &mut W) -> fmt::Result 
         use ab_aozora_syntax::QualitativeFontSize;
         out.write_str(match size {
             QualitativeFontSize::Smaller => "、小さい活字",
+            QualitativeFontSize::Larger => "、ポイントを上げ",
             QualitativeFontSize::SlightlySmaller => "、字のポイントはやや小さくしてある。",
             QualitativeFontSize::HitomawariLarger => "、本文よりひとまわり大きい",
         })?;
@@ -394,15 +430,13 @@ fn emit_block_styles<W: Write>(styles: BlockStyles, out: &mut W) -> fmt::Result 
 /// The line-clause spelling of a qualitative size supplied beside a foot
 /// measure.
 ///
-/// Only `Smaller` is reachable from the classifier: every marker that states a
-/// size beside a foot measure says the type is smaller and none says by how
-/// much. The other two keep the block-clause spellings they already have, which
-/// the same clause list reads, so the round trip stays closed if a source ever
-/// supplies one.
+/// Keep qualitative direction separate from degree: `ポイントを上げ` supplies
+/// no comparison magnitude, while `ひとまわり` does.
 const fn line_qualitative_word(size: ab_aozora_syntax::QualitativeFontSize) -> &'static str {
     use ab_aozora_syntax::QualitativeFontSize;
     match size {
         QualitativeFontSize::Smaller => "相対的に字が小さい",
+        QualitativeFontSize::Larger => "ポイントを上げ",
         QualitativeFontSize::SlightlySmaller => "字のポイントはやや小さくしてある。",
         QualitativeFontSize::HitomawariLarger => "本文よりひとまわり大きい",
     }
@@ -412,7 +446,7 @@ const fn line_qualitative_word(size: ab_aozora_syntax::QualitativeFontSize) -> &
 ///
 /// A supplied size can only be written as the clause list, because that is the
 /// only spelling the classifier reads one from; the bare `地付き` forms have
-/// nowhere to put it.
+/// no position for it.
 fn emit_line_align_end<W: Write>(
     offset: u8,
     gothic: bool,
@@ -444,11 +478,15 @@ const fn small_script_side_word(side: BoutenPosition) -> &'static str {
 
 /// Serialize a container close marker from the close's own [`RegionClose`].
 ///
-/// Self-sufficient: the 字組み close keeps its own width, the 太字/斜体
-/// block-vs-inline form its own `padded`, the 傍点/傍線 close its own family
-/// (so a mismatched `［＃傍線終わり］` closing a `［＃傍点］` round-trips), and
-/// a stray close with no matching open still emits its marker.
-pub(crate) fn emit_container_close<W: Write>(close: RegionClose, out: &mut W) -> fmt::Result {
+/// The output depends only on the [`RegionClose`]: the 字組み close keeps its
+/// own width, the 太字/斜体 block-vs-inline form its own `padded`, the 傍点/傍線
+/// close its own family (so a mismatched `［＃傍線終わり］` closing a `［＃傍点］`
+/// round-trips), and a close with no matching open emits its marker.
+pub(crate) fn emit_container_close<W: Write>(
+    close: RegionClose,
+    store: &NodeStore,
+    out: &mut W,
+) -> fmt::Result {
     match close {
         RegionClose::Bouten { kind, position } => write!(
             out,
@@ -459,6 +497,7 @@ pub(crate) fn emit_container_close<W: Write>(close: RegionClose, out: &mut W) ->
         RegionClose::Bold { padded: false } => out.write_str("［＃太字終わり］"),
         RegionClose::Bold { padded: true } => out.write_str("［＃ここで太字終わり］"),
         RegionClose::Textbook => out.write_str("［＃ここで教科書体終わり］"),
+        RegionClose::Handwritten => out.write_str("［＃ここで手書き文字終わり］"),
         RegionClose::Gothic { padded: false } => out.write_str("［＃ゴシック体終わり］"),
         RegionClose::Gothic { padded: true } => out.write_str("［＃ここでゴシック体終わり］"),
         RegionClose::Italic { padded: false } => out.write_str("［＃斜体終わり］"),
@@ -468,29 +507,12 @@ pub(crate) fn emit_container_close<W: Write>(close: RegionClose, out: &mut W) ->
             amount,
             kumi_width,
             styles,
-        } => {
-            out.write_str("［＃ここで")?;
-            if let Some(amount) = amount {
-                write!(out, "{amount}")?;
-            }
-            out.write_str("字下げ")?;
-            if let Some(width) = kumi_width {
-                write!(out, "、{}字組み", width.0)?;
-            }
-            if let Some(keyword) = purpose.and_then(BlockPurpose::clause_keyword) {
-                write!(out, "、{keyword}")?;
-            }
-            emit_block_styles(styles, out)?;
-            out.write_str("終わり")?;
-            // 数式 closes as its own nested pair, after the indentation close.
-            if purpose == Some(BlockPurpose::Formula) {
-                out.write_str("、ここで数式終わり")?;
-            }
-            out.write_str("］")
-        }
+            partial,
+        } => emit_indent_close(purpose, amount, kumi_width, styles, partial, store, out),
         RegionClose::LineWidth => out.write_str("［＃ここで字詰め終わり］"),
         // Level-less bare close (`ここで見出し終わり` / `見出し終わり`): the open
-        // payload drives pairing/render, so the close carries no level word.
+        // payload determines pairing and rendering, so the close carries no
+        // level word.
         RegionClose::Heading {
             level: None,
             padded,
@@ -548,8 +570,43 @@ pub(crate) fn emit_container_close<W: Write>(close: RegionClose, out: &mut W) ->
         RegionClose::Framed(_) => out.write_str("［＃罫囲み終わり］"),
         RegionClose::AlignEnd => out.write_str("［＃ここで地付き終わり］"),
         // The generic `字下げ終わり` — the `Indent { kumi_width: None }` close
-        // (plain / 字詰め / 折り返して / 中央 indents) and the `#[non_exhaustive]`
-        // forward-compat fallback.
+        // (plain / 字詰め / 折り返して / 中央 indents) and the fallback for a
+        // `#[non_exhaustive]` variant without an arm here.
         _ => out.write_str("［＃ここで字下げ終わり］"),
     }
+}
+
+fn emit_indent_close<W: Write>(
+    purpose: Option<BlockPurpose>,
+    amount: Option<u8>,
+    kumi_width: Option<ab_aozora_syntax::LineWidth>,
+    styles: BlockStyles,
+    partial: Option<PartialLayoutId>,
+    store: &NodeStore,
+    out: &mut W,
+) -> fmt::Result {
+    if let Some(id) = partial {
+        return write!(
+            out,
+            "［＃{}］",
+            store.resolve_str(store.resolve_partial_layout(id).body)
+        );
+    }
+    out.write_str("［＃ここで")?;
+    if let Some(amount) = amount {
+        write!(out, "{amount}")?;
+    }
+    out.write_str("字下げ")?;
+    if let Some(width) = kumi_width {
+        write!(out, "、{}字組み", width.0)?;
+    }
+    if let Some(keyword) = purpose.and_then(BlockPurpose::clause_keyword) {
+        write!(out, "、{keyword}")?;
+    }
+    emit_block_styles(styles, out)?;
+    out.write_str("終わり")?;
+    if purpose == Some(BlockPurpose::Formula) {
+        out.write_str("、ここで数式終わり")?;
+    }
+    out.write_str("］")
 }

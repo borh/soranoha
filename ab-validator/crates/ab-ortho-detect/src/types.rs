@@ -22,11 +22,11 @@ pub enum OrthoMapError {
 /// What kind of normalization was applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrthoNormalization {
-    /// Mechanical kata→hira conversion. Bijection except for deliberate
-    /// ヴ→う゛ decomposition (chosen for analyzer dictionary compatibility).
+    /// Mechanical kata→hira conversion. Bijection except for the ヴ→う゛
+    /// decomposition, which matches the spelling in analyzer dictionaries.
     ScriptKatakanaToHiragana,
     /// Historical kana → modern kana. Dictionary-backed. Not reversible.
-    /// No detector emits this in v1; reserved for future use.
+    /// Emitted by the [`OrthoDetectorId::HistoricalRewriteV1`] detector.
     HistoricalToModern,
 }
 
@@ -51,9 +51,9 @@ pub enum OrthoDetectorId {
         /// SHA-256 hex digest of serialized model weight bytes (little-endian f32).
         model_hash: String,
     },
-    /// The historical→modern surface modernizer (M2). Binds both
+    /// The historical→modern surface modernizer. Binds both
     /// the segmentation-oracle dictionary (`kindai-bungo`) and the rewrite rule
-    /// set into identity, per I2-D17: a `HistoricalToModern` policy is only valid
+    /// set into identity: a `HistoricalToModern` policy is only valid
     /// when its detector carries a `dictionary_hash`.
     HistoricalRewriteV1 {
         /// SHA-256 of the `kindai-bungo` UniDic archive that segments the
@@ -70,7 +70,7 @@ impl OrthoDetectorId {
     /// backed by a segmentation/normalization dictionary return `Some`; the
     /// heuristic and the ML kata→hira detector return `None`. Used by
     /// [`NormalizationPolicy::validate`](crate::policy::NormalizationPolicy::validate)
-    /// to enforce I2-D17.
+    /// to reject a `HistoricalToModern` policy whose detector binds no dictionary.
     #[must_use]
     pub fn dictionary_hash(&self) -> Option<&str> {
         match self {

@@ -3,7 +3,7 @@
 //! Walks the sanitize-stage text via [`crate::lexer::trigger_scan`] and
 //! exposes a stateful iterator yielding one [`Token`] per delimiter or
 //! contiguous text run. Triggers are the Aozora notation marker characters
-//! listed in [`TriggerKind`]; everything else flows into [`Token::Text`]
+//! listed in [`TriggerKind`]; all other characters form [`Token::Text`]
 //! runs.
 //!
 //! ## Algorithm
@@ -20,7 +20,7 @@
 //!    (`AngleQuoteOpen` / `AngleQuoteClose`), the aozora input encoding
 //!    for a 底本's double-angle brackets `《`/`》`. No look-ahead merge.
 //!
-//! `［＃` is NOT emitted as a merged trigger: `Hash` after
+//! `［＃` is not emitted as a merged trigger: `Hash` after
 //! `BracketOpen` is common but not universal (a stray `［` followed
 //! by plain text is legal). The pair stage inspects the two tokens together.
 
@@ -34,16 +34,16 @@ use super::token::{Token, TriggerKind};
 /// Streaming tokeniser over sanitized source text.
 ///
 /// The input is expected to already be sanitize-stage output (BOM-stripped,
-/// LF-normalized). Giving raw source to this iterator is not wrong but
-/// means diagnostics and positions reference pre-normalization bytes,
-/// which will confuse downstream stages.
+/// LF-normalized). The iterator accepts raw source, but diagnostics and
+/// positions then refer to pre-normalization bytes, which downstream
+/// stages do not expect.
 ///
 /// # Panics
 ///
 /// Panics on construction if `source.len()` exceeds [`u32::MAX`]
 /// (≈ 4 GiB). All aozora spans use `u32` offsets per the
-/// `aozora-syntax::Span` contract; inputs that large are rejected
-/// loudly rather than silently truncated.
+/// `aozora-syntax::Span` contract; a larger input causes a panic instead
+/// of truncated offsets.
 #[must_use]
 pub fn tokenize(source: &str) -> Tokenizer<'_> {
     Tokenizer::new(source)
@@ -56,14 +56,15 @@ pub fn tokenize(source: &str) -> Tokenizer<'_> {
 /// The single-slot `pending` buffer holds a Trigger / Newline that
 /// was produced *together* with a closing Text run on the same
 /// `next()` call: [`Iterator::next`] returns the Text first, then
-/// the buffered event on the following call, preserving the legacy
-/// emission order without paying for a `Vec` accumulator.
+/// the buffered event on the following call, which keeps that emission
+/// order without a `Vec` accumulator.
 #[derive(Debug)]
 pub struct Tokenizer<'s> {
     source: &'s str,
     /// Sorted ascending byte offsets where a trigger trigram begins.
-    /// Materialised eagerly because the SIMD scanner is much faster
-    /// than amortising its internal state across `next()` calls.
+    /// Collected before iteration, because one SIMD scan over the whole
+    /// buffer is much faster than resuming the scanner across `next()`
+    /// calls.
     trigger_offsets: Vec<u32>,
     /// Sorted ascending byte offsets of `\n` characters.
     newline_offsets: Vec<u32>,
@@ -84,8 +85,7 @@ impl<'s> Tokenizer<'s> {
         let trigger_offsets = trigger_scan::scan_offsets(source);
         let bytes = source.as_bytes();
         // memchr_iter is internally vectorised (AVX2 on x86_64, NEON on
-        // aarch64), the same machine code memchr3 uses for trigger
-        // candidates, here narrowed to the single newline byte.
+        // aarch64).
         let mut newline_offsets: Vec<u32> = Vec::with_capacity(bytes.len() / 64);
         for n in memchr::memchr_iter(b'\n', bytes) {
             #[allow(
@@ -185,7 +185,7 @@ impl Iterator for Tokenizer<'_> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        // Lower bound 0 (we may be at EOF after a final flush). Upper
+        // Lower bound 0 (the iterator may be at EOF after a final flush). Upper
         // bound is at most one event per remaining trigger / newline
         // plus interleaved text + the pending slot. For consumers this
         // is mainly a `Vec::with_capacity` hint, so over-estimating

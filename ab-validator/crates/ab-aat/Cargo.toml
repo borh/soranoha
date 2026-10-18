@@ -19,17 +19,18 @@ workspace = true
 ab-aozora-facade = { path = "../ab-aozora-facade", features = ["entries"] }
 anyhow = "1.0"
 regex = "1.12"
-encoding_rs = "0.8"
 ab-aozora-pipeline = { path = "../ab-aozora-pipeline" }
 # Shared body/tail boundary authority (aozora_body_range) — one cut for
 # parser and checker.
 ab-source-syntax = { path = "../ab-source-syntax" }
+ab-encoding = { path = "../ab-encoding" }
 ab-artifact-store = { path = "../ab-artifact-store" }
 serde_json = "1.0"
 sha2 = "0.10"
 jsonschema.workspace = true
 
 [dev-dependencies]
+encoding_rs = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 proptest.workspace = true
 hegeltest = "0.28"

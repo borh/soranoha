@@ -138,7 +138,7 @@ fn recovery_output_characterization() {
         (
             "※［＃［＃nested］］",
             "※\u{e001}",
-            "[SourceNode { source_span: Span { start: 3, end: 27 }, node: Inline(Directive(Directive { raw: StrId(0), kind: Unknown })) }]",
+            "[SourceNode { source_span: Span { start: 3, end: 27 }, node: Inline(Directive(Directive { raw: StrId(0), kind: Unknown, pair_payload: None })) }]",
             "[]",
             "<p>※<span class=\"aozora-directive\" hidden>［＃［＃nested］］</span></p>\n",
         ),

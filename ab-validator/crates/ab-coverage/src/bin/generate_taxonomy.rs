@@ -240,7 +240,7 @@ fn family_from_marker(marker: &str) -> String {
 /// Resolve the family for a marker encountered on a given annotation page.
 ///
 /// If a forced family is supplied (e.g. henkoten is always Deprecation), use
-/// it; otherwise prefer content-based inference and fall back to the page
+/// it; otherwise use content-based inference and fall back to the page
 /// family.
 fn resolve_family(marker: &str, page: &str, forced: Option<&str>) -> String {
     if let Some(f) = forced {

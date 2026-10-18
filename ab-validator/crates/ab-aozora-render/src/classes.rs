@@ -1,14 +1,13 @@
 //! The CSS class names the HTML renderer can emit.
 //!
-//! [`AOZORA_CLASSES`] is the authoritative, public list of every
-//! `aozora-*` class `crate::render_node` / `crate::html` writes.
-//! Downstream consumers (e.g. the sibling `afm` crate) import it instead
-//! of hand-mirroring the contract. The `class_list_matches_emitted`
-//! test renders every `Node` + `ContainerKind` variant and asserts
-//! the emitted class tokens are *exactly* this set, so the published
-//! list can never drift from the emit sites.
+//! [`AOZORA_CLASSES`] is the public list of every `aozora-*` class
+//! `crate::render_node` / `crate::html` writes. Downstream consumers (e.g.
+//! the sibling `afm` crate) import it instead of keeping a hand-written copy.
+//! The `class_list_matches_emitted` test renders every `Node` +
+//! `ContainerKind` variant and asserts that the emitted class tokens equal
+//! this set, so the published list matches the emit sites.
 
-use ab_aozora_syntax::{BoutenKind, BoutenPosition, HeadingKind, HeadingStyle};
+use ab_aozora_syntax::{BoutenKind, DecorationPosition, HeadingKind, HeadingStyle};
 
 /// Every CSS class token the HTML renderer can emit.
 ///
@@ -19,7 +18,7 @@ use ab_aozora_syntax::{BoutenKind, BoutenPosition, HeadingKind, HeadingStyle};
 /// `aozora-heading-<level>` / `-<style>` modifiers) are listed in full.
 /// Sorted and deduplicated.
 ///
-/// Pinned by the `class_list_matches_emitted` test. A consumer that
+/// The `class_list_matches_emitted` test checks this list. A consumer that
 /// accepts a numeric variant should match `aozora-indent` / etc. as a
 /// stem and allow a trailing `-<n>`.
 pub const AOZORA_CLASSES: &[&str] = &[
@@ -29,7 +28,9 @@ pub const AOZORA_CLASSES: &[&str] = &[
     "aozora-angle-quote",
     "aozora-body-end",
     "aozora-bouten",
+    "aozora-bouten-above",
     "aozora-bouten-batsu",
+    "aozora-bouten-below",
     "aozora-bouten-bosen",
     "aozora-bouten-both",
     "aozora-bouten-goma",
@@ -46,6 +47,7 @@ pub const AOZORA_CLASSES: &[&str] = &[
     "aozora-bouten-shirogoma",
     "aozora-bouten-shiromaru",
     "aozora-bouten-shirosankaku",
+    "aozora-bouten-shiroshikaku",
     "aozora-bunsu",
     "aozora-caption",
     "aozora-center",
@@ -122,30 +124,31 @@ pub const AOZORA_CLASSES: &[&str] = &[
     "aozora-yokogumi",
 ];
 
-// ── Per-enum class-token slugs ────────────────────────────────────────
-// Single source of truth for the variable `aozora-*` slugs the renderer
-// composes, shared by `crate::render_node` (the emit sites) and the
-// `class_list_matches_emitted` derivation below. Fixed, structure-bound
-// class literals stay inline in the HTML templates they belong to.
+// The functions below return the variable `aozora-*` slugs the renderer
+// composes; `crate::render_node` (the emit sites) and the
+// `class_list_matches_emitted` derivation below both call them. Fixed class
+// literals bound to one structure are written inline in its HTML template.
 
 /// Romaji slug for a [`BoutenKind`] — the `aozora-bouten-<slug>` suffix.
 ///
-/// The slug lives in the spec table (`RENDER_SLUGS`), keyed by the
+/// The slug is stored in the spec table (`RENDER_SLUGS`), keyed by the
 /// canonical 青空文庫 keyword; `BoutenKind` is `#[non_exhaustive]`, so an
-/// unknown kind falls back to `other` and rendering stays infallible.
+/// unknown kind maps to `other` and rendering cannot fail.
 #[must_use]
 pub(crate) fn bouten_kind_slug(kind: BoutenKind) -> &'static str {
     ab_aozora_spec::roman_slug(kind.keyword()).unwrap_or("other")
 }
 
-/// Side slug for a [`BoutenPosition`] — the `aozora-bouten-<slug>` /
-/// `aozora-kogaki-<slug>` suffix.
+/// Placement slug for a decoration's `aozora-bouten-<slug>` suffix.
 #[must_use]
-pub(crate) const fn bouten_position_slug(pos: BoutenPosition) -> &'static str {
+pub(crate) const fn bouten_position_slug(pos: DecorationPosition) -> &'static str {
     match pos {
-        BoutenPosition::Left => "left",
-        BoutenPosition::Both => "both",
-        _ => "right",
+        DecorationPosition::Left => "left",
+        DecorationPosition::Both => "both",
+        DecorationPosition::Above => "above",
+        DecorationPosition::Below => "below",
+        DecorationPosition::Right => "right",
+        _ => "unknown",
     }
 }
 
@@ -166,9 +169,8 @@ pub(crate) const fn heading_level_slug(kind: HeadingKind) -> &'static str {
 
 /// Per-style modifier slug for a [`HeadingStyle`].
 ///
-/// `None` for the standard style, which adds no modifier so a standard
-/// heading's markup is unchanged. An unknown (`#[non_exhaustive]`) style
-/// is treated as standard.
+/// `None` for the standard style, which adds no modifier. An unknown
+/// (`#[non_exhaustive]`) style is treated as standard.
 #[must_use]
 pub(crate) const fn heading_style_slug(style: HeadingStyle) -> Option<&'static str> {
     match style {
@@ -187,9 +189,10 @@ mod tests {
     use ab_aozora_syntax::ast::{KuntenKind, Node, NodeStore};
     use ab_aozora_syntax::{
         AbsoluteSize, AccentMark, BOUTEN_KINDS, BlockStyles, BoutenKind, BoutenPosition,
-        ColumnBlock, ColumnCount, Container, DirectiveKind, EnclosureKind, FontShift, ForwardAttr,
-        ForwardOrigin, HEADING_KINDS, HEADING_STYLES, HeadingKind, HeadingStyle, IndentBlock,
-        IndentLayout, Kumi, LineFormat, LineWidth, MarginNoteKind, RegionFormat, SECTION_KINDS,
+        ColumnBlock, ColumnCount, Container, DecorationPosition, DirectiveKind, EnclosureKind,
+        FontShift, ForwardAttr, ForwardOrigin, HEADING_KINDS, HEADING_STYLES, HeadingKind,
+        HeadingStyle, IndentBlock, IndentLayout, Kumi, LineFormat, LineWidth, MarginNoteKind,
+        RegionFormat, SECTION_KINDS,
     };
     use core::num::{NonZeroI8, NonZeroU8};
     use std::collections::BTreeSet;
@@ -210,10 +213,10 @@ mod tests {
         }
     }
 
-    /// Pull the `aozora-*` tokens out of every `class="…"` attribute in
-    /// `html`, collapsing a trailing `-<digits>` run to its stem so
-    /// open-ended numeric variants (indent / align-end amounts) don't
-    /// explode the set.
+    /// Collect the `aozora-*` tokens from every `class="…"` attribute in
+    /// `html`, reducing a trailing `-<digits>` run to its stem so each
+    /// open-ended numeric variant (indent / align-end amounts) contributes
+    /// one entry.
     fn collect_classes(html: &str, into: &mut BTreeSet<String>) {
         let mut rest = html;
         while let Some(p) = rest.find("class=\"") {
@@ -259,9 +262,9 @@ mod tests {
 
     /// Render every `Node` + `ContainerKind` variant and collect the
     /// emitted `aozora-*` class tokens (numeric variants collapsed to their
-    /// stem). The authoritative derivation [`AOZORA_CLASSES`] is pinned to;
-    /// enum families enumerate through the `*_KINDS` constants so a new
-    /// variant flows in automatically.
+    /// stem). `class_list_matches_emitted` compares [`AOZORA_CLASSES`] with
+    /// this set; enum families are enumerated through the `*_KINDS`
+    /// constants, so a new variant is included without editing this function.
     #[allow(
         clippy::too_many_lines,
         reason = "one render call per Node + ContainerKind variant; \
@@ -346,7 +349,7 @@ mod tests {
             render_into(a.section_break(k), &mut nodes);
         }
 
-        let g = a.make_gaiji("X", None, false);
+        let g = a.make_gaiji("X", true, None, false);
         render_into(a.gaiji(g), &mut nodes);
         for kind in [
             DirectiveKind::WarichuOpen,
@@ -410,7 +413,7 @@ mod tests {
         let angle = a.content_plain("内");
         render_into(a.angle_quote(angle), &mut nodes);
         for &kind in BOUTEN_KINDS {
-            for pos in [BoutenPosition::Right, BoutenPosition::Left] {
+            for pos in [DecorationPosition::Right, DecorationPosition::Left] {
                 let t = a.content_plain("文");
                 render_into(a.bouten(kind, t, pos, ForwardOrigin::Reclaimed), &mut nodes);
             }
@@ -454,7 +457,7 @@ mod tests {
             a.accent_dot(dotted, "mは上ドット付き", ForwardOrigin::Reclaimed),
             &mut nodes,
         );
-        // Accent (forward accent-mark): the letter rides on the target (no
+        // Accent (forward accent-mark): the letter is the target (no
         // interned body), so it uses `forward_format`; a composable single
         // letter exercises the `aozora-accent` class through the compose path.
         let accented = a.content_plain("e");
@@ -492,6 +495,7 @@ mod tests {
                 column_count: None,
                 amount: 2,
                 wrap: None,
+                first_line: None,
                 page_horizontal_center: false,
                 align: Some(ab_aozora_syntax::LineAlignment::Right),
                 end_offset: Some(1),
@@ -505,6 +509,7 @@ mod tests {
                 column_count: None,
                 amount: 2,
                 wrap: Some(4),
+                first_line: None,
                 page_horizontal_center: true,
                 align: Some(ab_aozora_syntax::LineAlignment::Center),
                 end_offset: None,
@@ -512,14 +517,15 @@ mod tests {
                 layout: IndentLayout::None,
                 styles: BlockStyles::EMPTY,
             }),
-            // line-layout compounds — exercise the new line-kumi class
-            // (字詰め reuses the standalone line-width class).
+            // line-layout compounds — exercise the line-kumi class
+            // (字詰め uses the standalone line-width class).
             RegionFormat::Indent(IndentBlock {
                 purpose: None,
                 partial: None,
                 column_count: None,
                 amount: 3,
                 wrap: None,
+                first_line: None,
                 page_horizontal_center: false,
                 align: None,
                 end_offset: None,
@@ -533,6 +539,7 @@ mod tests {
                 column_count: None,
                 amount: 8,
                 wrap: None,
+                first_line: None,
                 page_horizontal_center: false,
                 align: None,
                 end_offset: None,
@@ -549,6 +556,7 @@ mod tests {
                 column_count: None,
                 amount: 4,
                 wrap: None,
+                first_line: None,
                 page_horizontal_center: false,
                 align: None,
                 end_offset: None,
@@ -575,6 +583,7 @@ mod tests {
             RegionFormat::Italic { padded: true },
             RegionFormat::Columns(ColumnBlock {
                 column_rule: false,
+                part: None,
                 count: cc(2),
                 styles: BlockStyles::EMPTY,
                 partial: None,
@@ -592,9 +601,11 @@ mod tests {
         ];
         for &kind in BOUTEN_KINDS {
             for position in [
-                BoutenPosition::Right,
-                BoutenPosition::Left,
-                BoutenPosition::Both,
+                DecorationPosition::Right,
+                DecorationPosition::Left,
+                DecorationPosition::Both,
+                DecorationPosition::Above,
+                DecorationPosition::Below,
             ] {
                 containers.push(RegionFormat::Bouten { kind, position });
             }
@@ -659,6 +670,7 @@ mod tests {
             (BoutenKind::ChainLine, "kusarisen"),
             (BoutenKind::DashedLine, "hasen"),
             (BoutenKind::BlackTriangle, "kurosankaku"),
+            (BoutenKind::WhiteSquare, "shiroshikaku"),
         ] {
             assert_eq!(
                 bouten_kind_slug(kind),
@@ -670,20 +682,20 @@ mod tests {
 
     #[test]
     fn bouten_position_slug_maps_left_and_right() {
-        assert_eq!(bouten_position_slug(BoutenPosition::Left), "left");
-        assert_eq!(bouten_position_slug(BoutenPosition::Right), "right");
+        assert_eq!(bouten_position_slug(DecorationPosition::Left), "left");
+        assert_eq!(bouten_position_slug(DecorationPosition::Right), "right");
+        assert_eq!(bouten_position_slug(DecorationPosition::Above), "above");
+        assert_eq!(bouten_position_slug(DecorationPosition::Below), "below");
     }
 
-    /// The canonical reference stylesheet
-    /// (`assets/aozora-notation.css`) is the single source of truth for
-    /// how every emitted `aozora-*` class is presented. This test pins
-    /// its `.aozora-*` selectors to [`AOZORA_CLASSES`] *exactly*, so a
-    /// renamed class (the `aozora_gaiji` / `aozora_tcy` drift that broke
-    /// the VS Code preview), a typo, or a forgotten style is a test
-    /// failure rather than a silent visual regression. The two consumer
-    /// scope hooks — `.aozora-notation` (base) and `.aozora-vertical`
-    /// (縦書き) — are not renderer-emitted, so they are the only
-    /// non-`AOZORA_CLASSES` selectors the sheet may carry.
+    /// The canonical reference stylesheet (`assets/aozora-notation.css`)
+    /// defines the presentation of every emitted `aozora-*` class. This test
+    /// asserts that its `.aozora-*` selectors equal [`AOZORA_CLASSES`], so a
+    /// renamed class (such as the node names `aozora_gaiji` / `aozora_tcy`
+    /// in place of the class names), a typo, or a missing style fails the
+    /// test. The two consumer scope classes — `.aozora-notation` (base) and
+    /// `.aozora-vertical` (縦書き) — are not emitted by the renderer, so they
+    /// are the only non-`AOZORA_CLASSES` selectors the sheet may contain.
     #[test]
     fn canonical_stylesheet_matches_emitted_classes() {
         const CSS: &str = include_str!("../assets/aozora-notation.css");
@@ -768,7 +780,7 @@ mod tests {
 
     /// Strip a trailing `-<digits>` so `aozora-indent-3` collapses to the
     /// `aozora-indent` stem `AOZORA_CLASSES` records. No emitted class
-    /// name ends in a digit, so this never corrupts a real name.
+    /// name ends in a digit, so this does not alter a real class name.
     fn normalize_numeric_variant(cls: &str) -> String {
         if let Some(idx) = cls.rfind('-') {
             let suffix = &cls[idx + 1..];

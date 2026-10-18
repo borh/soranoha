@@ -3,16 +3,16 @@
     "aozorabunko-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1786658435,
-        "narHash": "sha256-fgE3Nsr1Mr2oiX0oy2Ey/mE0R7msPzskbpjqXkqmUGw=",
+        "lastModified": 1792298787,
+        "narHash": "sha256-lpFdgFXqY99HfLFLpN/eHqcRcfzS3rqvJyYDJ/bSidw=",
         "ref": "refs/heads/master",
-        "rev": "9bac324dfa6af3a5a035542440934266f76fb45d",
+        "rev": "795f89df7bf0a995727f58ad998101458d5d91c2",
         "shallow": true,
         "type": "git",
         "url": "ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git"
       },
       "original": {
-        "rev": "9bac324dfa6af3a5a035542440934266f76fb45d",
+        "rev": "795f89df7bf0a995727f58ad998101458d5d91c2",
         "shallow": true,
         "type": "git",
         "url": "ssh://forgejo@code.hyakutake-barbel.ts.net:63333/bor/aozorabunko.git"

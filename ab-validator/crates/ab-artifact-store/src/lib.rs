@@ -4,8 +4,9 @@
 //!
 //! The store is a single-owner, immutable-topology store: callers must prevent
 //! other actors from replacing path components while an operation is in
-//! progress. The component checks reject symlinks present when inspected, but
-//! do not claim confinement against hostile concurrent directory mutation.
+//! progress. The component checks reject symlinks present when inspected; they
+//! do not confine an operation against concurrent directory mutation by
+//! another actor.
 //!
 //! Publication and summary replacement are atomically visible to concurrent
 //! readers after success. They sync file contents, but not containing
@@ -37,7 +38,8 @@ pub struct PublishedBlob {
 /// A closed classification of blob-authentication failures.
 ///
 /// Variants separate locator authority, byte retrieval, and content identity
-/// so persisted evidence need not infer protocol meaning from error text.
+/// so persisted evidence records the protocol meaning without parsing error
+/// text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthenticateErrorKind {
     /// The locator is absolute or contains a parent-directory component.
@@ -213,7 +215,8 @@ fn verify_destination(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Authenticates and returns a blob named by a root-relative runtime locator.
+/// Authenticates and returns a blob identified by a root-relative runtime
+/// locator.
 ///
 /// The store topology must remain under one trusted owner's control for the
 /// duration of this call; see the module-level concurrency contract.

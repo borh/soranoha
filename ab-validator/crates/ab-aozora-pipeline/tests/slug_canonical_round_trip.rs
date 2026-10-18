@@ -1,21 +1,19 @@
-//! pin every entry in the
-//! canonical [`ab_aozora_spec::SLUGS`] table against the live classify-stage
-//! classifier.
+//! Checks every entry in the canonical [`ab_aozora_spec::SLUGS`] table
+//! against the classify-stage classifier.
 //!
-//! For each entry we wrap the canonical body in `［＃…］` (or, for
+//! The tests wrap each entry's canonical body in `［＃…］` (or, for
 //! forward-reference families like Bouten / `CombineUpright`, in
 //! `［＃「対象」に…］` / `［＃「対象」は…］`) and assert that:
 //!
 //! 1. Parsing produces no `Internal` diagnostic with code
-//!    [`codes::RESIDUAL_ANNOTATION_MARKER`]: i.e. the slug landed
-//!    in the placeholder registry rather than leaking through as plain
-//!    text. That is the closest signal we have to "the parser
-//!    recognised this slug" without depending on the (non-public)
-//!    `BodyFamily` enum.
+//!    [`codes::RESIDUAL_ANNOTATION_MARKER`]: the slug was recorded in
+//!    the placeholder registry and not emitted as plain text. Without
+//!    the non-public `BodyFamily` enum, this is the available evidence
+//!    that the parser recognised the slug.
 //! 2. The normalized text contains exactly one
 //!    [`ab_aozora_spec::INLINE_SENTINEL`] / `BLOCK_LEAF_SENTINEL` /
 //!    `BLOCK_OPEN_SENTINEL` / `BLOCK_CLOSE_SENTINEL` (depending on the
-//!    family), proving a registry entry was actually emitted.
+//!    family), which shows that a registry entry was emitted.
 //!
 //! `accepts_param` entries (canonical text contains a `{N}` / `{path}`
 //! placeholder) are exercised against a representative substituted
@@ -29,7 +27,7 @@ use ab_aozora_pipeline::{
 };
 use ab_aozora_spec::codes;
 /// Substitute placeholder tokens in a slug's canonical text with a
-/// concrete value, so the body actually parses.
+/// concrete value, so that the body parses.
 fn instantiate(canonical: &str) -> String {
     canonical.replace("{N}", "2").replace("{path}", "fig01.png")
 }
@@ -44,11 +42,11 @@ fn wrap_for_family(family: SlugFamily, body: &str) -> String {
     }
 }
 
-/// Which sentinel kind the family is expected to land in. Returns
-/// `None` for the forward-reference families (Bouten / `CombineUpright`)
-/// which attach to an existing inline span without emitting a
-/// dedicated sentinel of their own; those still need to *parse*
-/// cleanly but the sentinel-count assertion does not apply.
+/// The sentinel kind expected for the family. Returns `None` for the
+/// forward-reference families (Bouten / `CombineUpright`), which attach
+/// to an existing inline span without a sentinel of their own; those
+/// must parse without a residual marker, but the sentinel-count
+/// assertion does not apply.
 fn expected_sentinel(family: SlugFamily) -> Option<char> {
     match family {
         SlugFamily::PageBreak | SlugFamily::Section | SlugFamily::Illustration => {
@@ -113,8 +111,8 @@ fn variant_canonicalisation_then_parse_matches_canonical_parse() {
     // BlockContainerOpen entry: substitute it into source, then
     // canonicalise, then parse, and compare normalized output against
     // the canonical-source parse. Both must agree on sentinel count
-    // (the canonicalise step is supposed to be a pre-parse rewrite
-    // that does not change recognition).
+    // (canonicalisation is a pre-parse rewrite that must not change
+    // recognition).
     let cases: &[(&str, &str)] = &[
         ("ぼうてん", "傍点"),
         ("しろまるぼうてん", "白丸傍点"),
@@ -132,8 +130,8 @@ fn variant_canonicalisation_then_parse_matches_canonical_parse() {
             .expect("canonical in SLUGS");
         let canonical_source = wrap_for_family(entry.family, &instantiate(canonical));
         let canonical_out = lex(&canonical_source);
-        // Re-parse the canonicalised text for the LSP code action
-        // this is the post-rewrite source the editor would apply.
+        // Parse the canonicalised text: the post-rewrite source that
+        // the LSP code action applies in the editor.
         let recanonical_out = lex(&canonical_source);
         assert_eq!(canonical_out.normalized, recanonical_out.normalized);
     }

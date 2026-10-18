@@ -77,10 +77,9 @@ pub(super) fn family_index(fam: KaeritenFamily) -> usize {
     }
 }
 
-/// Conservative "is this kana prose, not 漢文?" check for the lone-mark
-/// outside-kanbun heuristic. Reads a small character window each side of
-/// `span`: kana-dominant with almost no kanji ⇒ prose. Real 漢文 around a
-/// genuine 返り点 is kanji-dense and never trips this.
+/// Kana-prose test for the lone-mark outside-kanbun heuristic: the `WIN`
+/// characters on each side of `span` contain at least two kana and at most
+/// one kanji. 漢文 around a 返り点 is kanji-dense and fails the test.
 pub(super) fn looks_like_kana_prose(source: &str, span: Span) -> bool {
     const WIN: usize = 12;
     let before = source.get(..span.start as usize).unwrap_or("");

@@ -4,7 +4,7 @@ use ab_aat::aat_json_from_bytes;
 use serde_json::Value;
 
 #[test]
-fn generic_opener_accepts_bare_closer_without_losing_neighbors() {
+fn generic_opener_accepts_bare_closer_without_dropping_neighbors() {
     for open in ["［＃ここから割り注］", "［＃割り注］"] {
         let close = "［＃割り注終わり］";
         let source = format!("前{open}隱五年{close}後");

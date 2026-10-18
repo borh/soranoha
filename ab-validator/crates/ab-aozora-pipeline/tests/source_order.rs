@@ -1,4 +1,4 @@
-//! The normalizer keeps text where the source put it.
+//! The normalizer preserves the source order of plain text.
 //!
 //! `lex` replaces each recognized construct with a PUA sentinel and copies
 //! everything else through verbatim, so the plain remainder of the normalized
@@ -14,8 +14,8 @@ use ab_notation_strategies::config::default_config;
 use ab_notation_strategies::generators::{aozora_fragment, nested_pairs, pathological_aozora};
 use proptest::prelude::*;
 
-/// Every character the normalizer copied through, in the order it copied
-/// them, must still be findable going forward through the sanitized source.
+/// The characters the normalizer copied through, in the order of copying,
+/// must form a subsequence of the sanitized source.
 fn plain_runs_keep_source_order(source: &str) -> Result<(), String> {
     let out = lex(source);
     let sanitized = out.sanitized.as_str();
@@ -49,9 +49,10 @@ fn directive_count(source: &str) -> usize {
 /// A `｜` with no `《》` after it opens a base that never closes. A bracket
 /// after the bar is held open as a possible continuation, because that is what
 /// `｜漢字［＃「漢字」に傍点］` is; a literal bracket ends the possibility. The
-/// base's own text was emitted after the run that follows it, which moved the
-/// directive out of the base and let the next parse read it as bracket
-/// content: one directive became none.
+/// base's text must be emitted before the run that follows it: emitted after
+/// that run, it moves the directive out of the base, and the next parse reads
+/// the directive as bracket content, so the directive count falls from one to
+/// zero.
 #[test]
 fn a_literal_bracket_after_an_unterminated_ruby_base_keeps_the_base_in_place() {
     let source = "｜［＃］漢字［《≫》";

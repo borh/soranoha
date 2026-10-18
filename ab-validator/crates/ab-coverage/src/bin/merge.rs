@@ -1,6 +1,6 @@
-//! `ab-coverage-merge` — applies classifier or prevalence findings to
-//! `data/aozora-syntax-coverage.toml` while preserving comments and
-//! ordering.
+//! `ab-coverage-merge` — applies classifier findings to
+//! `data/historical-parser-comparison.toml` and prevalence findings to
+//! `data/aozora-syntax-coverage.toml`, preserving comments and ordering.
 
 use std::path::PathBuf;
 
@@ -13,18 +13,20 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     version,
-    about = "Apply classifier/prevalence findings to the syntax coverage matrix."
+    about = "Apply classifier findings to the parser comparison or prevalence findings to the syntax coverage matrix."
 )]
 struct Cli {
     #[arg(long, default_value = "data/aozora-syntax-coverage.toml")]
     matrix: PathBuf,
+    #[arg(long, default_value = "data/historical-parser-comparison.toml")]
+    comparison: PathBuf,
     #[command(subcommand)]
     cmd: Cmd,
 }
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
-    /// Update parsers.<id> / adapters.<id> sub-tables from a JSON findings file.
+    /// Update `parsers.<id>` / `adapters.<id>` sub-tables from a JSON findings file.
     Classifier {
         #[arg(long)]
         findings: PathBuf,
@@ -44,7 +46,7 @@ fn main() -> Result<()> {
                 .with_context(|| format!("read {}", findings.display()))?;
             let parsed: ClassifierFindings = serde_json::from_str(&raw)
                 .with_context(|| format!("parse {}", findings.display()))?;
-            let updated = apply_classifier_findings(&cli.matrix, &parsed)?;
+            let updated = apply_classifier_findings(&cli.comparison, &parsed)?;
             eprintln!("updated {updated} rows");
         }
         Cmd::Prevalence { findings } => {

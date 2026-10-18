@@ -13,7 +13,7 @@ use super::payload::Node;
 
 /// Unified view over a registry hit.
 ///
-/// Each variant tags the sentinel kind that fired; consumers pattern-match the
+/// Each variant tags the sentinel kind that matched; consumers pattern-match the
 /// variant once, then handle the inline payload (an owned [`Node`]) or the
 /// container payload (a `Copy` [`RegionFormat`] / [`RegionClose`]
 /// discriminant) accordingly.
@@ -63,15 +63,13 @@ impl NodeRef {
 /// `node_at` is one binary search; every entry's sentinel kind is encoded by
 /// the [`NodeRef`] variant. Not `Copy` (the table owns a `Vec`).
 ///
-/// The table is a flat sorted `Vec` searched by [`slice::binary_search_by_key`]
-/// rather than a cache-optimised layout. An earlier version used an Eytzinger
-/// (BFS-of-BST) layout on the theory that its prefetcher-friendly probe
-/// sequence would beat midpoint probing. Measured on this workload it did not:
-/// the flat table was 3.5x faster at 1,000 entries, 2.4x at 16,000, 1.5x at
-/// 64,000, and only lost by 8% at 256,000, far past the largest registry a
+/// The table is a flat sorted `Vec` searched by [`slice::binary_search_by_key`].
+/// Measured on this workload against an Eytzinger (BFS-of-BST) layout, the
+/// flat table was 3.5x faster at 1,000 entries, 2.4x at 16,000, 1.5x at
+/// 64,000, and 8% slower at 256,000, which exceeds the largest registry a
 /// single Aozora work produces. The Eytzinger walk compares with a three-armed
-/// `Ordering` match, so it pays a mispredicted branch per probe, and at these
-/// sizes that costs more than the cache misses the layout avoids.
+/// `Ordering` match and so incurs a mispredicted branch per probe, which at
+/// these sizes costs more than the cache misses its layout avoids.
 #[derive(Debug, Clone)]
 pub struct Registry {
     /// Lookup table keyed by normalized byte position, ascending. Entries
@@ -85,10 +83,10 @@ impl Registry {
     /// # Panics
     ///
     /// Panics in debug builds if `entries` is not sorted ascending by
-    /// position. In release builds unsorted input silently breaks `node_at`,
-    /// which cannot detect it: verify the caller instead. The pipeline's
-    /// recorder appends in increasing position order, so the assertion guards
-    /// a future second producer rather than the present one.
+    /// position. In release builds unsorted input makes `node_at` return
+    /// wrong results without any error, so the caller must ensure the order.
+    /// The pipeline's recorder appends in increasing position order; the
+    /// assertion checks any other producer.
     #[must_use]
     pub fn from_sorted_slice(entries: &[(u32, NodeRef)]) -> Self {
         debug_assert!(
@@ -199,11 +197,10 @@ mod tests {
 
     #[test]
     fn every_entry_resolves_to_its_own_payload() {
-        // Guards the failure modes a flat binary search can hide: an
-        // off-by-one that reads the neighbouring row, and a gap position that
-        // resolves to the row below it instead of missing. Payloads cycle
-        // through four variants so a neighbour read returns a visibly
-        // different one rather than an identical copy.
+        // Checks two binary-search errors: an off-by-one that reads the
+        // neighbouring row, and a gap position that resolves to the row below
+        // it instead of missing. Payloads cycle through four variants so a
+        // neighbour read returns a different variant, not an identical copy.
         let payloads = [
             NodeRef::Inline(Node::PageBreak),
             NodeRef::BlockLeaf(Node::BodyEnd),

@@ -38,8 +38,8 @@ fn schema_set_rejects_unknown_aat_version() {
 
 #[test]
 fn validated_v1_conversion_succeeds_under_v1_tuple() {
-    // full pipeline proof, not just preflight: any existing v1 fixture through
-    // convert() with the v1 tuple must succeed WITH input validation on.
+    // Full pipeline, beyond preflight: an existing v1 fixture through
+    // convert() with the v1 tuple must succeed with input validation on.
     let (schemas, mapping) = schemas_and_mapping();
     let aat = include_fixture_json("nested-sentence-basic.aat.json");
     ab_aat_to_parser_ir::convert(ConversionRequest {
@@ -124,7 +124,7 @@ fn v1_document_under_v2_tuple_fails_input_validation() {
         MappingDocument::from_path(&repo_root.join("data/aat-to-parser-ir-mapping-v2.json"))
             .unwrap();
     let schemas = SchemaSet::load_for_aat_version(&repo_root, 2).unwrap();
-    // v1 fixture (version:1) must be REJECTED by the v2 tuple's input validation.
+    // v1 fixture (version:1) must be rejected by the v2 tuple's input validation.
     let aat = include_fixture_json("nested-sentence-basic.aat.json");
     let err = ab_aat_to_parser_ir::convert(ConversionRequest {
         aat,
@@ -143,7 +143,7 @@ fn v2_document_under_v1_tuple_fails_input_validation() {
         MappingDocument::from_path(&repo_root.join("data/aat-to-parser-ir-mapping-v1.json"))
             .unwrap();
     let schemas = SchemaSet::load_for_aat_version(&repo_root, 1).unwrap();
-    // v2 doc (version:2, using a v2-only construct) must be REJECTED by the v1
+    // v2 doc (version:2, using a v2-only construct) must be rejected by the v1
     // tuple's input validation.
     let aat = json!({
         "version": 2, "work_id": "t-jizume",
@@ -749,8 +749,10 @@ fn mapping_preflight_accepts_checked_in_v2_artifact() {
 fn frozen_v2_0_3_0_artifact_retains_historical_coordinates() {
     let repo_root = repo_root();
     let mapping =
-        MappingDocument::from_path(&repo_root.join("data/aat-to-parser-ir-mapping-v2-0.3.0.json"))
-            .unwrap();
+        MappingDocument::from_path(&repo_root.join(
+            "crates/ab-aat-to-parser-ir/tests/fixtures/aat-to-parser-ir-mapping-v2-0.3.0.json",
+        ))
+        .unwrap();
     assert_eq!(mapping.mapping_version, "0.3.0");
     assert_eq!(
         mapping.document_hash,
@@ -765,11 +767,13 @@ fn frozen_v2_0_3_0_artifact_retains_historical_coordinates() {
 }
 
 #[test]
-fn frozen_v2_0_4_0_artifact_retains_phase5_coordinates() {
+fn frozen_v2_0_4_0_artifact_retains_historical_coordinates() {
     let repo_root = repo_root();
     let mapping =
-        MappingDocument::from_path(&repo_root.join("data/aat-to-parser-ir-mapping-v2-0.4.0.json"))
-            .unwrap();
+        MappingDocument::from_path(&repo_root.join(
+            "crates/ab-aat-to-parser-ir/tests/fixtures/aat-to-parser-ir-mapping-v2-0.4.0.json",
+        ))
+        .unwrap();
     assert_eq!(mapping.mapping_version, "0.4.0");
     assert_eq!(
         mapping.document_hash,
@@ -1513,10 +1517,11 @@ fn recovers_accent_and_inline_yokogumi_without_fatal_conversion() {
     assert_eq!(
         output.parser_ir.pointer("/nodes/0"),
         Some(&json!({
-            "type": "emphasis",
+            "type": "accent",
             "span": {"start": 0, "end": 2, "coordinate_system": "parser_text_utf8"},
             "text": "é",
-            "style": "1-09-63",
+            "code": "1-09-63",
+            "name": "アキュートアクセント付きE小文字",
         }))
     );
     assert_eq!(
@@ -1545,24 +1550,17 @@ fn recovers_accent_and_inline_yokogumi_without_fatal_conversion() {
         output.parser_ir.pointer("/nodes/3/text"),
         Some(&json!("（éABCから。）"))
     );
-    assert!(has_divergence_record(
-        &output,
-        "AMBIGUITY",
-        "blocks[].content[].accent",
-        Some("emphasis")
-    ));
-    assert!(has_divergence_record(
-        &output,
-        "INVENTION",
-        "blocks[].content[].accent.code",
-        Some("emphasis.style")
-    ));
-    assert!(has_divergence_record(
-        &output,
-        "LOSS",
-        "blocks[].content[].accent.name",
-        None
-    ));
+    assert!(
+        !output.divergence_bundle["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["aat_pointer"]
+                .as_str()
+                .is_some_and(|pointer| pointer.contains("accent"))),
+        "{}",
+        output.divergence_bundle
+    );
     assert!(
         !has_divergence_record(
             &output,
@@ -1960,7 +1958,7 @@ fn v2_never_applies_source_note_heuristic() {
 }
 
 #[test]
-fn v1_heuristic_still_fires_byte_identically() {
+fn v1_heuristic_applies_byte_identically() {
     let (schemas, mapping) = schemas_and_mapping();
     let aat = json!({
         "version": 1, "work_id": "t-heuristic-v1",
@@ -2083,8 +2081,7 @@ fn v2_explicit_source_note_converts_direct() {
 #[test]
 fn emitted_colophon_note_converts_to_transcriber_note() {
     let (schemas, mapping) = v2_schemas_and_mapping();
-    let source =
-        "本文。\n\n底本：「作品集」\n※「□」には、底本では「◆」が内接しています。\n入力：入力者\n";
+    let source = "本文。\n\n底本：「作品集」\n※「□」には、底本では「◆」が内接しています。\n入力：入力者\n　　　〔DIE FLU:CHTLINGE〕 〔本全集〕\n";
     let aat =
         serde_json::from_slice(&ab_aat::aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
     let output = ab_aat_to_parser_ir::convert(ConversionRequest {
@@ -2107,14 +2104,14 @@ fn emitted_colophon_note_converts_to_transcriber_note() {
     assert_eq!(notes[1]["classification"], "direct");
     assert_eq!(
         notes[1]["text"],
-        "※「□」には、底本では「◆」が内接しています。\n入力：入力者\n"
+        "※「□」には、底本では「◆」が内接しています。\n入力：入力者\n　　　DIE FLÜCHTLINGE 〔本全集〕\n"
     );
     validate_value(&schemas.parser_ir_schema, &output.parser_ir, "parser-IR").unwrap();
 }
 
 /// ［＃本文終わり］ is where the body stops, not a remark about the source
-/// edition. Mapped as a colophon line it reached published TEI as
-/// `note type="transcriber-note"`, which put an Aozora Bunko directive in the
+/// edition. Mapped as a colophon line it would reach published TEI as
+/// `note type="transcriber-note"`, which puts an Aozora Bunko directive in the
 /// category a consumer reads for provenance.
 #[test]
 fn emitted_body_end_marker_keeps_its_own_note_type() {
@@ -2251,7 +2248,7 @@ fn ruby_reading_preserves_nested_inline_semantics_and_local_coordinates() {
 }
 
 #[test]
-fn source_decoding_outcome_survives_normalized_encoding_label() {
+fn source_decoding_outcome_is_retained_beside_normalized_encoding_label() {
     let (schemas, mapping) = v2_schemas_and_mapping();
     let aat = serde_json::from_slice(&ab_aat::aat_json_from_bytes(&[0x81]).unwrap()).unwrap();
     let output = ab_aat_to_parser_ir::convert(ConversionRequest {
@@ -2328,7 +2325,7 @@ fn line_crossing_or_mismatched_reading_variants_remain_unresolved() {
 }
 
 #[test]
-fn unknown_source_directive_survives_parser_derived_provenance() {
+fn unknown_source_directive_is_retained_with_parser_derived_provenance() {
     let source = "前［＃未定義の範囲指定開始］後";
     let (schemas, mapping) = v2_schemas_and_mapping();
     let aat =
@@ -2455,8 +2452,57 @@ fn source_left_underline_preserves_native_mark_and_ruby_target() {
 }
 
 #[test]
-fn established_source_facts_survive_without_claiming_raw_markers() {
-    let source = "東京《とうきょう》［＃「東京」の左に傍線］［＃割り注］※［＃「吉」、U+20BB7］［＃割り注終わり］［＃未知の指定］";
+fn physical_lines_preserve_target_placement_and_locator() {
+    for (source, target, position, locator) in [
+        (
+            "Khayyam（Umar Khaiyam［＃「Kh」に下線］）",
+            "Kh",
+            "below",
+            None,
+        ),
+        (
+            "hove［＃「v」は下線（_）付き、181-表組2行目］",
+            "v",
+            "below",
+            Some("181-表組2行目"),
+        ),
+        (
+            "P = 0.07693694［＃「P = 0.07693694」は上線（￣）付き］",
+            "P = 0.07693694",
+            "above",
+            None,
+        ),
+    ] {
+        let (schemas, mapping) = v2_schemas_and_mapping();
+        let aat = serde_json::from_slice(&ab_aat::aat_json_from_bytes(source.as_bytes()).unwrap())
+            .unwrap();
+        let output = ab_aat_to_parser_ir::convert(ConversionRequest {
+            aat,
+            mapping,
+            schemas,
+            options: default_test_options(),
+        })
+        .unwrap();
+        let node = output.parser_ir["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["type"] == "emphasis")
+            .unwrap();
+        assert_eq!(node["text"], target);
+        assert_eq!(node["style"], "bosen");
+        assert_eq!(node["decoration"]["position"], position);
+        assert_eq!(
+            node["decoration"].get("source_locator"),
+            locator.map(Value::from).as_ref()
+        );
+        assert_eq!(output.parser_ir["interpretation_problems"], json!([]));
+    }
+}
+
+#[test]
+fn established_source_facts_are_retained_without_claiming_raw_markers() {
+    let source = "東京《とうきょう》［＃「東京」の左に傍線］［＃割り注］※［＃「吉」、U+20BB7］［＃割り注終わり］［＃未知の字指定］";
     let (schemas, mapping) = v2_schemas_and_mapping();
     let aat: Value =
         serde_json::from_slice(&ab_aat::aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
@@ -2564,12 +2610,13 @@ fn projects_measured_figure_inline_to_image_node() {
     assert_eq!(nodes[2]["span"]["start"], 1);
     assert_eq!(nodes[1]["width"], 640);
     assert_eq!(nodes[1]["height"], 480);
+    assert_eq!(nodes[1]["figure_class"], "illustration");
     assert_eq!(nodes[1]["caption_reference_children"][0]["text"], "caption");
     assert_eq!(
         nodes[1]["caption_reference_children"][0]["span"]["coordinate_system"],
         "annotation_utf8"
     );
-    assert!(has_divergence_record(
+    assert!(!has_divergence_record(
         &output,
         "LOSS",
         "blocks[].content[].figure.css_class",
@@ -3573,7 +3620,7 @@ fn caption_block_preserves_role_while_quote_children_remain_visible() {
 }
 
 #[test]
-fn unmeasured_inline_kind_refuses_by_default() {
+fn unmeasured_inline_kind_is_rejected_by_default() {
     let (schemas, mapping) = schemas_and_mapping();
     let aat = json!({
         "version": 1,
@@ -4066,9 +4113,9 @@ fn cli_default_roots_follow_mapping_path_not_current_directory() {
     let repo = repo_root();
     let temp = tempfile::tempdir().unwrap();
     let fake_cwd = temp.path().join("fake-repo");
-    let fake_data = fake_cwd.join("data");
-    std::fs::create_dir_all(&fake_data).unwrap();
-    std::fs::write(fake_data.join("aat-schema.json"), "{}").unwrap();
+    let fake_schemas = fake_cwd.join("schemas/outputs");
+    std::fs::create_dir_all(&fake_schemas).unwrap();
+    std::fs::write(fake_schemas.join("aat-schema.json"), "{}").unwrap();
 
     let aat = temp.path().join("input.aat.json");
     let parser_ir = temp.path().join("parser-ir.json");
@@ -4380,7 +4427,7 @@ fn adapter_conversion_spans_address_full_source_across_body_and_terminal_provena
 }
 
 #[test]
-fn heading_indent_and_gaiji_ruby_base_survive_conversion() {
+fn heading_indent_and_gaiji_ruby_base_are_retained_through_conversion() {
     let (schemas, mapping) = schemas_and_mapping();
     let ruby = json!({
         "kind": "ruby", "base": "犍陀多", "reading": "かんだた",
@@ -4469,6 +4516,10 @@ fn unresolved_gaiji_ruby_uses_child_projection_for_decoded_coordinates() {
         );
         assert!(ruby_node["inline_children"][0]["gaiji"]["unicode"].is_null());
         assert_eq!(
+            ruby_node["inline_children"][0]["gaiji"]["unresolved_reason"],
+            "unresolved"
+        );
+        assert_eq!(
             ruby_node["inline_children"][0]["gaiji"]["raw_marker"],
             "てへん＋諂のつくり"
         );
@@ -4490,7 +4541,7 @@ fn unresolved_gaiji_ruby_uses_child_projection_for_decoded_coordinates() {
 }
 
 #[test]
-fn source_corrections_and_one_compound_sign_survive_validated_conversion() {
+fn source_corrections_and_one_compound_sign_are_retained_through_validated_conversion() {
     let source = "題\n作者\n\n甍《いらか》［＃「甍の」は底本では「薨の」］先。\n［＃ここから４字下げ、横書き、中央揃え、罫囲み］\nRESTAURANT\n西洋料理店\nWILDCAT HOUSE\n山猫軒\n［＃ここで字下げ終わり］\nといふ札。\n\n底本：本\n";
     let (schemas, mapping) = v2_schemas_and_mapping();
     let aat: Value =
@@ -4575,7 +4626,7 @@ fn source_markup_gaps_and_gaiji_have_independent_projection_and_source_extents()
 }
 
 #[test]
-fn enclosing_indent_survives_line_local_closing_alignment() {
+fn enclosing_indent_is_retained_across_line_local_closing_alignment() {
     let source = "前。\n［＃ここから２字下げ］\n附記。\n［＃地から２字上げ］（大正四年八月）\n［＃ここで字下げ終わり］\n後。\n";
     let (schemas, mapping) = v2_schemas_and_mapping();
     for date_offset in [2, 3] {
@@ -4769,7 +4820,7 @@ fn raw_source_retention_records_exact_occurrence_independent_of_nesting() {
 }
 
 #[test]
-fn native_forced_break_and_supplied_kunten_survive_nested_warichu() {
+fn native_forced_break_and_supplied_kunten_are_retained_inside_nested_warichu() {
     let source = "題\n作者\n\n前［＃地から３字上げ］［＃割り注］磯。此云［＃レ］志。［＃改行］次［＃割り注終わり］後。\n\n底本：本\n";
     let (schemas, mapping) = v2_schemas_and_mapping();
     let aat =
@@ -4921,7 +4972,7 @@ fn measured_node_fields_do_not_depend_on_recursive_block_depth() {
 }
 
 #[test]
-fn recursive_depth_cannot_hide_a_conflicting_mapping_rule() {
+fn conflicting_mapping_rule_at_recursive_depth_fails_preflight() {
     let (schemas, mut mapping) = schemas_and_mapping();
     let mut duplicate = mapping
         .transform_rule_descriptions
@@ -4945,4 +4996,47 @@ fn recursive_depth_cannot_hide_a_conflicting_mapping_rule() {
             .to_string()
             .contains("duplicate folded mapping rule")
     );
+}
+
+#[test]
+fn typed_gaiji_references_are_retained_through_conversion_and_reject_mixed_domains() {
+    let parts = json!([
+        {"kind":"unicode-code","source":"U+201E","codepoint":8222},
+        {"kind":"source-location","source":"1巻-37-下-11","volume":"1巻","page":"37","column":"下","line":"11"},
+        {"kind":"uninterpreted","source":"場所不明"}
+    ]);
+    let aat = json!({"version":2,"work_id":"gaiji-reference-parts","meta":v2_test_meta(),"blocks":[{
+        "kind":"paragraph","content":[{"kind":"gaiji","description":"下側の右ダブル引用符",
+        "resolved":"„","unresolved_reason":null,"jis_code":"U+201E、1巻-37-下-11、場所不明","reference_parts":parts}]
+    }]});
+    let (schemas, mapping) = v2_schemas_and_mapping();
+    let output = ab_aat_to_parser_ir::convert(ConversionRequest {
+        aat: aat.clone(),
+        mapping,
+        schemas: schemas.clone(),
+        options: default_test_options(),
+    })
+    .unwrap();
+    assert_eq!(
+        output.parser_ir["nodes"][0]["gaiji"]["reference_parts"],
+        parts
+    );
+    for invalid in [
+        json!({"kind":"jis-code","source":"37-下-11","page":"37","column":"下","line":"11"}),
+        json!({"kind":"unicode-code","source":"U+D800","codepoint":55296}),
+        json!({"kind":"source-location","source":"37","page":"37"}),
+    ] {
+        let mut invalid_aat = aat.clone();
+        invalid_aat["blocks"][0]["content"][0]["reference_parts"] = json!([invalid.clone()]);
+        assert!(
+            validate_value(&schemas.aat_schema, &invalid_aat, "AAT").is_err(),
+            "{invalid}"
+        );
+        let mut invalid_ir = output.parser_ir.clone();
+        invalid_ir["nodes"][0]["gaiji"]["reference_parts"] = json!([invalid.clone()]);
+        assert!(
+            validate_value(&schemas.parser_ir_schema, &invalid_ir, "IR").is_err(),
+            "{invalid}"
+        );
+    }
 }

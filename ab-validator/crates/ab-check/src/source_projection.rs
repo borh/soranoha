@@ -9,11 +9,11 @@ pub fn comparison_lossy_body(txt: &str) -> String {
 ///
 /// The parser's sanitize stage composes Aozora accent notation in place
 /// (`〔Franc,ois〕` becomes `〔François〕` in the AAT text) while the raw
-/// source keeps the notation, so an order comparison must fold BOTH sides
+/// source keeps the notation, so an order comparison must fold both sides
 /// with this one function. Composed letters lose their diacritics (NFD,
 /// then combining marks dropped) and the non-decomposable specials map to
 /// the base letters their notation spells. The fold is global and
-/// symmetric: on the source side the notation's base letters survive in
+/// symmetric: on the source side the notation's base letters remain in
 /// order and its accent marks (`'`, `:`, `,`, …) become extra haystack
 /// characters the subsequence walk skips; on the projection side the
 /// composed letters fold to those same base letters.
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn fold_accent_notation_keeps_source_notation_marks_as_haystack_extras() {
-        // Source side: the notation's base letters survive in order; its
+        // Source side: the notation's base letters remain in order; its
         // accent marks stay put and are skipped by the subsequence walk.
         assert_eq!(fold_accent_notation("〔Franc,ois〕"), "〔Franc,ois〕");
         assert_eq!(fold_accent_notation("〔Gru:sse〕"), "〔Gru:sse〕");

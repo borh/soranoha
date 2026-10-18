@@ -1,9 +1,8 @@
 //! Gaiji (外字) reference recognition.
 //!
 //! The `※［＃<description>、<mencode>］` glyph-reference form plus the
-//! `mencode` / 底本ページ-行 validators. Extracted verbatim from the
-//! classify-stage classifier; recognised nodes are built on the shared
-//! [`RecogniseCtx`].
+//! `mencode` / 底本ページ-行 validators. Recognised nodes are built on the
+//! shared [`RecogniseCtx`].
 
 #[cfg(feature = "classify-instrument")]
 use super::super::instrumentation::{Subsystem, SubsystemGuard};
@@ -19,7 +18,7 @@ use ab_aozora_syntax::ast::Gaiji;
 /// Holds the payload (`Gaiji`) rather than a wrapped
 /// node so the caller can route it to either `alloc.gaiji(p)`
 /// (top-level span) or `alloc.seg_gaiji(p)` (nested inside a body
-/// content) without re-paying the description / mencode intern cost.
+/// content) without interning the description and mencode a second time.
 pub(super) struct GaijiMatch {
     pub(super) payload: Gaiji,
     pub(super) consume_start: u32,
@@ -53,7 +52,20 @@ impl RecogniseCtx<'_, '_> {
         refmark_span: Span,
         bracket_open_idx: usize,
     ) -> Option<GaijiMatch> {
-        self.recognize_gaiji_core(view, refmark_span.start, false, bracket_open_idx)
+        self.recognize_gaiji_core(view, refmark_span.start, false, bracket_open_idx, false)
+    }
+
+    /// The refmark form whose annotation no other recognizer interprets.
+    /// The `※` marks an external character there, and the annotation body
+    /// is its description, whatever its wording; the caller establishes
+    /// that no recognizer interprets the annotation.
+    pub(super) fn recognize_described_gaiji(
+        &mut self,
+        view: BodyView<'_>,
+        refmark_span: Span,
+        bracket_open_idx: usize,
+    ) -> Option<GaijiMatch> {
+        self.recognize_gaiji_core(view, refmark_span.start, false, bracket_open_idx, true)
     }
 
     /// Core recogniser shared by the `※`-prefixed [`Self::recognize_gaiji`]
@@ -65,7 +77,7 @@ impl RecogniseCtx<'_, '_> {
         clippy::too_many_arguments,
         clippy::too_many_lines,
         reason = "a flat gaiji body recogniser (quoted form, bare form, validation, \
-                  resolution) over four independent inputs; splitting it would scatter \
+                  resolution) over five independent inputs; splitting it would scatter \
                   the I3-idempotency reasoning"
     )]
     pub(super) fn recognize_gaiji_core(
@@ -74,6 +86,7 @@ impl RecogniseCtx<'_, '_> {
         consume_start: u32,
         standalone: bool,
         bracket_open_idx: usize,
+        described: bool,
     ) -> Option<GaijiMatch> {
         #[cfg(feature = "classify-instrument")]
         let _classify_guard = SubsystemGuard::new(Subsystem::Gaiji);
@@ -109,8 +122,8 @@ impl RecogniseCtx<'_, '_> {
         // authority in aozora-encoding, shared with the LSP resolution
         // view and the gaiji() wire. It handles the simple quoted form, the
         // composed-glyph / 正字 / 屋号 forms, and the bare form with one
-        // right-to-left mencode scan (the naive first-`、` split it replaces
-        // wrongly cut composed forms.
+        // right-to-left mencode scan, because composed forms contain a `、`
+        // before the mencode separator.
         // Recognition gate (I3 idempotency) via the single authority in
         // aozora-encoding, shared with the resolution view and the
         // gaiji() wire. The simple `「desc」` quoted form is a gaiji even
@@ -120,17 +133,35 @@ impl RecogniseCtx<'_, '_> {
         // are declined. Declined brackets fall through to
         // `Directive{Unknown}` and round-trip byte-identical.
         let body = &self.source[hash_end as usize..bracket_close_span.start as usize];
+        let parsed = gaiji_resolve::recognize_gaiji_body(body).or_else(|| {
+            if standalone {
+                return None;
+            }
+            let parsed = gaiji_resolve::parse_gaiji_body(body);
+            (!parsed.description.is_empty()
+                && if described || gaiji_resolve::describes_refmark(parsed.description) {
+                    gaiji_resolve::gaiji_statement_serializable(parsed.description)
+                } else {
+                    gaiji_resolve::gaiji_description_serializable(
+                        parsed.description,
+                        parsed.mencode.is_some(),
+                    )
+                })
+            .then_some(parsed)
+        })?;
         let gaiji_resolve::GaijiBody {
             description,
             mencode,
-            ..
-        } = gaiji_resolve::recognize_gaiji_body(body)?;
+            quoted,
+        } = parsed;
 
         // The mencode is kept verbatim (a trailing 底本ページ-行 suffix and
         // all) inside the GaijiCanonical; resolution to a glyph happens
         // lazily via `Gaiji::resolve`, which strips the suffix for the
         // men-ku-ten lookup. No eager `ucs` column is stored.
-        let payload = self.alloc.make_gaiji(description, mencode, standalone);
+        let payload = self
+            .alloc
+            .make_gaiji(description, quoted, mencode, standalone);
         Some(GaijiMatch {
             payload,
             consume_start,
@@ -183,6 +214,8 @@ mod is_mencode_shaped_tests {
     fn dai_n_suijun_prefix_passes() {
         assert!(is_mencode_shaped("第3水準1-85-54"));
         assert!(is_mencode_shaped("第4水準2-1-2"));
+        assert!(is_mencode_shaped("第三水準1-3-28"));
+        assert!(is_mencode_shaped("第四水準2-1-2"));
     }
 
     #[test]
@@ -192,7 +225,7 @@ mod is_mencode_shaped_tests {
     }
 
     #[test]
-    fn random_garbage_rejected() {
+    fn malformed_mencode_shapes_are_rejected() {
         assert!(!is_mencode_shaped("》"));
         assert!(!is_mencode_shaped("abc"));
         assert!(!is_mencode_shaped("漢字"));

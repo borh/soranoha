@@ -1,4 +1,5 @@
-//! Formatting quotations name source targets; they do not insert principal text.
+//! A formatting quotation refers to a target in the source text; it does not
+//! insert principal text.
 use ab_aozora_facade::Document;
 
 #[test]

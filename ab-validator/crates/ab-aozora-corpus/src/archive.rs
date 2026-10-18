@@ -1,17 +1,16 @@
 //! Single-file binary corpus archive.
 //!
-//! Replaces "directory of 17 435 small files + walkdir + per-file
-//! `read(2)` + `decode_sjis` per call" with **one** binary file that
-//! contains the entire corpus pre-packed and (optionally)
-//! pre-decoded and/or zstd-compressed.
+//! Stores the entire corpus in one binary file, pre-packed and
+//! optionally pre-decoded and/or zstd-compressed, in place of a
+//! directory of 17 435 small files read with walkdir, per-file
+//! `read(2)` and `decode_sjis` on each call.
 //!
-//! # Why a custom binary format
+//! # Format
 //!
-//! The reference data structures are **Git pack files**, **SQLite
-//! page files**, and **`Apache Arrow IPC`**: a single sequentially
-//! laid-out file with an offset index for O(1) random access. For
-//! Aozora's read-only corpus-sweep workload these are overkill; we
-//! need only a minimal subset. The format is:
+//! The reference data structures are Git pack files, SQLite page
+//! files, and `Apache Arrow IPC`: a single sequentially laid-out file
+//! with an offset index for O(1) random access. Aozora's read-only
+//! corpus-sweep workload requires only a minimal subset of them:
 //!
 //! ```text
 //! [Header — 16 bytes]
@@ -36,28 +35,28 @@
 //!   Concatenated entry bytes, each at its declared offset.
 //! ```
 //!
-//! Four shipping variants (selected via flags at build time):
+//! Four variants, selected by flags at build time:
 //!
 //! | flags  | name              | trade-off |
 //! |---|---|---|
-//! | `0b00` | raw SJIS          | smallest build cost, current decode work |
-//! | `0b01` | zstd SJIS         | smaller disk, current decode work |
+//! | `0b00` | raw SJIS          | smallest build cost, runtime SJIS decode |
+//! | `0b01` | zstd SJIS         | smaller disk, runtime SJIS decode |
 //! | `0b10` | pre-decoded UTF-8 | larger disk, decode skipped at runtime |
-//! | `0b11` | zstd UTF-8        | smallest runtime wall (read+decompress only) |
+//! | `0b11` | zstd UTF-8        | lowest runtime wall-clock time (read+decompress only) |
 //!
-//! # Why mtime + blake3 instead of mtime alone
+//! # Change detection uses mtime and blake3
 //!
 //! mtime can be stale (filesystem races, `touch`-without-content-change,
-//! cache restored from backup). blake3 confirms identity when mtime
-//! says "maybe changed". Per-entry hash adds ~32 bytes to the index
-//! (negligible for a 17 k-file corpus = ~544 KB index).
+//! cache restored from backup). The blake3 hash confirms identity when
+//! the mtime indicates a possible change. The per-entry hash adds 32
+//! bytes to each index record (~544 KB for a 17 k-file corpus).
 //!
 //! # Lifetime model
 //!
-//! [`Archive::open`] would benefit from `mmap` for zero-copy reads,
-//! but the workspace forbids `unsafe` here. Instead, the whole file
-//! is read into a single `Vec<u8>` (one `fs::read`
-//! syscall, kernel does one page-cache → vec memcpy).
+//! Zero-copy reads through `mmap` require `unsafe`, which the
+//! workspace forbids here, so [`Archive::open`] reads the whole file
+//! into a single `Vec<u8>` (one `fs::read` syscall; the kernel
+//! performs one page-cache → vec memcpy).
 //! `Archive::iter_borrowed` yields zero-copy `&[u8]` slices into
 //! the archive's payload for raw entries; zstd-decompressed entries
 //! materialise into a fresh `Vec<u8>` per call (decompression
@@ -107,11 +106,11 @@ const HEADER_LEN: usize = 4 + 4 + 4 + 4;
 
 /// Maximum per-entry decompressed size, in bytes.
 ///
-/// Real-world Aozora files cap at ~10 MB; 256 MiB is the safety
-/// budget above which we refuse a `decoded_len` field rather than
-/// allocate the buffer. Pure DoS-resistance: a hostile archive can
-/// claim `u32::MAX` (4 GB) but `Vec::with_capacity(u32::MAX as usize)`
-/// would pin OOM before the zstd stream produced its first byte.
+/// Real-world Aozora files are at most ~10 MB. The parser rejects a
+/// `decoded_len` field above 256 MiB instead of allocating the buffer,
+/// as a denial-of-service bound: an archive can declare `u32::MAX`
+/// (4 GB), and `Vec::with_capacity(u32::MAX as usize)` would exhaust
+/// memory before the zstd stream produced its first byte.
 pub const MAX_DECODED_LEN_PER_ENTRY: u32 = 256 * 1024 * 1024;
 
 /// Errors specific to archive format parsing / IO. Wraps generic
@@ -129,7 +128,7 @@ pub enum ArchiveError {
     /// File is shorter than the declared header / index / payload
     /// would require.
     Truncated {
-        /// What we tried to read (e.g. `"index entry 14233"`).
+        /// The structure being read (e.g. `"index entry 14233"`).
         what: &'static str,
     },
     /// Per-entry zstd decompression failed.
@@ -139,16 +138,15 @@ pub enum ArchiveError {
     /// A header field declares a size that cannot fit in the
     /// archive (entry count too large, declared decoded length
     /// exceeds the per-entry budget, etc.). Distinct from
-    /// [`Self::Truncated`] because the file might be intact —
-    /// it's the *header value* that is unreasonable. This is a
-    /// DoS-resistance check; a hostile archive could otherwise
-    /// pin out-of-memory by claiming a 4 GB decoded length on a
-    /// 10-byte payload.
+    /// [`Self::Truncated`]: the file may be intact while the *header
+    /// value* exceeds its bound. Without this check, an archive
+    /// declaring a 4 GB decoded length on a 10-byte payload would
+    /// exhaust memory.
     InvalidSize {
         /// Which field overflowed the bound (`"entry count"`,
         /// `"decoded_len"`, …).
         what: &'static str,
-        /// The unreasonable value, surfaced for diagnostics.
+        /// The rejected value, for diagnostics.
         value: u64,
     },
 }
@@ -198,9 +196,9 @@ impl From<ArchiveError> for CorpusError {
     }
 }
 
-/// Per-entry metadata held in the archive's index. Mirrors the
-/// on-disk record byte-for-byte; doc-comments document the on-disk
-/// semantics.
+/// Per-entry metadata held in the archive's index. Each field
+/// corresponds to one field of the on-disk index record, and its
+/// documentation gives the on-disk semantics.
 #[derive(Debug, Clone)]
 pub struct EntryMeta {
     /// Offset in bytes from the start of the archive file at which
@@ -211,12 +209,13 @@ pub struct EntryMeta {
     /// equals `decoded_len`.
     pub payload_len: u32,
     /// Number of bytes after decompression. For raw archives this
-    /// equals `payload_len`. Useful for callers that want to
-    /// pre-allocate a destination buffer before decoding.
+    /// equals `payload_len`. Callers can use it to pre-allocate a
+    /// destination buffer before decoding.
     pub decoded_len: u32,
-    /// Source-file `mtime` in nanoseconds since UNIX epoch. Used by
-    /// the incremental pack diff to detect "may have changed" files
-    /// before falling back to full-content `blake3` confirmation.
+    /// Source-file `mtime` in nanoseconds since UNIX epoch. The
+    /// incremental pack diff compares it to select files that may have
+    /// changed, then confirms a change with the full-content `blake3`
+    /// hash.
     pub source_mtime_ns: i64,
     /// blake3 hash of the source file bytes (raw SJIS bytes for
     /// archives built from a directory of `.txt` files). Provides the
@@ -257,7 +256,7 @@ impl Archive {
     ///
     /// # Errors
     ///
-    /// Same shape as [`Self::open`] (minus the I/O case).
+    /// Same conditions as [`Self::open`], except the I/O case.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, ArchiveError> {
         if bytes.len() < HEADER_LEN {
             return Err(ArchiveError::Truncated { what: "header" });
@@ -286,7 +285,7 @@ impl Archive {
 
         let mut entries = Vec::with_capacity(count);
         let mut cursor = HEADER_LEN;
-        for i in 0..count {
+        for _ in 0..count {
             if cursor + INDEX_FIXED_LEN > bytes.len() {
                 return Err(ArchiveError::Truncated {
                     what: "index entry header",
@@ -304,11 +303,11 @@ impl Archive {
                     .try_into()
                     .expect("4-byte slice"),
             );
-            // Reject decoded_len values exceeding the maximum entry threshold at parse
-            // time so `payload_at` can allocate from a bounded
-            // budget. Aozora docs cap well under
-            // `MAX_DECODED_LEN_PER_ENTRY` (256 MiB); anything past
-            // that is a decode-bomb attempt.
+            // Reject a decoded_len above the per-entry maximum at parse
+            // time so `payload_at` allocates from a bounded budget.
+            // Aozora documents are far smaller than
+            // `MAX_DECODED_LEN_PER_ENTRY` (256 MiB); a larger value
+            // indicates a decompression bomb.
             if decoded_len > MAX_DECODED_LEN_PER_ENTRY {
                 return Err(ArchiveError::InvalidSize {
                     what: "decoded_len",
@@ -338,8 +337,8 @@ impl Archive {
                 .to_owned();
             cursor += label_len;
 
-            // Validate that the declared payload range fits in the
-            // file before we hand it out to readers.
+            // The declared payload range must lie within the file
+            // before any reader slices it.
             let payload_end = payload_offset.checked_add(u64::from(payload_len)).ok_or(
                 ArchiveError::Truncated {
                     what: "index entry payload range overflow",
@@ -350,7 +349,6 @@ impl Archive {
                     what: "index entry payload past end of file",
                 });
             }
-            let _ = i; // bound-check uses i implicitly via cursor advance
             entries.push(EntryMeta {
                 payload_offset,
                 payload_len,
@@ -393,8 +391,8 @@ impl Archive {
         self.entries.is_empty()
     }
 
-    /// Borrow the underlying flags word — useful for callers that
-    /// want to surface "this archive is zstd-compressed UTF-8" etc.
+    /// The archive's flags word, for callers that report the variant
+    /// (for example "this archive is zstd-compressed UTF-8").
     #[must_use]
     pub fn flags(&self) -> u32 {
         self.flags
@@ -485,9 +483,9 @@ impl Archive {
     ///   is no zero-copy path for compressed payloads — the
     ///   `ArchivePayload` enum exposes both shapes uniformly).
     ///
-    /// Saves one `Vec<u8>` allocation + memcpy per entry on raw
-    /// archives compared to [`Self::iter`]. On a 17 k-entry corpus
-    /// this is a measurable allocator-pressure improvement.
+    /// Compared with [`Self::iter`], this avoids one `Vec<u8>`
+    /// allocation and memcpy per entry on raw archives, a measurable
+    /// reduction in allocator pressure on a 17 k-entry corpus.
     ///
     /// # Errors
     ///
@@ -507,8 +505,8 @@ impl Archive {
 ///
 /// Unifies the two shapes the archive can produce — a borrowed slice
 /// into the in-memory archive (raw variants) or a freshly
-/// decompressed owned `Vec<u8>` (zstd variants) — behind one type so
-/// callers don't have to switch on `archive.is_zstd()` themselves.
+/// decompressed owned `Vec<u8>` (zstd variants) — in one type, so
+/// callers need not branch on `archive.is_zstd()`.
 ///
 /// Both variants implement [`Self::as_bytes`] for borrow-only use,
 /// and [`Self::into_owned`] for the cases where ownership is required
@@ -559,21 +557,19 @@ impl ArchivePayload<'_> {
 /// Decompress a zstd-compressed payload into a fresh `Vec`.
 ///
 /// `expected_len` is a hint used to pre-size the destination
-/// buffer; it is **clamped** to [`MAX_DECODED_LEN_PER_ENTRY`] so a
-/// hostile archive header cannot pin OOM by claiming a huge decoded
-/// length on a tiny compressed payload. The zstd reader still fully
-/// decompresses the stream — if the stream itself produces more
-/// bytes than the budget, `read_to_end` will eventually grow the
-/// vector, but that growth is amortised, observable, and bounded by
-/// the actual stream content rather than by an attacker-supplied
-/// integer in the index header.
+/// buffer; it is clamped to [`MAX_DECODED_LEN_PER_ENTRY`], so an
+/// archive header declaring a huge decoded length on a tiny compressed
+/// payload cannot cause an out-of-memory pre-allocation. Growth of the
+/// vector beyond `expected_len` during `read_to_end` is amortised and
+/// bounded by the actual stream content rather than by an integer in
+/// the index header.
 fn decompress_payload(src: &[u8], expected_len: usize) -> io::Result<Vec<u8>> {
     let cap = expected_len.min(MAX_DECODED_LEN_PER_ENTRY as usize);
     let mut out = Vec::with_capacity(cap);
     let decoder = zstd::stream::read::Decoder::new(src)?;
-    // Bound the runtime decode too — if the compressed stream
-    // expands past the budget, refuse rather than keep growing the
-    // allocation. `Read::take` enforces this on the producer side.
+    // `Read::take` bounds the decoded stream as well: a stream that
+    // expands past the budget returns an error instead of growing the
+    // allocation further.
     let limit = u64::from(MAX_DECODED_LEN_PER_ENTRY).saturating_add(1);
     let mut limited = decoder.take(limit);
     limited.read_to_end(&mut out)?;
@@ -586,8 +582,8 @@ fn decompress_payload(src: &[u8], expected_len: usize) -> io::Result<Vec<u8>> {
 }
 
 /// Convert a [`SystemTime`] into a UNIX-epoch nanosecond count
-/// suitable for [`EntryMeta::source_mtime_ns`]. Pre-epoch times
-/// (which should not exist on real corpora) are truncated to 0.
+/// suitable for [`EntryMeta::source_mtime_ns`]. Pre-epoch times, which
+/// do not occur in real corpora, map to 0.
 #[must_use]
 pub fn system_time_to_ns(t: SystemTime) -> i64 {
     t.duration_since(SystemTime::UNIX_EPOCH).map_or_else(
@@ -601,16 +597,12 @@ pub fn system_time_to_ns(t: SystemTime) -> i64 {
     )
 }
 
-/// Inverse of [`system_time_to_ns`] — useful for debug printing /
-/// equality reasoning. Saturating below epoch.
+/// Inverse of [`system_time_to_ns`], for debug printing and equality
+/// checks. Negative values saturate to the epoch.
 #[must_use]
 pub fn ns_to_system_time(ns: i64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_nanos(ns.max(0) as u64)
 }
-
-// ---------------------------------------------------------------------
-// Builder — used by `xtask corpus pack` at build time only.
-// ---------------------------------------------------------------------
 
 /// Streaming archive builder.
 ///
@@ -654,9 +646,9 @@ impl ArchiveBuilder {
     }
 
     /// Override the zstd compression level (1..=22). The default
-    /// (19) targets the maximum compression that still fits in
-    /// reasonable build wall (a few seconds for the full corpus on a
-    /// modern CPU). Has no effect when [`FLAG_ZSTD`] is unset.
+    /// (19) is the highest compression whose build time stays at a few
+    /// seconds for the full corpus on a modern CPU. Has no effect when
+    /// [`FLAG_ZSTD`] is unset.
     pub fn zstd_level(&mut self, level: i32) -> &mut Self {
         self.zstd_level = level;
         self
@@ -672,9 +664,8 @@ impl ArchiveBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`ArchiveError::Decompress`] if zstd encoding fails
-    /// (it shouldn't on valid input but the error path is preserved
-    /// for completeness).
+    /// Returns [`ArchiveError::Decompress`] if zstd encoding fails;
+    /// zstd does not fail on valid input.
     pub fn push_entry(
         &mut self,
         label: impl Into<String>,
@@ -696,7 +687,7 @@ impl ArchiveBuilder {
             self.payload.extend_from_slice(&compressed);
             self.entries.push(EntryMeta {
                 // payload_offset is fixed up to absolute file offset
-                // in `finish`; for now it stores the offset within
+                // in `finish`; until then it stores the offset within
                 // the payload section.
                 payload_offset: payload_offset_in_section,
                 payload_len,
@@ -724,7 +715,7 @@ impl ArchiveBuilder {
     /// the caller — typically because the encode happened in a
     /// parallel work loop and only the assembly step is sequential.
     /// The caller has already computed `decoded_len` and the source
-    /// hash; the builder simply records them as-is.
+    /// hash; the builder records them unchanged.
     pub fn push_already_encoded(
         &mut self,
         label: &str,
@@ -764,11 +755,11 @@ impl ArchiveBuilder {
 
     /// Finalise the archive: assemble header + index + payload and
     /// write atomically to `path`. The write goes to `path.tmp`
-    /// first, then `rename(2)` to `path` — partially-written archives
-    /// never leak.
+    /// first, then `rename(2)` to `path`, so a partially written
+    /// archive never appears at `path`.
     ///
-    /// Returns the total file size in bytes (useful for reporting
-    /// compression ratios).
+    /// Returns the total file size in bytes, for reporting compression
+    /// ratios.
     ///
     /// # Errors
     ///
@@ -902,8 +893,8 @@ mod tests {
         let arc = roundtrip(FLAG_ZSTD | FLAG_UTF8, &[("big.txt", big.as_bytes())]);
         assert!(arc.is_zstd());
         assert!(arc.is_utf8());
-        // The on-disk payload is much smaller than the decompressed
-        // length — verify the compression flag is doing real work.
+        // A payload shorter on disk than its decompressed length shows
+        // that the builder compressed it under FLAG_ZSTD.
         let raw_payload = arc.raw_payload(0);
         let entry = &arc.entries()[0];
         assert!(
@@ -928,7 +919,7 @@ mod tests {
             ArchivePayload::Borrowed(slice) => {
                 assert_eq!(*slice, b"hello world");
                 // The slice's pointer must lie inside `arc.bytes`'s
-                // buffer (i.e. the archive's in-memory mmap-equivalent).
+                // buffer (the in-memory copy of the archive file).
                 let archive_payload_ptr = arc.raw_payload(0).as_ptr();
                 assert!(
                     ptr::eq(archive_payload_ptr, slice.as_ptr()),
@@ -972,9 +963,8 @@ mod tests {
 
     #[test]
     fn iter_and_iter_borrowed_yield_byte_equal_outputs() {
-        // Owned `iter` is now built on top of `iter_borrowed`; a
-        // round-trip equality check pins that the convenience wrapper
-        // produces byte-for-byte the same payload.
+        // `iter` is implemented on `iter_borrowed`; both must yield
+        // byte-for-byte the same payloads.
         let arc = roundtrip(
             FLAG_UTF8,
             &[("a.txt", "あおい".as_bytes()), ("b.txt", "そら".as_bytes())],
@@ -1036,7 +1026,7 @@ mod tests {
 
     #[test]
     fn entry_metadata_records_mtime() {
-        // Build manually so we control mtime.
+        // Built manually so the test sets the mtime.
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("corpus.aozc");
         let mut b = ArchiveBuilder::new(0);
@@ -1077,13 +1067,10 @@ mod tests {
         assert_eq!(items[0].1, body.as_bytes());
     }
 
-    // ----------------------------------------------------------------
-    // DoS-resistance / format-robustness: parse-time bounds checking.
-    // Pinned by the audit notes in the doc-comments on
-    // `MAX_DECODED_LEN_PER_ENTRY` and `ArchiveError::InvalidSize`.
-    // Each test here was written from the angle "a hostile or
-    // corrupted archive header should refuse rather than allocate."
-    // ----------------------------------------------------------------
+    // Parse-time bounds checks: a hostile or corrupted archive header is
+    // rejected before any allocation sized by it. The bounds are
+    // documented on `MAX_DECODED_LEN_PER_ENTRY` and
+    // `ArchiveError::InvalidSize`.
 
     /// A header that claims more entries than the file could possibly
     /// hold (each index record is at least `INDEX_FIXED_LEN` bytes)
@@ -1107,13 +1094,11 @@ mod tests {
         }
     }
 
-    /// Edge case: the largest count that would just barely fit in
-    /// the file. The parser will return Truncated for the record
-    /// itself (since the labels won't line up), but it must NOT
-    /// reject the count outright at this exact boundary. This pins
-    /// "the cap is tight, not over-eager."
+    /// Edge case: the largest count that fits in the file. The parser
+    /// must not reject a count at this exact boundary, so the cap
+    /// rejects only counts the file cannot hold.
     #[test]
-    fn accepts_count_exactly_at_ceiling_then_fails_on_record() {
+    fn accepts_count_exactly_at_ceiling() {
         // file_len = HEADER + 1 * INDEX_FIXED_LEN, claim count = 1.
         // The label_len field will be 0 so this constructs a valid
         // single-entry archive with empty payload.
@@ -1138,9 +1123,9 @@ mod tests {
         assert_eq!(arc.entries()[0].payload_len, 0);
     }
 
-    /// A header field claiming a ridiculously large `decoded_len`
-    /// must be rejected at parse time, NOT allowed to reach
-    /// `decompress_payload` and pin a 4 GB allocation.
+    /// A header field declaring a `decoded_len` above the budget must be
+    /// rejected at parse time, before `decompress_payload` can attempt
+    /// a 4 GB allocation.
     #[test]
     fn rejects_unreasonable_decoded_len_at_parse_time() {
         let mut buf = Vec::new();
@@ -1155,7 +1140,8 @@ mod tests {
         buf.extend_from_slice(&0i64.to_le_bytes());
         buf.extend_from_slice(&[0u8; 32]);
         buf.extend_from_slice(&0u32.to_le_bytes());
-        // Pad with payload to keep the slicing layer happy.
+        // Payload bytes, so that the declared payload range lies within
+        // the file.
         buf.resize(buf.len() + 100, 0);
         match Archive::from_bytes(buf) {
             Err(ArchiveError::InvalidSize { what, value }) => {
@@ -1197,10 +1183,10 @@ mod tests {
         }
     }
 
-    /// Defensive: the `decompress_payload` helper itself caps the
-    /// pre-allocation to `MAX_DECODED_LEN_PER_ENTRY` even if a future
-    /// caller forgets the parse-time check. Pure unit test on the
-    /// internal helper — no archive constructed.
+    /// The `decompress_payload` helper caps the pre-allocation to
+    /// `MAX_DECODED_LEN_PER_ENTRY` independently of the parse-time
+    /// check. Unit test on the internal helper; no archive is
+    /// constructed.
     #[test]
     fn decompress_payload_clamps_giant_expected_len() {
         // A valid empty zstd stream — frame magic + empty content.
@@ -1213,12 +1199,9 @@ mod tests {
     }
 
     /// A successful `finish` followed by `Archive::open` must yield
-    /// the same bytes. Together with the explicit `sync_all` call in
-    /// `finish`, this pins "the file is published only after data
-    /// is durably written" — without the sync the test would still
-    /// pass on a healthy filesystem, but the regression risk is the
-    /// removal of `sync_all`. We add a separate test below to detect
-    /// THAT regression.
+    /// the same bytes. This test passes on a healthy filesystem with or
+    /// without the `sync_all` call in `finish`;
+    /// `finish_does_not_leave_tmp_file_behind` covers the publish step.
     #[test]
     fn finish_produces_a_readable_archive() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1232,9 +1215,8 @@ mod tests {
         assert_eq!(payload.as_bytes(), b"hello");
     }
 
-    /// Pin the atomic-publish pattern: there must be NO `.tmp`
-    /// remnants after a successful `finish`. (If the rename happened
-    /// before sync_all panicked, the tmp would be left behind.)
+    /// After a successful `finish`, the directory holds only the archive:
+    /// `finish` renames the `.tmp` file it wrote onto the target path.
     #[test]
     fn finish_does_not_leave_tmp_file_behind() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1242,9 +1224,7 @@ mod tests {
         let mut b = ArchiveBuilder::new(0);
         b.push_entry("a.txt", b"hi", 0).unwrap();
         b.finish(&path).unwrap();
-        // List the directory — only one file should exist (the
-        // archive). A leftover `.tmp` would mean the rename happened
-        // partially.
+        // A leftover `.tmp` would mean the rename did not run.
         let count = fs::read_dir(dir.path()).unwrap().count();
         assert_eq!(
             count,
@@ -1255,16 +1235,12 @@ mod tests {
         );
     }
 
-    // ----------------------------------------------------------------
-    // Gatekeeper tests: pin the on-disk format and public surface.
-    //
-    // These tests are intentionally strict: changing any constant here
-    // requires updating the corresponding constant and the CHANGELOG entry
-    // that records the format version bump.
-    // ----------------------------------------------------------------
+    // The following tests fix the on-disk format and public surface.
+    // Changing any value asserted here requires updating the
+    // corresponding constant.
 
     #[test]
-    fn gatekeeper_archive_magic_is_aozc() {
+    fn archive_magic_is_aozc() {
         assert_eq!(
             MAGIC, *b"AOZC",
             "MAGIC bytes are part of the on-disk format; \
@@ -1273,16 +1249,15 @@ mod tests {
     }
 
     #[test]
-    fn gatekeeper_format_version_is_one() {
+    fn format_version_is_one() {
         assert_eq!(
             FORMAT_VERSION, 1,
-            "bumping FORMAT_VERSION must come with a CHANGELOG entry \
-             AND a backward-compat parser arm",
+            "bumping FORMAT_VERSION requires a parser arm for the previous version",
         );
     }
 
     #[test]
-    fn gatekeeper_header_layout_matches_the_documented_spec() {
+    fn header_layout_matches_the_documented_spec() {
         // Header: magic(4) + version(4) + flags(4) + count(4) = 16.
         assert_eq!(HEADER_LEN, 16);
         // Index record fixed prefix: payload_offset(8) + payload_len(4)
@@ -1292,28 +1267,25 @@ mod tests {
     }
 
     #[test]
-    fn gatekeeper_flag_bits_are_pinned() {
-        // FLAG bits are public — third-party tooling may rely on them.
+    fn flag_bits_have_fixed_values() {
+        // The FLAG bits are public, and third-party tooling can read them.
         assert_eq!(FLAG_ZSTD, 0b01);
         assert_eq!(FLAG_UTF8, 0b10);
     }
 
     #[test]
-    fn gatekeeper_max_decoded_len_is_256_mib() {
+    fn max_decoded_len_is_256_mib() {
         // Aozora docs cap at ~10 MB; 256 MiB gives ~25× headroom.
-        // Lowering this can break legitimate huge corpora; raising
-        // it widens the DoS budget — both deserve review.
+        // Lowering this bound can reject legitimate large corpora;
+        // raising it widens the allocation an archive header can request.
         assert_eq!(MAX_DECODED_LEN_PER_ENTRY, 256 * 1024 * 1024);
     }
 
     #[test]
-    fn gatekeeper_archive_error_variant_inventory() {
-        // If a new variant is added, this list must be updated AND
-        // any external pattern matches against `ArchiveError` audited.
-        // The match is exhaustive thanks to `#[non_exhaustive]` —
-        // adding a variant without updating this test compiles but
-        // silently skips the new variant from the gatekeeper list.
-        // The `_unused` arm makes the omission loud.
+    fn archive_error_variants_have_nonempty_display() {
+        // A new variant must be added to this list, and external pattern
+        // matches against `ArchiveError` reviewed. The list is an array,
+        // not a `match`, so a variant missing from it still compiles.
         for err in [
             ArchiveError::Io(io::Error::other("x")),
             ArchiveError::BadMagic,
@@ -1333,10 +1305,9 @@ mod tests {
     }
 
     #[test]
-    fn gatekeeper_format_constants_compose_to_expected_minimum_file_size() {
+    fn format_constants_compose_to_expected_minimum_file_size() {
         // The smallest valid archive is 16 bytes (header only, zero
-        // entries). Pinning this rejects "what if HEADER_LEN
-        // accidentally grew" regressions.
+        // entries); the test fails if HEADER_LEN changes.
         let mut buf = Vec::new();
         buf.extend_from_slice(&MAGIC);
         buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());

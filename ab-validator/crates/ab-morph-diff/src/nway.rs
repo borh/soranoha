@@ -194,8 +194,8 @@ pub(crate) fn covers_exactly(
 }
 
 fn segmentation_groups(per_analyzer: &[NwayAnalyzerRegion]) -> Vec<NwaySegmentationGroup> {
-    // Group by borrowed surface lists first so the (common) agreement case
-    // does not deep-clone every analyzer's surface Vec just to key the map.
+    // Grouping by borrowed surface lists keys the map without cloning every
+    // analyzer's surface Vec in the common agreement case.
     let mut groups = BTreeMap::<&[String], Vec<AnalyzerId>>::new();
     for entry in per_analyzer {
         groups
@@ -477,7 +477,7 @@ impl<'a> NwayStatsAccumulator<'a> {
 fn boundary_counts(analyses: &[&Analysis], source_len: usize) -> (usize, usize) {
     // Sorted deduped Vecs instead of BTreeSets: morpheme boundaries number in
     // the millions on large documents, and flat storage avoids the per-node
-    // BTree overhead that showed up in warehouse-run RSS profiles.
+    // BTree overhead measured in warehouse-run RSS profiles.
     let boundary_sets = analyses
         .iter()
         .map(|analysis| {

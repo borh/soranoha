@@ -1,29 +1,28 @@
 //! Open/close symmetry on the render and serialise paths.
 //!
-//! `property_serialize_idempotent` proves a *fixed point*: re-parsing
-//! and re-serialising converge. That is too weak to catch a bug where
-//! the renderer drops one half of a symmetric pair, because the
-//! mangled output may itself parse and re-serialise to the same
-//! mangled output — a fixed point that is *wrong*.
+//! `property_serialize_idempotent` checks a fixed point: re-parsing
+//! and re-serialising converge. That property does not detect a defect
+//! where the renderer drops one half of a symmetric pair, because the
+//! altered output may itself parse and re-serialise to the same altered
+//! output, a fixed point with wrong content.
 //!
-//! The `emit_gaiji` close-quote regression observed on 2026-04-25
-//! (`「`–`」` lost the closing quote on a gaiji description) is the
-//! poster child for this class of bug. The properties below are
-//! written specifically to surface it:
+//! An instance of this defect class is the `emit_gaiji` close-quote
+//! defect observed on 2026-04-25 (`「`–`」` lost the closing quote on a
+//! gaiji description). The properties below detect it:
 //!
 //! 1. **Source-pair delta preservation** — the difference (open count
 //!    minus close count) for each of `《`/`》`, `「`/`」`, `［＃`/`］`,
 //!    and `〔`/`〕` must be identical between the input source and the
 //!    serialised output. A renderer that drops a `」` shifts the delta
-//!    by one and is detected immediately.
+//!    by one.
 //!
 //! 2. **HTML tag balance** — each rendered HTML tag pair (`<p>`,
 //!    `<ruby>`, `<rt>`, `<rp>`) must occur the same number of times
 //!    open and close. The render-path equivalent of (1).
 //!
-//! Both properties run over the workhorse generators so any regression
-//! that introduces an asymmetric emit will fail under shrinking with a
-//! minimal repro pointing at the offending construct.
+//! Both properties run over the general fragment generators, so an
+//! asymmetric emit fails the property and shrinking reduces the input
+//! to a minimal case containing the construct.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::render_html;
@@ -45,9 +44,9 @@ fn pair_delta(s: &str, open: &str, close: &str) -> i64 {
 /// Assert that every tracked source-level pair has the same
 /// open-minus-close delta in `output` as in `input`.
 ///
-/// The pairs tracked are the ones whose asymmetry would be a *content*
-/// bug rather than a parsing accident: ruby brackets, gaiji description
-/// brackets, annotation brackets, and accent brackets.
+/// The tracked pairs are those whose asymmetry would be a content defect,
+/// not a parse artifact: ruby brackets, gaiji description brackets,
+/// annotation brackets, and accent brackets.
 fn assert_source_pair_deltas_preserved(input: &str, output: &str) {
     for (open, close) in [("《", "》"), ("「", "」"), ("［＃", "］"), ("〔", "〕")] {
         let i = pair_delta(input, open, close);
@@ -63,9 +62,8 @@ fn assert_source_pair_deltas_preserved(input: &str, output: &str) {
 /// Assert that the rendered HTML keeps every tag pair balanced.
 ///
 /// `<p>`, `<ruby>`, `<rt>` and `<rp>` are the tags whose closing form
-/// is unambiguous (no attribute variants of the close tag). A renderer
-/// regression that drops a closing tag corrupts every downstream HTML
-/// consumer; this is the decisive check for that class of bug.
+/// is unambiguous (no attribute variants of the close tag). A dropped
+/// closing tag makes the HTML malformed for every downstream consumer.
 fn assert_html_tag_pairs_balanced(input: &str, html: &str) {
     for tag in ["p", "ruby", "rt", "rp"] {
         let open = count(html, &format!("<{tag}>"));
@@ -85,10 +83,6 @@ fn assert_emit_symmetry(source: &str) {
     let html = render_html(&out);
     assert_html_tag_pairs_balanced(source, &html);
 }
-
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
 
 #[test]
 fn empty_input_is_symmetric() {
@@ -116,7 +110,7 @@ fn paired_container_is_symmetric() {
     );
 }
 
-/// Direct anchor for the 2026-04-25 `emit_gaiji` close-quote regression.
+/// Covers the `emit_gaiji` close-quote defect observed on 2026-04-25.
 /// The gaiji description carries a `「`/`」` pair that the serialiser
 /// must round-trip with both halves intact.
 #[test]
@@ -128,7 +122,7 @@ fn gaiji_with_close_quote_is_symmetric() {
 proptest! {
     #![proptest_config(default_config())]
 
-    /// Workhorse generator — every Aozora-shaped fragment must round-trip
+    /// General fragment generator — every Aozora-shaped fragment must round-trip
     /// with every tracked source pair preserved and every HTML tag
     /// pair balanced.
     #[test]
@@ -144,9 +138,8 @@ proptest! {
         assert_emit_symmetry(&s);
     }
 
-    /// Deeply nested same-shape pairs — a regression that miscounts
-    /// stack frames would shift a delta and is caught here under
-    /// shrinking.
+    /// Deeply nested same-shape pairs — a defect that miscounts stack
+    /// frames shifts a delta, and shrinking reduces the failing input.
     #[test]
     fn nested_pairs_emit_is_symmetric(s in nested_pairs(64)) {
         assert_emit_symmetry(&s);

@@ -1,9 +1,8 @@
 //! Precomputed char<->byte offset map for O(1) span conversions.
 //!
-//! Building this once per source text replaces the O(n^2)
-//! `source[..byte_offset].chars().count()` / `text.char_indices().nth(i)`
-//! patterns that were duplicated across the morphology pipeline and paid
-//! O(prefix length) per morpheme.
+//! One map per source text gives O(1) lookups, where
+//! `source[..byte_offset].chars().count()` and `text.char_indices().nth(i)`
+//! cost O(prefix length) per morpheme and O(n^2) per document.
 
 /// Bidirectional char-index <-> byte-index map for a source text.
 ///
@@ -18,11 +17,11 @@ pub struct CharByteMap<'a> {
     source: &'a str,
     /// `byte_to_char[byte_offset]` = number of chars before `byte_offset`.
     /// Length = `source.len() + 1`. Indexed by byte offset; only entries at
-    /// char boundaries are meaningful, but every byte offset is populated
-    /// cheaply so callers that have already verified `is_char_boundary` can
-    /// index directly.
+    /// char boundaries are meaningful, but every byte offset is populated so
+    /// callers that have already verified `is_char_boundary` can index
+    /// directly.
     byte_to_char: Vec<u32>,
-    /// `byte_offset_at_char[char_index]` = byte offset of the start of char
+    /// `char_to_byte[char_index]` = byte offset of the start of char
     /// `char_index`. Length = char count + 1. The final entry is `source.len()`.
     char_to_byte: Vec<usize>,
 }
@@ -60,8 +59,9 @@ impl<'a> CharByteMap<'a> {
     /// Equivalent to `source[..byte_offset].chars().count()` but O(1).
     #[inline]
     pub fn char_count_at_byte(&self, byte_offset: usize) -> usize {
-        // Indexing is safe because byte_offset <= source.len() == byte_to_char.len()-1
-        // when the caller respects the char-boundary precondition.
+        // Indexing does not panic because byte_offset <= source.len() ==
+        // byte_to_char.len()-1 when the caller meets the char-boundary
+        // precondition.
         self.byte_to_char[byte_offset] as usize
     }
 
@@ -77,8 +77,7 @@ impl<'a> CharByteMap<'a> {
     /// Total number of chars in the source. O(1).
     #[inline]
     pub fn char_count(&self) -> usize {
-        // self.source.chars().count() is what this was before; the trailing
-        // byte_to_char entry holds the total.
+        // The trailing byte_to_char entry holds the total char count.
         self.byte_to_char[self.source.len()] as usize
     }
 
@@ -116,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_offsets_match_old_helpers() {
+    fn multibyte_offsets_match_std_char_scans() {
         let source = "今日はabc";
         let map = CharByteMap::new(source);
         // Every char boundary's char count must match source[..b].chars().count()
@@ -140,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_legacy_helpers_on_japanese_sample() {
+    fn matches_std_char_scans_on_japanese_sample() {
         let source = "吾輩は猫である。";
         let map = CharByteMap::new(source);
         for (byte_index, _) in source.char_indices() {

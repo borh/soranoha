@@ -19,13 +19,14 @@
 //! | `」` | corner-bracket close          | E3 80 8D    |
 //!
 //! Every trigger is a 3-byte UTF-8 BMP character. The leading byte is
-//! one of `{0xE2, 0xE3, 0xEF}`: a fact the SIMD scanner exploits to
-//! bulk-skip the 99.5% of source bytes that are not trigger candidates.
+//! one of `{0xE2, 0xE3, 0xEF}`; the SIMD scanner uses this to skip, in
+//! bulk, the 99.5% of source bytes that are not trigger candidates.
 //!
 //! `≪`/`≫` (U+226A/U+226B) are the aozora input encoding for a 底本's
 //! double-angle brackets `《`/`》` (which would otherwise collide with the
 //! ruby delimiters U+300A/U+300B); a renderer displays them back as
-//! `《`/`》`. Being distinct codepoints, they need no look-ahead merge.
+//! `《`/`》`. As distinct codepoints, they are classified without
+//! look-ahead.
 
 /// Classification of a single trigger character.
 ///
@@ -98,30 +99,28 @@ impl TriggerKind {
 ///
 /// Returns `None` when the window is not a recognised trigger.
 ///
-/// ## Why a direct `match`, not a perfect-hash map
+/// ## Classification cost
 ///
-/// This sits in the lexer's innermost loop: the SIMD scanner emits a
-/// candidate position for every leading byte in `{0xE2, 0xE3, 0xEF}`,
-/// and each one is classified here. An earlier version backed this with
-/// a `phf::Map<[u8; 3], _>` on the assumption that a perfect hash is
-/// "branch-free O(1), strictly better than a `match` chain". A
-/// flamegraph of a ruby-dense document disproved that: `phf::Map::get`
-/// hashes the key with `SipHash`-1-3, and a `SipHash` over three bytes
-/// costs far more than a handful of byte comparisons over an 11-entry set;
-/// the hash alone accounted for ≈0.8 % of total render time (≈5 % of
-/// the parser's own time).
+/// This function runs in the lexer's innermost loop: the SIMD scanner
+/// emits a candidate position for every leading byte in
+/// `{0xE2, 0xE3, 0xEF}`, and each one is classified here. In a
+/// flamegraph of a ruby-dense document, `phf::Map::get` over a
+/// `phf::Map<[u8; 3], _>` hashed the key with `SipHash`-1-3, and the
+/// hash accounted for ≈0.8 % of total render time (≈5 % of the
+/// parser's own time); a `SipHash` over three bytes costs more than a
+/// few byte comparisons over the 13-entry set.
 ///
-/// The 13 trigrams carry a trivial discriminator: the leading byte
-/// splits them into `0xE2` (three: ※ ≪ ≫, by middle + trailing byte),
-/// `0xE3` (six, by the trailing byte) and `0xEF` (four, by the middle
-/// and trailing byte); an exhaustive `match` lowers to a small
-/// comparison tree with no hashing at all. The `tests` module pins
-/// this `match` against [`ALL_TRIGGER_TRIGRAMS`], exhaustively over
-/// the candidate leading-byte space, so the two cannot silently drift.
+/// The leading byte splits the 13 trigrams into `0xE2` (three: ※ ≪ ≫,
+/// by middle + trailing byte), `0xE3` (six, by the trailing byte) and
+/// `0xEF` (four, by the middle and trailing byte); an exhaustive
+/// `match` lowers to a small comparison tree with no hashing. The test
+/// `classify_match_and_trigram_array_list_the_same_triggers` checks
+/// this `match` against [`ALL_TRIGGER_TRIGRAMS`] over the whole
+/// candidate leading-byte space.
 ///
-/// Takes the window by value: a 3-byte array fits in a single 64-bit
-/// register, so passing by value is strictly cheaper than the indirect
-/// reference clippy's `trivially_copy_pass_by_ref` lint flags.
+/// Takes the window by value: a 3-byte array fits in one 64-bit
+/// register, and clippy's `trivially_copy_pass_by_ref` lint flags a
+/// reference to it.
 #[inline]
 #[must_use]
 pub fn classify_trigger_bytes(window: [u8; 3]) -> Option<TriggerKind> {
@@ -155,15 +154,15 @@ pub const TRIGGER_LEADING_BYTES: [u8; 3] = [0xE2, 0xE3, 0xEF];
 /// text; used by the structural-bitmap scan strategy.
 pub const TRIGGER_MIDDLE_BYTES: [u8; 4] = [0x80, 0x89, 0xBC, 0xBD];
 
-/// All 11 single-character trigger trigrams as raw UTF-8 byte arrays.
+/// All 13 single-character trigger trigrams as raw UTF-8 byte arrays.
 ///
-/// In PHF-table iteration order. Consumed by the multi-pattern scan
-/// backends (Teddy, multi-pattern DFA) which need the
-/// patterns directly rather than going through `classify_trigger_bytes`.
+/// In [`TriggerKind`] declaration order. Consumed by the multi-pattern
+/// scan backends (Teddy, multi-pattern DFA), which take the patterns
+/// directly instead of calling `classify_trigger_bytes`.
 ///
-/// The accompanying `tests::all_trigger_trigrams_match_phf` test
-/// asserts that every entry round-trips through the PHF, so adding /
-/// removing a trigger keeps this list and the PHF in sync.
+/// The test `tests::classify_match_and_trigram_array_list_the_same_triggers`
+/// fails when a trigger is added to or removed from this list without
+/// the same change to `classify_trigger_bytes`.
 pub const ALL_TRIGGER_TRIGRAMS: [[u8; 3]; 13] = [
     [0xEF, 0xBD, 0x9C], // ｜ Bar
     [0xE3, 0x80, 0x8A], // 《 RubyOpen
@@ -188,8 +187,6 @@ mod tests {
 
     #[test]
     fn single_char_trigger_byte_lens_match_utf8() {
-        // For each single-character variant, look up via PHF and assert
-        // the encoded length is 3.
         for kind in [
             TriggerKind::Bar,
             TriggerKind::RubyOpen,
@@ -250,9 +247,9 @@ mod tests {
     #[test]
     fn trigger_leading_bytes_are_complete_for_known_triggers() {
         // Every recognised trigram starts with one of the listed
-        // leading bytes. If a future trigger character is ever added
-        // outside this set this test will fail and force the SIMD
-        // scanner mask to be updated alongside.
+        // leading bytes. A trigger whose leading byte is outside this
+        // set fails this test; the SIMD scanner mask must then include
+        // that byte.
         for entry_key in &ALL_TRIGGER_TRIGRAMS {
             assert!(
                 TRIGGER_LEADING_BYTES.contains(&entry_key[0]),
@@ -284,11 +281,11 @@ mod tests {
     }
 
     #[test]
-    fn classify_match_and_trigram_array_cannot_drift() {
-        // With the PHF gone, the `classify_trigger_bytes` match arms and
-        // `ALL_TRIGGER_TRIGRAMS` are two hand-maintained copies of the
-        // same 11-key set. This pins them so adding / removing a trigger
-        // in one place without the other fails CI.
+    fn classify_match_and_trigram_array_list_the_same_triggers() {
+        // The `classify_trigger_bytes` match arms and
+        // `ALL_TRIGGER_TRIGRAMS` list the same 13-key set separately.
+        // This test fails when a trigger is added to or removed from one
+        // without the other.
         //
         // Forward: every listed trigram classifies to a *distinct* kind.
         let mut kinds = HashSet::new();
@@ -300,10 +297,11 @@ mod tests {
         assert_eq!(kinds.len(), 13, "expected exactly 13 distinct triggers");
         assert_eq!(ALL_TRIGGER_TRIGRAMS.len(), 13);
 
-        // Reverse: the match accepts nothing outside the array, swept
+        // Reverse: the match accepts nothing outside the array, checked
         // exhaustively over the candidate leading-byte space (the only
-        // bytes the SIMD scanner feeds in, guarded complete by
-        // `trigger_leading_bytes_are_complete_for_known_triggers`).
+        // leading bytes the SIMD scanner passes in;
+        // `trigger_leading_bytes_are_complete_for_known_triggers` checks
+        // that the set is complete).
         for &b0 in &TRIGGER_LEADING_BYTES {
             for b1 in 0u8..=u8::MAX {
                 for b2 in 0u8..=u8::MAX {
@@ -321,8 +319,6 @@ mod tests {
 
     #[test]
     fn trigger_leading_bytes_has_no_redundant_entries() {
-        // Conversely: every byte in the leading set is actually used
-        // by at least one trigger. Catches stale entries.
         for &b in &TRIGGER_LEADING_BYTES {
             let used = ALL_TRIGGER_TRIGRAMS.iter().any(|k| k[0] == b);
             assert!(

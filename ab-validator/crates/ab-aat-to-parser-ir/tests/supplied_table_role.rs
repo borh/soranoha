@@ -31,7 +31,7 @@ fn fact_kinds(ir: &Value) -> Vec<String> {
 }
 
 #[test]
-fn a_table_clause_names_the_role_of_the_scope_its_indentation_measures() {
+fn a_table_clause_states_the_role_of_the_scope_its_indentation_measures() {
     let ir = convert(
         "［＃ここから１字下げ、表組み］\n王朝　年代\n西漢　元始二年\n［＃ここで字下げ終わり］",
     );
@@ -94,7 +94,7 @@ fn a_role_supplied_with_indentation_claims_the_geometry_as_well_as_the_role() {
     assert!(kinds.iter().any(|kind| kind == "table"), "{kinds:?}");
     assert!(kinds.iter().any(|kind| kind == "line-layout"), "{kinds:?}");
 
-    // A role supplied on its own has only the role to claim.
+    // A role supplied alone asserts only the role.
     let bare = convert("［＃ここから表］\n甲　乙\n［＃ここで表終わり］");
     let kinds = fact_kinds(&bare);
     assert!(kinds.iter().any(|kind| kind == "table"), "{kinds:?}");
@@ -128,7 +128,7 @@ fn a_rule_absence_without_a_supplied_table_stays_an_unresolved_clause() {
 }
 
 #[test]
-fn a_standalone_table_opener_keeps_the_axes_it_names_beside_the_role() {
+fn a_standalone_table_opener_keeps_the_axes_it_states_beside_the_role() {
     for (body, expected) in [
         (
             "［＃ここから表罫囲み］\n甲　乙\n［＃ここで表罫囲み終わり］",
@@ -160,42 +160,53 @@ fn a_horizontal_table_keeps_the_direction_the_source_fused_into_the_role_word() 
     assert_eq!(ir["interpretation_problems"], serde_json::json!([]));
 }
 
-#[test]
-fn a_clause_the_table_reading_does_not_cover_stays_retained() {
-    // `プログラム` names what the enclosed lines are about. It is not a role,
-    // an enclosure or a direction, so it stays retained beside the table scope
-    // rather than being folded into one of them.
-    let ir = convert(
-        "［＃ここからプログラム、表罫囲み］\n甲　乙\n［＃ここでプログラム（表罫囲み）終わり］",
-    );
-    assert!(
-        ir["interpretation_problems"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|problem| problem["raw"] == "プログラム"),
-        "{:?}",
-        ir["interpretation_problems"]
-    );
+fn explanation_notes(ir: &serde_json::Value) -> Vec<&str> {
+    ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["type"] == "editor-note" && node["note_kind"] == "explanation")
+        .map(|node| node["text"].as_str().unwrap())
+        .collect()
 }
 
 #[test]
-fn a_table_close_naming_an_enclosure_does_not_end_a_scope_without_one() {
+fn a_clause_the_table_reading_does_not_cover_is_an_explanation() {
+    // `プログラム` states what the enclosed lines are. It is not a role, an
+    // enclosure or a direction, so it stays an explanation beside the table
+    // scope rather than being folded into one of them.
+    let ir = convert(
+        "［＃ここからプログラム、表罫囲み］\n甲　乙\n［＃ここでプログラム（表罫囲み）終わり］",
+    );
+    assert_eq!(ir["layout_blocks"][0]["role"], "table");
+    assert_eq!(explanation_notes(&ir), ["プログラム"]);
+}
+
+#[test]
+fn a_table_close_stating_an_enclosure_does_not_end_a_scope_without_one() {
     let ir = convert("［＃ここから表］\n甲　乙\n［＃ここで表罫囲み終わり］");
     assert_eq!(ir["layout_blocks"], serde_json::json!([]));
     assert!(!ir["interpretation_problems"].as_array().unwrap().is_empty());
 }
 
 #[test]
-fn a_ruled_partition_convention_stays_apparatus() {
-    // `罫仕切り` names a reading convention for the lines that follow: that a
-    // run of `----` bounds one partition. The partitions are not scopes the
-    // marker delimits, and deriving them would mean reading structure out of
-    // literal text the source keeps as text.
+fn a_ruled_partition_is_a_ruled_table_whose_partitions_stay_text() {
+    // `罫仕切り` delimits ruled partitions, and the clause states that a run
+    // of `----` bounds one partition. The `----` lines stay literal text, so
+    // the partitions are not derived as scopes.
     let ir = convert(
         "［＃ここから罫仕切り、----で挾まれた部分が一つの仕切り内］\n----\n甲\n----\n［＃ここで罫仕切り終わり］",
     );
-    assert_eq!(ir["layout_blocks"], serde_json::json!([]));
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["role"], "table");
+    assert_eq!(scope["typography"]["border"], "rule");
+    assert_eq!(
+        explanation_notes(&ir),
+        ["----で挾まれた部分が一つの仕切り内"]
+    );
     let text = serde_json::to_string(&ir["nodes"]).unwrap();
-    assert!(text.contains("罫仕切り"), "the marker is kept: {text}");
+    assert!(
+        text.contains("\"----\\n\""),
+        "the partition lines stay text: {text}"
+    );
 }

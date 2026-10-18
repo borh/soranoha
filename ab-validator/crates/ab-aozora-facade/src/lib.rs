@@ -4,10 +4,9 @@
 
 //! `aozora` — the public meta crate.
 //!
-//! Single front door for parsing Aozora Bunko notation. Downstream
-//! consumers should depend on this crate alone; everything they need
-//! is re-exported through this surface or accessed via [`Document`]
-//! and [`Tree`].
+//! The entry point for parsing Aozora Bunko notation. A downstream
+//! consumer depends on this crate alone: it re-exports the public types,
+//! and [`Document`] and [`Tree`] give access to the parse.
 //!
 //! ```
 //! use ab_aozora_facade::Document;
@@ -15,10 +14,10 @@
 //! let doc = Document::new("｜青空《あおぞら》文庫");
 //! let tree = doc.parse();
 //! let html = tree.to_html();
-//! assert!(html.contains("青空")); // the ruby base survives into the HTML
+//! assert!(html.contains("青空")); // the HTML contains the ruby base
 //! ```
 //!
-//! Tunable parses go through the builder chain:
+//! Parse options are set through the builder:
 //!
 //! ```
 //! use ab_aozora_facade::{Document, DiagnosticPolicy};
@@ -48,9 +47,9 @@
 //! The following README examples also run as doctests.
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
-// Emit "Available on crate feature `…`" badges on docs.rs (and the
-// GitHub-Pages build when RUSTDOCFLAGS carries `--cfg docsrs`). Inert on
-// stable — `docsrs` is unset, so this never trips `feature(doc_cfg)`.
+// On docs.rs, and on the GitHub Pages build when RUSTDOCFLAGS contains
+// `--cfg docsrs`, rustdoc emits "Available on crate feature `…`" badges. On
+// stable `docsrs` is unset, so the attribute does not enable `feature(doc_cfg)`.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use core::ops::Range;
@@ -66,14 +65,14 @@ pub use ab_aozora_spec::{
     PairKind, PairLink, RENDER_SLUGS, RenderSlug, SLUGS, Sentinel, Severity, SlugEntry, SlugFamily,
     SourceOffset, Span, TriggerKind, canonicalise_slug, codes, roman_slug,
 };
-/// Owned-AST node types editor surfaces match against (LSP inlay hints, hover,
-/// completion, code actions, semantic tokens). Re-exported so external
-/// consumers don't have to depend on `aozora-syntax` directly — `aozora` is the
-/// single editor-facing front door.
+/// Owned-AST node types that editor features match on (LSP inlay hints, hover,
+/// completion, code actions, semantic tokens). Re-exported so that an external
+/// consumer depends on `aozora` alone, not on `aozora-syntax`.
 pub use ab_aozora_syntax::{
-    BlockStyles, BoutenKind, BoutenPosition, CaptionScope, ColumnBlock, ColumnCount, DirectiveKind,
-    EnclosureKind, FontShift, Format, ForwardAttr, ForwardOrigin, HeadingKind, HeadingStyle,
-    IndentBlock, IndentLayout, Kumi, LineFormat, LineWidth, NodeKind, RegionClose, RegionFormat,
+    BlockStyles, BoutenKind, BoutenPosition, CaptionScope, ColumnBlock, ColumnCount,
+    DecorationPosition, DirectiveKind, EnclosureKind, FollowingPlacement, FontShift, Format,
+    ForwardAttr, ForwardOrigin, HeadingKind, HeadingStyle, IndentBlock, IndentLayout, Kumi,
+    LineFormat, LineWidth, NodeKind, QualifiedBreak, QualifiedBreakKind, RegionClose, RegionFormat,
     RubySide, SectionKind,
     ast::{Content, Node, NodeStore},
 };
@@ -97,23 +96,22 @@ pub use incremental::{DiagBaseRef, DiagSplice, PieceSeq, SanitizedSrc};
 
 /// Incrementally reparses diagnostics without rebuilding the full tree.
 ///
-/// This is the LSP's per-keystroke hot path. It splices the maintained
+/// The LSP calls this on each keystroke. It splices the maintained
 /// [`PieceSeq`] (the next edit's
 /// region-find base, from which the LSP flattens this edit's diagnostics) from
-/// the store-free [`DiagBaseRef`] of the prior parse, **without building an
-/// [`LexOutput`]** — no normalized/sanitized string rebuild, no store
+/// the store-free [`DiagBaseRef`] of the prior parse, without building an
+/// [`LexOutput`]: no normalized/sanitized string rebuild, no store
 /// clone/graft, no registry or container-pairs rebuild, and no whole-table
 /// re-materialization. Cost is `O(region + #pieces)`: the maintained sequence is
 /// spliced (prefix/suffix pieces shared by `Arc`), not rebuilt, versus a full
 /// parse's `O(doc)`.
 ///
 /// Returns [`DiagSplice`], or `None` for any edit whose locality it cannot prove
-/// from the cached tables (the caller then full-parses, trivially correct); that
-/// the edit truly changes only bytes inside `edit_old` is a caller precondition,
-/// checked in debug rather than gated at runtime. Its diagnostics are pinned
-/// byte-identical to a full parse by the `corpus_incremental_merge` differential
-/// gate. The full tree is materialised lazily, only when a structural request
-/// (rename) needs it.
+/// from the cached tables (the caller then runs a full parse). That the edit
+/// changes only bytes inside `edit_old` is a caller precondition, checked only
+/// in debug builds. The `corpus_incremental_merge` differential test checks that
+/// the returned diagnostics are byte-identical to a full parse's. The full tree
+/// is built only when a structural request (rename) requires it.
 ///
 /// This is exposed for the in-workspace LSP consumer only; its shape may change
 /// without a major version bump until v0.5.0.
@@ -134,17 +132,17 @@ pub fn reparse_incremental_diagnostics_only(
 ///
 /// This variant of [`reparse_incremental_diagnostics_only`] accepts any
 /// [`SanitizedSrc`] byte source `S`
-/// rather than the `&str`-backed [`DiagBaseRef`]. This is the entry the
-/// in-workspace LSP routes a `ropey`-backed sanitized buffer through, so it can
-/// splice the rope incrementally instead of flattening it to a `String` per
-/// edit; the `&str` [`reparse_incremental_diagnostics_only`] is retained for the
-/// `corpus_incremental_merge` differential gate and the existing callers.
+/// rather than the `&str`-backed [`DiagBaseRef`]. The in-workspace LSP passes
+/// its `ropey`-backed sanitized buffer through this entry, which splices the
+/// rope without flattening it to a `String` on each edit; the
+/// `corpus_incremental_merge` differential test and the other callers use the
+/// `&str` [`reparse_incremental_diagnostics_only`].
 ///
 /// Same contract and fallbacks as [`reparse_incremental_diagnostics_only`]:
 /// returns [`DiagSplice`], or `None` for any edit whose locality it cannot prove
-/// from the cached tables (the caller then full-parses, trivially correct); that
-/// the edit truly changes only bytes inside `edit_old` is a caller precondition,
-/// checked in debug rather than gated at runtime. Like that function it is
+/// from the cached tables (the caller then runs a full parse). That the edit
+/// changes only bytes inside `edit_old` is a caller precondition, checked only
+/// in debug builds. Like that function it is
 /// exposed for the in-workspace LSP consumer only; its shape may change without a
 /// major version bump until v0.5.0.
 ///
@@ -161,19 +159,17 @@ pub fn reparse_incremental_diagnostics_only_in<S: SanitizedSrc>(
 
 /// Eagerly initialise the parser's process-global lazy tables.
 ///
-/// The *first* [`Document::parse`] then does not pay the one-time build
-/// cost on its critical path.
+/// The first [`Document::parse`] then does not include the one-time build
+/// cost.
 ///
-/// Parsing is lazy by default: a consumer that never parses — or parses
-/// no annotations — pays nothing. `prewarm` is **opt-in**. Call it once,
-/// early, from a latency-sensitive front end (e.g. a WASM editor warming
-/// the parser before the first keystroke). It is idempotent and
-/// thread-safe; redundant calls are effectively free.
+/// Without this call the tables are built on first use, so a consumer that
+/// never parses, or parses no annotations, does not build them. Call it once,
+/// early, from a latency-sensitive front end (e.g. a WASM editor that
+/// initialises the parser before the first keystroke). It is idempotent and
+/// thread-safe; a repeated call does not rebuild the tables.
 ///
 /// It warms the SIMD trigger-scan backend selection (tokenize stage) and
-/// the annotation-classifier Aho-Corasick DFA (classify stage) — the latter is the
-/// bulk of the cost (~150 microseconds; the `aozora-pipeline` `boot`
-/// bench measures it).
+/// the annotation-classifier Aho-Corasick DFA (classify stage).
 ///
 /// ```
 /// ab_aozora_facade::prewarm();
@@ -186,12 +182,11 @@ pub fn prewarm() {
 
 /// Re-export of [`ab_aozora_pipeline`] under a stable name.
 ///
-/// Editor integrations that want per-phase access
+/// Editor integrations that require per-phase access
 /// (`pipeline::lexer::*` for the phase functions, `pipeline::Pipeline`
-/// for the type-state machine) reach through this module so the
-/// wider workspace can keep `aozora` as the single front door. The
-/// `aozora-pipeline` crate is published in its own right, but is
-/// normally reached through this re-export.
+/// for the type-state machine) use this module, so that the workspace
+/// depends on `aozora` alone. The `aozora-pipeline` crate is published
+/// separately but is normally used through this re-export.
 pub mod pipeline {
     pub use ab_aozora_pipeline::*;
 }
@@ -199,10 +194,10 @@ pub mod pipeline {
 /// Re-export of [`ab_aozora_syntax`] — owned AST node types, the
 /// `NodeStore`, and the string interner.
 ///
-/// External callers normally reach through [`Document`] /
-/// [`Tree`] for the parsed-AST surface; this module exposes
-/// the underlying types when they need to construct nodes directly
-/// (custom renderers, owned-tree transforms).
+/// External callers normally use [`Document`] / [`Tree`] for the
+/// parsed AST; this module exposes the underlying types to callers
+/// that construct nodes directly (custom renderers, owned-tree
+/// transforms).
 pub mod syntax {
     pub use ab_aozora_syntax::*;
 }
@@ -221,8 +216,7 @@ pub mod render {
 /// resolution.
 ///
 /// The sanitize stage of the lex pipeline runs encoding detection
-/// first; callers that want to drive encoding without parsing can reach
-/// through this module.
+/// first; a caller that decodes without parsing uses this module.
 pub mod encoding {
     pub use ab_aozora_encoding::*;
 }
@@ -230,15 +224,13 @@ pub mod encoding {
 /// Aozora-shaped `proptest` strategies.
 ///
 /// Downstream renderer / visitor authors writing their own property
-/// tests reach through this module instead of pulling
-/// `ab-notation-strategies` directly. Enabled by the `proptest` Cargo feature on the `aozora`
+/// tests use this module instead of depending on
+/// `ab-notation-strategies`. Enabled by the `proptest` Cargo feature on the `aozora`
 /// crate; both `ab_aozora_facade::proptest::*` and the `proptest` crate
 /// itself are then in scope for the consumer.
 ///
-/// The generators here cover the same shapes the workspace's
-/// `tests/property_*` suites rely on, so any regression noticed
-/// inside the parser also surfaces inside the consumer's test
-/// harness.
+/// The generators produce the same input shapes as the workspace's
+/// `tests/property_*` suites.
 #[cfg(feature = "proptest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "proptest")))]
 pub mod proptest {
@@ -253,7 +245,6 @@ mod tests {
     fn document_parse_returns_a_tree() {
         let doc = Document::new("hello, world");
         let tree = doc.parse();
-        // Plain text round-trips intact.
         assert_eq!(tree.to_source(), "hello, world");
     }
 
@@ -261,9 +252,8 @@ mod tests {
     fn document_parse_handles_ruby() {
         let doc = Document::new("｜青梅《おうめ》");
         let tree = doc.parse();
-        // Canonical right-side ruby is the bare form — the redundant `｜`
-        // (all-kanji base at line start) is dropped;
-        // `sanitized` preserves the author's `｜`.
+        // The serializer writes `｜` before every right-side ruby base that
+        // contains no detached gaiji; `sanitized` keeps the source bytes.
         assert_eq!(tree.to_source(), "｜青梅《おうめ》");
         assert_eq!(tree.sanitized(), "｜青梅《おうめ》");
     }

@@ -1,4 +1,4 @@
-//! Shape assertions own only their exact source target and supplied statement.
+//! Shape assertions cover only their exact source target and supplied statement.
 use std::path::Path;
 
 use ab_aat_to_parser_ir::{ConversionOptions, ConversionRequest, MappingDocument, SchemaSet};

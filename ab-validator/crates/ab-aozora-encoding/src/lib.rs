@@ -4,10 +4,9 @@
 
 //! Encoding utilities for Aozora Bunko source material.
 //!
-//! The `aozora` parser itself is strictly UTF-8. Anything that decodes `Shift_JIS` or
-//! resolves gaiji (外字) mappings lives here, so the parser stays free of encoding
-//! concerns and the same logic is available to CLI, editor integrations, or
-//! downstream tools.
+//! The `aozora` parser accepts UTF-8 only. This crate holds `Shift_JIS` decoding
+//! and gaiji (外字) resolution, so the parser has no encoding dependency and the
+//! CLI, editor integrations and downstream tools call the same functions.
 
 #![forbid(unsafe_code)]
 
@@ -18,7 +17,7 @@ use encoding_rs::{DecoderResult, SHIFT_JIS};
 use miette::Diagnostic;
 use thiserror::Error;
 
-/// Errors surfaced by the decode pipeline.
+/// Errors returned by the decode functions.
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum DecodeError {
@@ -40,9 +39,9 @@ pub enum DecodeError {
 /// Returns [`DecodeError::ShiftJisInvalid`] if `encoding_rs` reports a malformed byte
 /// sequence. Decoding does not perform lossy replacement.
 ///
-/// Allocates a fresh `String` per call. For workloads that decode many
-/// documents in succession, prefer [`decode_sjis_into`] with a reusable
-/// buffer to avoid the per-call allocation.
+/// Allocates a new `String` per call. [`decode_sjis_into`] with a reused
+/// buffer avoids the per-call allocation when many documents are decoded in
+/// succession.
 pub fn decode_sjis(input: &[u8]) -> Result<String, DecodeError> {
     let mut out = String::new();
     decode_sjis_into(input, &mut out)?;
@@ -51,27 +50,24 @@ pub fn decode_sjis(input: &[u8]) -> Result<String, DecodeError> {
 
 /// Decode a `Shift_JIS` byte slice into the caller-owned `dst` buffer.
 ///
-/// Pre-sizes `dst` exactly via
-/// `encoding_rs::Decoder::max_utf8_buffer_length_without_replacement`
-/// so the decode inner loop does no growth-realloc. The buffer is
-/// **not** cleared first — callers that want a fresh decode should
-/// `dst.clear()` before calling. This is intentional so the same
-/// buffer can be reused across many decodes in a thread-local /
-/// per-worker pool without paying the allocator per iteration.
+/// Reserves capacity in `dst` from
+/// `encoding_rs::Decoder::max_utf8_buffer_length_without_replacement`,
+/// so the decode loop does not reallocate. The function appends to `dst`
+/// without clearing it; a caller that needs only the new decode calls
+/// `dst.clear()` first. A thread-local or per-worker pool can therefore
+/// reuse one buffer across many decodes without an allocation per call.
 ///
-/// Strict — same error contract as [`decode_sjis`]. Bypasses
-/// `encoding_rs`'s public `decode` shape, which always allocates a
-/// worst-case-sized `String` internally and `Cow::into_owned`s the
-/// result; this entry point goes straight through the
-/// `Decoder::decode_to_string_without_replacement` API the bench
-/// pipeline needs.
+/// Has the same error contract as [`decode_sjis`]. Calls
+/// `Decoder::decode_to_string_without_replacement` directly rather than
+/// `encoding_rs`'s public `decode`, which allocates a worst-case-sized
+/// `String` internally and then calls `Cow::into_owned` on the result.
 ///
 /// # Errors
 ///
 /// Returns [`DecodeError::ShiftJisInvalid`] on malformed input or if
-/// the encoder reports overflow (which `max_utf8_buffer_length_…`
-/// should make unreachable, but is still surfaced rather than
-/// silently truncated).
+/// the decoder reports output overflow. The reservation from
+/// `max_utf8_buffer_length_…` makes overflow unreachable; the function
+/// returns the error instead of truncating the output.
 pub fn decode_sjis_into(input: &[u8], dst: &mut String) -> Result<(), DecodeError> {
     let mut decoder = SHIFT_JIS.new_decoder_without_bom_handling();
     let needed = decoder
@@ -89,21 +85,16 @@ pub fn decode_sjis_into(input: &[u8], dst: &mut String) -> Result<(), DecodeErro
 
 /// Decode Aozora source bytes to UTF-8, detecting the encoding.
 ///
-/// Aozora material reaches this crate in two shapes: the canonical
-/// `Shift_JIS` archive files, and already-decoded UTF-8 mirrors (e.g. a
-/// corpus that has been pre-converted). Forcing every caller to commit
-/// to one encoding up front is the wrong default — it is why corpus
-/// tooling historically hard-coded [`decode_sjis`] and failed on
-/// UTF-8 input. This entry point removes that concern: hand it bytes,
-/// get back UTF-8.
+/// Aozora material arrives either as the canonical `Shift_JIS` archive
+/// files or as UTF-8 mirrors (for example, a pre-converted corpus). The
+/// caller passes bytes in either encoding and receives UTF-8.
 ///
-/// - Valid UTF-8 is returned **borrowed**, zero-copy.
+/// - Valid UTF-8 is returned borrowed, without copying.
 /// - Otherwise the bytes are decoded as `Shift_JIS` (owned).
 ///
-/// UTF-8 is tried first. Valid UTF-8 is an unambiguous signal
-/// (`Shift_JIS` Japanese text rarely forms valid UTF-8), whereas a UTF-8
-/// document can contain byte sequences that happen to decode as valid
-/// `Shift_JIS`.
+/// UTF-8 is tried first. `Shift_JIS` Japanese text rarely forms valid
+/// UTF-8, whereas a UTF-8 document can contain byte sequences that also
+/// decode as valid `Shift_JIS`.
 ///
 /// BOM stripping, CRLF folding, and NFC normalization belong to parser
 /// sanitization and are not applied here.
@@ -122,10 +113,11 @@ pub fn decode_auto(input: &[u8]) -> Result<Cow<'_, str>, DecodeError> {
 /// Encoding-agnostic counterpart to [`decode_sjis_into`]: append the
 /// decoded UTF-8 to `dst`, detecting the source encoding.
 ///
-/// Same sniffing rule as [`decode_auto`] (valid UTF-8 wins, else
-/// `Shift_JIS`), but writes into a caller-owned buffer so corpus
-/// loaders can reuse one allocation across many documents. The buffer
-/// is **not** cleared first — see [`decode_sjis_into`].
+/// Applies the detection rule of [`decode_auto`] (valid UTF-8 is
+/// appended as is, otherwise the bytes are decoded as `Shift_JIS`), but
+/// writes into a caller-owned buffer so corpus loaders can reuse one
+/// allocation across many documents. The function does not clear the
+/// buffer; see [`decode_sjis_into`].
 ///
 /// # Errors
 ///
@@ -141,10 +133,9 @@ pub fn decode_auto_into(input: &[u8], dst: &mut String) -> Result<(), DecodeErro
 
 /// Whether the byte slice carries a UTF-8 BOM (`EF BB BF`).
 ///
-/// Used by the CLI to strip the BOM before handing input to the parser.
-/// BOM presence is the one signal even [`decode_auto`] leaves to the
-/// caller: it is valid UTF-8, so it round-trips through `decode_auto`
-/// untouched and is stripped by the parser's sanitiser.
+/// The CLI calls this to strip the BOM before passing input to the parser.
+/// [`decode_auto`] does not remove a BOM: the BOM is valid UTF-8, so
+/// `decode_auto` returns it unchanged, and the parser's sanitiser strips it.
 #[must_use]
 pub const fn has_utf8_bom(input: &[u8]) -> bool {
     matches!(input, [0xEF, 0xBB, 0xBF, ..])
@@ -153,17 +144,16 @@ pub const fn has_utf8_bom(input: &[u8]) -> bool {
 pub mod gaiji;
 
 pub mod suijun;
-/// Reverse JIS 水準 classifier, re-exported flat so callers
-/// reach it as `ab_aozora_facade::encoding::jis_level` / `Suijun` (the umbrella
-/// wildcard-re-exports this crate).
+/// Reverse JIS 水準 classifier, re-exported at the crate root so callers
+/// reach it as `ab_aozora_facade::encoding::jis_level` / `Suijun` (the
+/// facade crate re-exports this crate with a wildcard).
 #[doc(inline)]
 pub use self::suijun::{Suijun, is_platform_dependent, jis_level, level_table_sizes};
 
-/// PHF tables (single, combo, description) emitted by `build.rs`
-/// at compile time via `phf_codegen`. Lives in `OUT_DIR` so it's
-/// regenerated automatically when any input TSV changes; the
-/// committed source tree carries only the data, not the perfect-
-/// hash output. See `build.rs` for the generator.
+/// PHF tables (single, combo, description) that `build.rs` generates at
+/// compile time with `phf_codegen`. The generated file is written to
+/// `OUT_DIR` and regenerated when an input TSV changes; the source tree
+/// contains only the TSV data, not the perfect-hash output.
 #[allow(
     clippy::unreadable_literal,
     reason = "phf_codegen emits 64-bit perfect-hash keys without separators; \
@@ -176,10 +166,6 @@ mod jisx0213_table {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ------------------------------------------------------------------
-    // SJIS happy-path decoding
-    // ------------------------------------------------------------------
 
     #[test]
     fn decodes_plain_ascii_sjis() {
@@ -200,9 +186,9 @@ mod tests {
 
     #[test]
     fn decodes_ascii_control_characters_verbatim() {
-        // LF / CR / tab are 1:1 identity in SJIS since the lead byte
-        // range avoids ASCII. Exercising these locks in the pipeline
-        // doesn't mangle them before the sanitize pass.
+        // LF, CR and tab decode to themselves in SJIS because the lead
+        // byte range excludes ASCII; the decoder must pass them unchanged
+        // to the sanitize pass.
         assert_eq!(decode_sjis(b"a\nb\rc\td").unwrap(), "a\nb\rc\td");
     }
 
@@ -216,8 +202,8 @@ mod tests {
 
     #[test]
     fn decodes_mixed_ascii_and_kanji() {
-        // Common shape in Aozora corpora: explanatory text in ASCII
-        // mixed with Japanese quotations.
+        // Aozora corpora commonly mix ASCII explanatory text with
+        // Japanese quotations.
         let mut bytes = Vec::from(*b"about ");
         bytes.extend_from_slice(&[0x93, 0xFA, 0x96, 0x7B]); // 日本
         bytes.extend_from_slice(b" !");
@@ -239,14 +225,10 @@ mod tests {
 
     #[test]
     fn decodes_fullwidth_digits() {
-        // １２３ — fullwidth digits are common in Aozora ruby delimiters.
+        // ０１２: fullwidth digits are common in Aozora ruby delimiters.
         let bytes = &[0x82, 0x4F, 0x82, 0x50, 0x82, 0x51];
         assert_eq!(decode_sjis(bytes).unwrap(), "０１２");
     }
-
-    // ------------------------------------------------------------------
-    // decode_auto — encoding-agnostic entry point
-    // ------------------------------------------------------------------
 
     #[test]
     fn decode_auto_passes_utf8_through_borrowed() {
@@ -258,7 +240,7 @@ mod tests {
 
     #[test]
     fn decode_auto_falls_back_to_sjis_owned() {
-        // 「青空文庫」 in Shift_JIS — not valid UTF-8, so it decodes.
+        // 「青空文庫」 in Shift_JIS is not valid UTF-8, so it is decoded as Shift_JIS.
         let bytes = &[0x90, 0xC2, 0x8B, 0xF3, 0x95, 0xB6, 0x8C, 0xC9];
         let out = decode_auto(bytes).unwrap();
         assert!(
@@ -277,10 +259,10 @@ mod tests {
     }
 
     #[test]
-    fn decode_auto_prefers_utf8_over_ambiguous_sjis() {
-        // UTF-8 「日本語」 = E3 81 A5 ... whose leading bytes are *also*
-        // valid Shift_JIS lead bytes. Sniffing SJIS first would mojibake
-        // this; UTF-8-first returns the correct text, borrowed.
+    fn decode_auto_tries_utf8_before_ambiguous_sjis() {
+        // UTF-8 「日本語」 = E3 81 A5 ..., whose leading bytes are also
+        // valid Shift_JIS lead bytes. Decoding as SJIS first would produce
+        // mojibake; trying UTF-8 first returns the correct text, borrowed.
         let bytes = "日本語".as_bytes();
         let out = decode_auto(bytes).unwrap();
         assert!(matches!(out, Cow::Borrowed(_)));
@@ -311,17 +293,12 @@ mod tests {
         assert_eq!(buf, "青空文庫");
     }
 
-    // ------------------------------------------------------------------
-    // decode_sjis_into — buffer-reuse path equivalence
-    // ------------------------------------------------------------------
-    //
-    // Every test below the section header verifies the contract that
-    // `decode_sjis(b) == decode_sjis_into(b, &mut buf)` byte-for-byte
-    // (and for the strict-error case, returns the same `Err`).
-    // `decode_sjis_into` is the buffer-reuse entry point used by the
-    // bench `parallel_size_bands` thread-local pool; the production
-    // `decode_sjis` is a thin wrapper that calls `decode_sjis_into`
-    // with a fresh `String`.
+    // The `into_equivalent_on_*` tests check that
+    // `decode_sjis(b) == decode_sjis_into(b, &mut buf)` byte-for-byte,
+    // and that both return `Err` on invalid input. `decode_sjis_into` is
+    // the buffer-reuse entry point used by the bench `parallel_size_bands`
+    // thread-local pool; `decode_sjis` calls `decode_sjis_into` with a new
+    // `String`.
 
     fn check_equivalent(input: &[u8]) {
         let owned = decode_sjis(input);
@@ -329,7 +306,7 @@ mod tests {
         let into_result = decode_sjis_into(input, &mut buf);
         match (owned, into_result) {
             (Ok(s), Ok(())) => assert_eq!(s, buf, "decode_sjis output != decode_sjis_into output"),
-            (Err(_), Err(_)) => {} // both fail — identical strict error contract
+            (Err(_), Err(_)) => {} // both reject the input
             (Ok(s), Err(e)) => panic!("owned succeeded ({s:?}) but _into failed ({e:?})"),
             (Err(e), Ok(())) => panic!("owned failed ({e:?}) but _into succeeded ({buf:?})"),
         }
@@ -367,11 +344,9 @@ mod tests {
 
     #[test]
     fn into_reuses_buffer_capacity_across_calls() {
-        // The buffer-reuse contract: a `dst` String that already has
-        // enough capacity should not allocate again on the second
-        // decode. We verify this by asserting capacity is preserved
-        // across `clear() + decode_sjis_into` cycles. (The invariant
-        // tested is that capacity does not shrink.)
+        // A `dst` String with sufficient capacity is not reallocated on a
+        // second decode. The assertions check that capacity does not
+        // shrink across `clear() + decode_sjis_into` cycles.
         let mut buf = String::with_capacity(4096);
         let cap_before = buf.capacity();
         decode_sjis_into(b"hello", &mut buf).unwrap();
@@ -390,18 +365,13 @@ mod tests {
 
     #[test]
     fn into_appends_when_dst_not_cleared() {
-        // Documented contract: callers must `clear()` before each
-        // decode if they want a fresh result. This test pins that
-        // shape so future "convenience clear inside the function"
-        // changes break loudly.
+        // `decode_sjis_into` appends to `dst`; a caller that needs only
+        // the new decode calls `clear()` first. A change that clears
+        // inside the function fails this test.
         let mut buf = String::from("PRE:");
         decode_sjis_into(b"hi", &mut buf).unwrap();
         assert_eq!(buf, "PRE:hi");
     }
-
-    // ------------------------------------------------------------------
-    // SJIS error surfaces
-    // ------------------------------------------------------------------
 
     #[test]
     fn rejects_invalid_lead_byte() {
@@ -434,8 +404,7 @@ mod tests {
 
     #[test]
     fn error_message_is_japanese_and_carries_miette_code() {
-        // The project-wide rule is that user-facing errors are in
-        // Japanese. Pin that and the miette diagnostic code both.
+        // User-facing errors in this project are in Japanese.
         let err = decode_sjis(&[0xFF, 0xFF]).unwrap_err();
         let message = format!("{err}");
         assert!(
@@ -443,10 +412,6 @@ mod tests {
             "error message must contain Shift_JIS for locatability, got {message:?}",
         );
     }
-
-    // ------------------------------------------------------------------
-    // UTF-8 BOM detection
-    // ------------------------------------------------------------------
 
     #[test]
     fn detects_utf8_bom() {
@@ -470,25 +435,20 @@ mod tests {
 
     #[test]
     fn detects_utf8_bom_on_exactly_three_bytes() {
-        // Boundary: the slice is exactly `EF BB BF` with no trailing
-        // content. `matches!` pattern with `..` rest binding accepts
-        // empty tails.
+        // The slice is exactly `EF BB BF` with no trailing content; the
+        // `..` rest pattern in `matches!` accepts an empty tail.
         assert!(has_utf8_bom(&[0xEF, 0xBB, 0xBF]));
     }
 
     #[test]
     fn bom_detection_rejects_near_misses() {
-        // Off-by-one patterns that are NOT the UTF-8 BOM.
+        // Byte sequences that differ from the UTF-8 BOM in one position.
         assert!(!has_utf8_bom(&[0xEF, 0xBB, 0xBE])); // last byte wrong
         assert!(!has_utf8_bom(&[0xEE, 0xBB, 0xBF])); // first byte wrong
         assert!(!has_utf8_bom(&[0xEF, 0xBC, 0xBF])); // middle byte wrong
-        assert!(!has_utf8_bom(&[0xFE, 0xFF])); // UTF-16 BE BOM — not ours
-        assert!(!has_utf8_bom(&[0xFF, 0xFE])); // UTF-16 LE BOM — not ours
+        assert!(!has_utf8_bom(&[0xFE, 0xFF])); // UTF-16 BE BOM
+        assert!(!has_utf8_bom(&[0xFF, 0xFE])); // UTF-16 LE BOM
     }
-
-    // ------------------------------------------------------------------
-    // Gaiji resolution (via primitive `gaiji::lookup`)
-    // ------------------------------------------------------------------
 
     #[test]
     fn gaiji_lookup_echoes_existing_ucs_when_set() {

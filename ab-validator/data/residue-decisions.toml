@@ -1,0 +1,2244 @@
+decisions_version = 1
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」］"
+locators = [
+  { work_id = "000291_24370", indexed_path = "cards/000291/files/24370_txt_13777.zip::otosan.txt", byte_start = 107319, raw = "［＃「です。底本では「です」］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000291/files/24370_txt_13777.zip::otosan.txt:783"]
+reviewer = "Bor Hodošček"
+reviewed_at = "2026-09-24"
+notes = "The first quotation lacks its closing 」 and the relation particle; 「です。」は底本では「です」 is the likely intent, but no single repair yields it."
+
+[[decision]]
+row = "accent.dotted_letter"
+form = "［＃hは下ドット付き］"
+locators = [
+  { work_id = "001096_43672", indexed_path = "cards/001096/files/43672_ruby_29724.zip::kon'inno_baishaku.txt", byte_start = 5670, raw = "［＃hは下ドット付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001096/files/43672_ruby_29724.zip::kon'inno_baishaku.txt:31", "cards/001096/files/43672_30447.html:26"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note follows ba_ndhava_h, which contains two h; the selector does not distinguish them. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃hは下ドット付き］"
+locators = [
+  { work_id = "001096_43672", indexed_path = "cards/001096/files/43672_ruby_29724.zip::kon'inno_baishaku.txt", byte_start = 5670, raw = "［＃hは下ドット付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001096/files/43672_ruby_29724.zip::kon'inno_baishaku.txt:31", "cards/001096/files/43672_30447.html:26"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note follows ba_ndhava_h, which contains two h; the selector does not distinguish them."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃「○○」「○○」「○○」の「○○」はアクサン（´）付き、「○○」はローマ数字のN］"
+locators = [
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 131168, raw = "［＃「Semi-」「Memo-」「Dele-」の「e」はアクサン（´）付き、「IV」はローマ数字の４］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000301/files/1872_ruby.zip::housouyawa.txt:521", "cards/000301/files/1872.html:512"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "Dele- contains two e, and the note quotes one; the note does not state whether one or both take the accent."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃N文字目のοは鋭アクセント付き］"
+locators = [
+  { work_id = "001099_46996", indexed_path = "cards/001099/files/46996_ruby_39570.zip::ilias03ilias.txt", byte_start = 908161, raw = "［＃１文字目のοは鋭アクセント付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001099/files/46996_ruby_39570.zip::ilias03ilias.txt:14546", "cards/001099/files/46996_40612.html:13618"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The first letter of Μεροπο is Μ, not ο, so the position does not select the ο that the note quotes."
+
+[[decision]]
+row = "heading.dogyo"
+form = "［＃「○○」は同行小見出し］"
+locators = [
+  { work_id = "001783_56524", indexed_path = "cards/001783/files/56524_ruby_67544.zip::girisha_oyobi_roma_igakuno_gaikan.txt", byte_start = 14740, raw = "［＃「ギリシヤの医師たち」は同行小見出し］" },
+  { work_id = "001783_56524", indexed_path = "cards/001783/files/56524_ruby_67544.zip::girisha_oyobi_roma_igakuno_gaikan.txt", byte_start = 230274, raw = "［＃「キリスト教は愛他主義の第一要員」は同行小見出し］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001783/files/56524_ruby_67544.zip::girisha_oyobi_roma_igakuno_gaikan.txt:70", "cards/001783/files/56524_ruby_67544.zip::girisha_oyobi_roma_igakuno_gaikan.txt:457", "cards/001783/files/56524_67545.html:71", "cards/001783/files/56524_67545.html:456"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quoted target differs from the preceding body text (ギリシヤ against ギリシャ, 要員 against 要因), and the published XHTML prints both notes unapplied."
+
+[[decision]]
+row = "indentation.burasage"
+form = "［＃ここからN字下げ、折り返してN字下げ］"
+locators = [
+  { work_id = "000311_15976", indexed_path = "cards/000311/files/15976_txt_28310.zip::gendai_hyaku_fujinroku.txt", byte_start = 469, raw = "［＃ここから１字下げ、折り返して３字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/15976_txt_28310.zip::gendai_hyaku_fujinroku.txt:12"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The opener has no closer before the colophon, so the block has no source end."
+
+[[decision]]
+row = "indentation.burasage"
+form = "［＃ここから改行天付き、折り返してN字下げ］"
+locators = [
+  { work_id = "000311_4198", indexed_path = "cards/000311/files/4198_txt_14679.zip::4198nobuko_sosaku_memo1.txt", byte_start = 1522, raw = "［＃ここから改行天付き、折り返して２字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/4198_txt_14679.zip::4198nobuko_sosaku_memo1.txt:38"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The opener has no closer before the colophon, so the block has no source end."
+
+[[decision]]
+row = "indentation.burasage"
+form = "［＃台詞はすべて、折り返しN行目から、天よりN字下げ］"
+reason = "ambiguous-target"
+evidence = ["cards/000827/files/3406_ruby.zip::migotona_onna.txt:16", "cards/000827/files/3411_ruby.zip::hanabanashiki_ichizoku.txt:17"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The instruction selects every line of dialogue, and the source does not mark which lines are dialogue."
+
+[[decision]]
+row = "indentation.burasage"
+form = "［＃本文の台詞部分はN行目から、その台詞の最後まで天よりN字下げ。］"
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/2023_ruby.zip::saru.txt:17", "cards/000311/files/2024_ruby_5904.zip::hinotsuitakakato.txt:17"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The instruction selects the dialogue of the text, and the source does not mark which lines are dialogue."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここで字下げ終わり］"
+locators = [
+  { work_id = "000083_1051", indexed_path = "cards/000083/files/1051_ruby_4508.zip::gimin_jinbee.txt", byte_start = 44984, raw = "［＃ここで字下げ終わり］" },
+  { work_id = "000106_2415", indexed_path = "cards/000106/files/2415_ruby.zip::omoide.txt", byte_start = 194433, raw = "［＃ここで字下げ終わり］" },
+  { work_id = "001185_45210", indexed_path = "cards/001185/files/45210_ruby_23043.zip::junsui_keizaigaku_yoron.txt", byte_start = 305289, raw = "［＃ここで字下げ終わり］" },
+  { work_id = "001185_45210", indexed_path = "cards/001185/files/45210_ruby_23043.zip::junsui_keizaigaku_yoron.txt", byte_start = 547924, raw = "［＃ここで字下げ終わり］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000083/files/1051_ruby_4508.zip::gimin_jinbee.txt:438", "cards/000083/files/1051_14603.html:638", "cards/000106/files/2415_ruby.zip::omoide.txt:3794", "cards/000106/files/2415_ruby.zip::omoide.txt:3797", "cards/001185/files/45210_ruby_23043.zip::junsui_keizaigaku_yoron.txt:902", "cards/001185/files/45210_ruby_23043.zip::junsui_keizaigaku_yoron.txt:1829"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "Each closer follows a closed block and has no opener of its own. The omoide.txt opener begins with a half-width [, so it is not a notation; the junsui_keizaigaku_yoron.txt formulas lack the opener their neighbours have."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここで字下げ終わり］"
+locators = [
+  { work_id = "000096_2117", indexed_path = "cards/000096/files/2117_ruby.zip::nijuushinzou.txt", byte_start = 6278, raw = "［＃ここで字下げ終わり］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000096/files/2117_ruby.zip::nijuushinzou.txt:33"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The unclosed block opener ［＃２回り大きな文字］ at line 29 lies between the indent opener and this closer, so the two scopes cross."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ］"
+locators = [
+  { work_id = "000311_2018", indexed_path = "cards/000311/files/2018_ruby_5907.zip::yoi.txt", byte_start = 28042, raw = "［＃ここから４字下げ］" },
+  { work_id = "000311_2024", indexed_path = "cards/000311/files/2024_ruby_5904.zip::hinotsuitakakato.txt", byte_start = 53304, raw = "［＃ここから４字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/2018_ruby_5907.zip::yoi.txt:215", "cards/000311/files/2024_ruby_5904.zip::hinotsuitakakato.txt:389"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer before the end of the play, so the block has no source end."
+
+[[decision]]
+row = "indentation.basic"
+form = "［＃ここからN字下げ］"
+locators = [
+  { work_id = "000311_2018", indexed_path = "cards/000311/files/2018_ruby_5907.zip::yoi.txt", byte_start = 28042, raw = "［＃ここから４字下げ］" },
+  { work_id = "000311_2024", indexed_path = "cards/000311/files/2024_ruby_5904.zip::hinotsuitakakato.txt", byte_start = 53304, raw = "［＃ここから４字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/2018_ruby_5907.zip::yoi.txt:215", "cards/000311/files/2024_ruby_5904.zip::hinotsuitakakato.txt:389"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer before the end of the play, so the block has no source end."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ、折り返してN字下げ］"
+locators = [
+  { work_id = "000311_15976", indexed_path = "cards/000311/files/15976_txt_28310.zip::gendai_hyaku_fujinroku.txt", byte_start = 469, raw = "［＃ここから１字下げ、折り返して３字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/15976_txt_28310.zip::gendai_hyaku_fujinroku.txt:12"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer before the colophon, so the block has no source end."
+
+[[decision]]
+row = "indentation.chitsuki"
+form = "［＃字下げ、地付きここまで］"
+locators = [
+  { work_id = "000331_2613", indexed_path = "cards/000331/files/2613_ruby.zip::suterukane.txt", byte_start = 5375, raw = "［＃字下げ、地付きここまで］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000331/files/2613_ruby.zip::suterukane.txt:39"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The closer ends two one-line 次行 notes, which open no block, so it closes nothing."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本では「○○"
+locators = [
+  { work_id = "000012_24448", indexed_path = "cards/000012/files/24448_ruby_11788.zip::tama.txt", byte_start = 11931, raw = "［＃「巍《たかし》が」は底本では「巍《たかし》を］" },
+  { work_id = "000040_1325", indexed_path = "cards/000040/files/1325_ruby_2695.zip::sarutobi_sasuke.txt", byte_start = 94011, raw = "［＃「停まりました」は底本では「停まりした］" },
+  { work_id = "000064_55665", indexed_path = "cards/000064/files/55665_ruby_54734.zip::wakarejimo.txt", byte_start = 125182, raw = "［＃「扨《さて》」は底本では「扨《さて》て］" },
+  { work_id = "000153_4101", indexed_path = "cards/000153/files/4101_ruby_8257.zip::byoinno_mado.txt", byte_start = 79276, raw = "［＃「居つた」は底本では「居たつた］" },
+  { work_id = "000226_1150", indexed_path = "cards/000226/files/1150_ruby_38564.zip::uchuno_hajimari.txt", byte_start = 449983, raw = "［＃「Zerstreuung」は底本では「Zersteuung］" },
+  { work_id = "000291_24363", indexed_path = "cards/000291/files/24363_ruby_14352.zip::bakufu.txt", byte_start = 14851, raw = "［＃「たのだが」は底本では「のだか］" },
+  { work_id = "001090_42307", indexed_path = "cards/001090/files/42307_txt_24297.zip::wakakusa_monogatari.txt", byte_start = 165611, raw = "［＃「いらっしゃる」は底本では「いらっっしゃる］" },
+  { work_id = "001121_42809", indexed_path = "cards/001121/files/42809_ruby_15919.zip::tantei_shosetsu_lupin.txt", byte_start = 10100, raw = "［＃「ありませんか。』」は底本では「ありませんか。］" },
+  { work_id = "001428_50328", indexed_path = "cards/001428/files/50328_txt_64311.zip::sotaisei_riron/sotaisei_riron.txt", byte_start = 779, raw = "［＃「相対性原理」は底本では「相対性理論］" },
+  { work_id = "001476_51155", indexed_path = "cards/001476/files/51155_ruby_59525.zip::watarasegawa.txt", byte_start = 576362, raw = "［＃「むずかしかろうと」は底本では「むずかしろうと］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000012/files/24448_ruby_11788.zip::tama.txt:51", "cards/000040/files/1325_ruby_2695.zip::sarutobi_sasuke.txt:562", "cards/000064/files/55665_ruby_54734.zip::wakarejimo.txt:69", "cards/000153/files/4101_ruby_8257.zip::byoinno_mado.txt:219", "cards/000226/files/1150_ruby_38564.zip::uchuno_hajimari.txt:937", "cards/000291/files/24363_ruby_14352.zip::bakufu.txt:17", "cards/001090/files/42307_txt_24297.zip::wakakusa_monogatari.txt:727", "cards/001121/files/42809_ruby_15919.zip::tantei_shosetsu_lupin.txt:55", "cards/001428/files/50328_txt_64311.zip::sotaisei_riron/sotaisei_riron.txt:14", "cards/001476/files/51155_ruby_59525.zip::watarasegawa.txt:1655"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The base-text reading has no closing 」, so its extent is unknown."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に「○○」の注記、底本の親本「○○」で伏字を起こした個所］"
+locators = [
+  { work_id = "000311_2735", indexed_path = "cards/000311/files/2735_ruby_7366.zip::hitogoto.txt", byte_start = 1641, raw = "［＃「搾」に「×」の注記、底本の親本「河出書房　宮本百合子全集」で伏字を起こした個所］" },
+  { work_id = "000311_2736", indexed_path = "cards/000311/files/2736_ruby_7410.zip::sovetno_pionyer.txt", byte_start = 1065, raw = "［＃「革命」に「××」の注記、底本の親本「河出書房　宮本百合子全集」で伏字を起こした個所］" },
+  { work_id = "000311_2748", indexed_path = "cards/000311/files/2748_ruby_7364.zip::gokanen_geijutsu.txt", byte_start = 164881, raw = "［＃「革命」に「××」の注記、底本の親本「河出書房　宮本百合子全集」で伏字を起こした個所］" },
+  { work_id = "000311_2751", indexed_path = "cards/000311/files/2751_ruby_7358.zip::fujinto_senkyo.txt", byte_start = 6402, raw = "［＃「共産」に「××」の注記、底本の親本「河出書房　宮本百合子全集」で伏字を起こした個所］" },
+  { work_id = "000311_2758", indexed_path = "cards/000311/files/2758_ruby_7402.zip::sekiyu_baku.txt", byte_start = 13904, raw = "［＃「党」に「×」の注記、底本の親本「河出書房　宮本百合子全集」で伏字を起こした個所］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000311/files/2735_ruby_7366.zip::hitogoto.txt:15", "cards/000311/files/2736_ruby_7410.zip::sovetno_pionyer.txt:16", "cards/000311/files/2748_ruby_7364.zip::gokanen_geijutsu.txt:547", "cards/000311/files/2751_ruby_7358.zip::fujinto_senkyo.txt:40", "cards/000311/files/2758_ruby_7402.zip::sekiyu_baku.txt:52"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The published text follows the parent edition, while the base text prints the censoring marks given in the note."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃この註、N行目以降はN字下げ］"
+locators = [
+  { work_id = "000106_2415", indexed_path = "cards/000106/files/2415_ruby.zip::omoide.txt", byte_start = 154605, raw = "［＃この註、２行目以降は３字下げ］" },
+  { work_id = "000106_2415", indexed_path = "cards/000106/files/2415_ruby.zip::omoide.txt", byte_start = 159647, raw = "［＃この註、２行目以降は３字下げ］" },
+  { work_id = "000106_2415", indexed_path = "cards/000106/files/2415_ruby.zip::omoide.txt", byte_start = 183352, raw = "［＃この註、２行目以降は３字下げ］" },
+  { work_id = "000106_2415", indexed_path = "cards/000106/files/2415_ruby.zip::omoide.txt", byte_start = 195982, raw = "［＃この註、２行目以降は３字下げ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000106/files/2415_ruby.zip::omoide.txt:2684", "cards/000106/files/2415_ruby.zip::omoide.txt:2834", "cards/000106/files/2415_ruby.zip::omoide.txt:3425", "cards/000106/files/2415_ruby.zip::omoide.txt:3826"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "この註 refers to a note block whose extent the marker does not delimit."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃岩波文庫の注は「○○」とする］"
+locators = [
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 29974, raw = "［＃岩波文庫の注は「翌三年十二月の誤り」とする］" },
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 74078, raw = "［＃岩波文庫の注は「noxa deditioという表現はなくnoxae deditioないしnoxae datio」とする］" },
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt", byte_start = 35721, raw = "［＃岩波文庫の注は「翌三年十二月の誤り」とする］" },
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt", byte_start = 81172, raw = "［＃岩波文庫の注は「noxa deditio という表現はなく noxae deditio ないし noxae datio」とする］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000301/files/1872_ruby.zip::housouyawa.txt:140", "cards/000301/files/1872_ruby.zip::housouyawa.txt:323", "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt:160", "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt:344"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement reports another edition's commentary and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」］"
+locators = [
+  { work_id = "000372_3666", indexed_path = "cards/000372/files/3666_ruby_3471.zip::toyojinno_hatsumei.txt", byte_start = 993, raw = "［＃「桑原隲蔵全集」］" },
+  { work_id = "000372_3667", indexed_path = "cards/000372/files/3667_ruby_6212.zip::rekishijoyori.txt", byte_start = 830, raw = "［＃「桑原隲蔵全集」］" },
+  { work_id = "000372_3667", indexed_path = "cards/000372/files/3667_ruby_6212.zip::rekishijoyori.txt", byte_start = 5863, raw = "［＃「桑原隲藏全集　第一卷　東洋史説苑」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000372/files/3666_ruby_3471.zip::toyojinno_hatsumei.txt:22", "cards/000372/files/3667_ruby_6212.zip::rekishijoyori.txt:19", "cards/000372/files/3667_ruby_6212.zip::rekishijoyori.txt:29"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "A bare quotation states no relation to the preceding text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の親本では「○○」とある］"
+locators = [
+  { work_id = "000065_393", indexed_path = "cards/000065/files/393_etc.zip::ikinokozo_accent.txt", byte_start = 119231, raw = "［＃底本の親本では「黒味を帯びゆく」とある］" },
+  { work_id = "000065_393", indexed_path = "cards/000065/files/393_ruby_1764.zip::ikinokozo_accent.txt", byte_start = 119207, raw = "［＃底本の親本では「黒味を帯びゆく」とある］" },
+  { work_id = "000065_393", indexed_path = "cards/000065/files/393_txt_1763.zip::ikinokozo.txt", byte_start = 107804, raw = "［＃底本の親本では「黒味を帯びゆく」とある］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000065/files/393_etc.zip::ikinokozo_accent.txt:171", "cards/000065/files/393_ruby_1764.zip::ikinokozo_accent.txt:171", "cards/000065/files/393_txt_1763.zip::ikinokozo.txt:165"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The parent-edition reading is given without the base-text span it replaces."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」か？］"
+locators = [
+  { work_id = "000124_655", indexed_path = "cards/000124/files/655_ruby.zip::oguma14_r.txt", byte_start = 72639, raw = "［＃「お前のような不孝者は」か？］" },
+  { work_id = "000124_658", indexed_path = "cards/000124/files/658_ruby.zip::oguma3.txt", byte_start = 56477, raw = "［＃「合理化する」か？］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000124/files/655_ruby.zip::oguma14_r.txt:381", "cards/000124/files/658_ruby.zip::oguma3.txt:1515"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The proposed reading does not identify the printed text it would replace."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」の左に「○○」の注記］"
+locators = [
+  { work_id = "001930_58400", indexed_path = "cards/001930/files/58400_ruby_69156.zip::hokuetsu_seppu.txt", byte_start = 400175, raw = "［＃「刺」の左に「テフダ」の注記］" },
+  { work_id = "001930_58401", indexed_path = "cards/001930/files/58401_ruby_70228.zip::06hokuetsu_seppu_nihen.txt", byte_start = 43702, raw = "［＃「刺」の左に「テフダ」の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001930/files/58400_ruby_69156.zip::hokuetsu_seppu.txt:575", "cards/001930/files/58401_ruby_70228.zip::06hokuetsu_seppu_nihen.txt:93"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quoted target 刺 differs from the preceding printed 剌, so no span matches it."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」の注記］"
+locators = [
+  { work_id = "000038_1407", indexed_path = "cards/000038/files/1407_ruby_5303.zip::yugawarayuki.txt", byte_start = 41668, raw = "［＃「い脱カ」の注記］" },
+  { work_id = "000311_2852", indexed_path = "cards/000311/files/2852_ruby_8514.zip::maksim_gorkii_hito.txt", byte_start = 6463, raw = "［＃「＊」の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000038/files/1407_ruby_5303.zip::yugawarayuki.txt:160", "cards/000311/files/2852_ruby_8514.zip::maksim_gorkii_hito.txt:29"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quotation is the note content, and the note gives no target text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は、『谷崎潤一郎全集　第二十巻』（中央公論新社N年N月N日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）では「○○」（読点無し）］"
+locators = [
+  { work_id = "001383_57394", indexed_path = "cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt", byte_start = 397649, raw = "［＃「しもうてて、」は、『谷崎潤一郎全集　第二十巻』（中央公論新社2015年7月10日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「しまうてゝ」（読点無し）］" },
+  { work_id = "001383_57394", indexed_path = "cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt", byte_start = 698702, raw = "［＃「云い方が、」は、『谷崎潤一郎全集　第二十巻』（中央公論新社2015年7月10日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「云ひ方が」（読点無し）］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt:950", "cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt:1559"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports readings of two collected editions that differ from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は「○○」］"
+locators = [
+  { work_id = "000169_1273", indexed_path = "cards/000169/files/1273_ruby.zip::jijoden.txt", byte_start = 217066, raw = "［＃「今の天皇」は「大正天皇」］" },
+  { work_id = "000169_1273", indexed_path = "cards/000169/files/1273_ruby.zip::jijoden.txt", byte_start = 290828, raw = "［＃「本誌」は「改造」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000169/files/1273_ruby.zip::jijoden.txt:965", "cards/000169/files/1273_ruby.zip::jijoden.txt:1233"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note identifies a referent and states no textual relation."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」はママ。五段目は N□□のN倍だから五段目左端はN以上になります。］"
+locators = [
+  { work_id = "000160_43532", indexed_path = "cards/000160/files/43532_txt_16434.zip::mushikuizan_taikai_shohan.txt", byte_start = 36365, raw = "［＃「これが６以下では六段目の左端は１とはならず」はママ。五段目は 1□□の７倍だから五段目左端は７以上になります。］" },
+  { work_id = "000160_43533", indexed_path = "cards/000160/files/43533_ruby_16693.zip::mushikuizan_taikai_kaitei.txt", byte_start = 36091, raw = "［＃「これが６以下では六段目の左端は１とはならず」はママ。五段目は 1□□の７倍だから五段目左端は７以上になります。］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/43532_txt_16434.zip::mushikuizan_taikai_shohan.txt:388", "cards/000160/files/43533_ruby_16693.zip::mushikuizan_taikai_kaitei.txt:394"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The sic note continues with a free-prose argument that has no target in the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は以下の本では「○○」。『鏡花全集　卷五』（岩波書店、昭和N年N月N日　第N刷發行）、『鏡花全集　巻四』（春陽堂、大正N年N月N日發行）、『湯島詣』（春陽堂文庫、春陽堂、昭和N年N月N日復刊第一版發行）。『湯島詣』（春陽堂、明治N年N月N日發行）では「○○」］"
+locators = [
+  { work_id = "000050_48399", indexed_path = "cards/000050/files/48399_ruby_66261.zip::yushima_mode.txt", byte_start = 75916, raw = "［＃「、」は以下の本では「。」。『鏡花全集　卷五』（岩波書店、昭和49年3月4日　第2刷發行）、『鏡花全集　巻四』（春陽堂、大正15年9月25日發行）、『湯島詣』（春陽堂文庫、春陽堂、昭和22年10月20日復刊第一版發行）。『湯島詣』（春陽堂、明治32年11月23日發行）では「、」］" },
+  { work_id = "000050_48399", indexed_path = "cards/000050/files/48399_ruby_66261.zip::yushima_mode.txt", byte_start = 221172, raw = "［＃「と」は以下の本では「と、」。『鏡花全集　卷五』（岩波書店、昭和49年3月4日　第2刷發行）、『鏡花全集　巻四』（春陽堂、大正15年9月25日發行）、『湯島詣』（春陽堂文庫、春陽堂、昭和22年10月20日復刊第一版發行）。『湯島詣』（春陽堂、明治32年11月23日發行）では「と」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000050/files/48399_ruby_66261.zip::yushima_mode.txt:484", "cards/000050/files/48399_ruby_66261.zip::yushima_mode.txt:1070"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports readings of several named editions that differ from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本でも脱落］"
+locators = [
+  { work_id = "000158_835", indexed_path = "cards/000158/files/835_ruby.zip::fune_ruby.txt", byte_start = 31922, raw = "［＃「さん」は底本でも脱落］" },
+  { work_id = "000158_835", indexed_path = "cards/000158/files/835_txt.zip::fune.txt", byte_start = 28163, raw = "［＃「さん」は底本でも脱落］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000158/files/835_ruby.zip::fune_ruby.txt:110", "cards/000158/files/835_txt.zip::fune.txt:104"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The omitted text is not supplied by the base text or by a named witness."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」底本のまま、「○○」と思われる］"
+locators = [
+  { work_id = "000125_666", indexed_path = "cards/000125/files/666_ruby.zip::shiroari_ruby.txt", byte_start = 169059, raw = "［＃「以上」底本のまま、「以外」と思われる］" },
+  { work_id = "000125_666", indexed_path = "cards/000125/files/666_txt.zip::shiroari.txt", byte_start = 155330, raw = "［＃「以上」底本のまま、「以外」と思われる］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000125/files/666_ruby.zip::shiroari_ruby.txt:154", "cards/000125/files/666_txt.zip::shiroari.txt:149"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The conjectured reading is stated without a source and the text keeps the base reading."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃【」】は底本では【』】と誤記、N-N］"
+locators = [
+  { work_id = "000158_838", indexed_path = "cards/000158/files/838_ruby.zip::kyusyujin_ruby.txt", byte_start = 77031, raw = "［＃【」】は底本では【』】と誤記、41-12］" },
+  { work_id = "000158_838", indexed_path = "cards/000158/files/838_txt.zip::kyusyujin.txt", byte_start = 63147, raw = "［＃【」】は底本では【』】と誤記、41-12］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000158/files/838_ruby.zip::kyusyujin_ruby.txt:255", "cards/000158/files/838_txt.zip::kyusyujin.txt:249"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quoted closing bracket is enclosed in 【】 instead of 「」, so the quotation boundary is not marked."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ルビの「○○」は、『谷崎潤一郎全集　第十九巻』（中央公論新社N年N月N日初版発行）では「○○」、『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）では「○○」］"
+locators = [
+  { work_id = "001383_56698", indexed_path = "cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt", byte_start = 306201, raw = "［＃ルビの「にう」は、『谷崎潤一郎全集　第十九巻』（中央公論新社2015年6月10日初版発行）では「にゆう」、『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「にふ」］" },
+  { work_id = "001383_57416", indexed_path = "cards/001383/files/57416_ruby_71251.zip::02sasameyuki_chukan.txt", byte_start = 83622, raw = "［＃ルビの「おおぎ」は、『谷崎潤一郎全集　第十九巻』（中央公論新社2015年6月10日初版発行）では「あおぎ」、『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「あをぎ」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt:1048", "cards/001383/files/57416_ruby_71251.zip::02sasameyuki_chukan.txt:226"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports ruby readings of collected editions that differ from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃岩波文庫の注は、「○○」を著者の書き間違いとし、「○○」であるとする］"
+locators = [
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 7809, raw = "［＃岩波文庫の注は、「マースールのカリフ」を著者の書き間違いとし、「アッバス朝二代のカリフがマンスール」であるとする］" },
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt", byte_start = 13178, raw = "［＃岩波文庫の注は、「マースールのカリフ」を著者の書き間違いとし、「アッバス朝二代のカリフがマンスール」であるとする］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000301/files/1872_ruby.zip::housouyawa.txt:49", "cards/000301/files/1872_ruby_3491.zip::02hoso_yawa.txt:69"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement reports another edition's commentary and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本「○○」。『選集』で「○○」となって居るのに合せて訂正］"
+locators = [
+  { work_id = "000159_850", indexed_path = "cards/000159/files/850_ruby.zip::furomango.txt", byte_start = 6700, raw = "［＃底本「劫々」。『選集』で「なかなか」となって居るのに合せて訂正］" },
+  { work_id = "000159_850", indexed_path = "cards/000159/files/850_ruby.zip::furomango.txt", byte_start = 9041, raw = "［＃底本「劫々」。『選集』で「なかなか」となって居るのに合せて訂正］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000159/files/850_ruby.zip::furomango.txt:12", "cards/000159/files/850_ruby.zip::furomango.txt:14"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The correction follows the 選集 edition and the note does not quote the corrected text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃明らかな誤字・脱字、判読不能などの箇所の修正は、「○○」筑摩書房　N(平成元)年N月N日初版発行　を参考にした。］"
+locators = [
+  { work_id = "000136_828", indexed_path = "cards/000136/files/828_ruby.zip::tirutiru_ruby.txt", byte_start = 99261, raw = "［＃明らかな誤字・脱字、判読不能などの箇所の修正は、「山村暮鳥全集　第三巻」筑摩書房　1989(平成元)年9月30日初版発行　を参考にした。］" },
+  { work_id = "000136_828", indexed_path = "cards/000136/files/828_txt.zip::tirutiru.txt", byte_start = 62910, raw = "［＃明らかな誤字・脱字、判読不能などの箇所の修正は、「山村暮鳥全集　第三巻」筑摩書房　1989(平成元)年9月30日初版発行　を参考にした。］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000136/files/828_ruby.zip::tirutiru_ruby.txt:738", "cards/000136/files/828_txt.zip::tirutiru.txt:729"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement describes the transcription method and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃本文中、伏せ字は「○○」で表した。］"
+locators = [
+  { work_id = "000125_666", indexed_path = "cards/000125/files/666_ruby.zip::shiroari_ruby.txt", byte_start = 580, raw = "［＃本文中、伏せ字は「＊」で表した。］" },
+  { work_id = "000125_666", indexed_path = "cards/000125/files/666_txt.zip::shiroari.txt", byte_start = 346, raw = "［＃本文中、伏せ字は「＊」で表した。］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000125/files/666_ruby.zip::shiroari_ruby.txt:17", "cards/000125/files/666_txt.zip::shiroari.txt:11"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement describes the transcription convention and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃N刷時点では「○○」だが、N刷時点では「○○」に修正されている］"
+locators = [
+  { work_id = "000129_2547", indexed_path = "cards/000129/files/2547_ruby.zip::sakaijiken.txt", byte_start = 40420, raw = "［＃24刷時点では「〔場〕桃太郎」だが、63刷時点では「〔馬場〕桃太郎」に修正されている］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000129/files/2547_ruby.zip::sakaijiken.txt:143"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports readings of two printings that differ from each other."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃《えは》はママ］"
+locators = [
+  { work_id = "000164_2948", indexed_path = "cards/000164/files/2948_ruby.zip::gokuchuseikatsu.txt", byte_start = 40990, raw = "［＃《えは》はママ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000164/files/2948_ruby.zip::gokuchuseikatsu.txt:169"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The target is quoted with ruby brackets 《》 instead of 「」."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」あるいは「○○」か］"
+locators = [
+  { work_id = "000989_1490", indexed_path = "cards/000989/files/1490_ruby.zip::eikokukoshi.txt", byte_start = 54319, raw = "［＃「てまえ」あるいは「てめえ」か］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/1490_ruby.zip::eikokukoshi.txt:230"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note offers two readings without identifying the printed text they replace."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」と思われるが、底本の通りにする］"
+locators = [
+  { work_id = "000159_852", indexed_path = "cards/000159/files/852_ruby_21055.zip::fumoresuku.txt", byte_start = 31852, raw = "［＃「牽引」と思われるが、底本の通りにする］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000159/files/852_ruby_21055.zip::fumoresuku.txt:94"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The conjectured reading does not identify the printed text it would replace."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に「○○」の注記、正しくは「○○」］"
+locators = [
+  { work_id = "000311_2892", indexed_path = "cards/000311/files/2892_ruby_9141.zip::showano_14.txt", byte_start = 2839, raw = "［＃「十四」に「（ママ）」の注記、正しくは「十三」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/2892_ruby_9141.zip::showano_14.txt:20"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The correction follows the attached note in free prose and has no span of its own."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に「○○」の注記］"
+locators = [
+  { work_id = "000148_2575", indexed_path = "cards/000148/files/2575_ruby_3992.zip::miekichiate_shokan.txt", byte_start = 9743, raw = "［＃「※」に「原」の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000148/files/2575_ruby_3992.zip::miekichiate_shokan.txt:57"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quoted target ※ stands for the preceding gaiji description, not for printed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に「○○」の注釈つき］"
+locators = [
+  { work_id = "000124_662", indexed_path = "cards/000124/files/662_ruby.zip::oguma07.txt", byte_start = 2791, raw = "［＃「漁師」に「旧帝制時代の廷臣。官僚」の注釈つき］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000124/files/662_ruby.zip::oguma07.txt:78"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The quoted target 漁師 differs from the preceding printed 猟師, so no span matches it."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に「○○」印、欄外に校注：「○○」］"
+locators = [
+  { work_id = "000989_4489", indexed_path = "cards/000989/files/4489_ruby_42584.zip::matsuno_misao_02.txt", byte_start = 132982, raw = "［＃「国尽《くにづく》し」に「＊」印、欄外に校注：「国の名をかきあつめたるもの。」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/4489_ruby_42584.zip::matsuno_misao_02.txt:577"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note combines a mark, a marginal gloss and a ruby-bearing target in one free-prose statement."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に傍点］」は底本では「○○」に傍点］い］"
+locators = [
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52379, raw = "［＃「どうしたんだよ。やわい［＃「やわい」に傍点］」は底本では「どうしたんだよ。やわ［＃「。やわ」に傍点］い］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt:297"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "A nested emphasis marker inside the quotation leaves the quotation boundaries undetermined."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に対応する注記が底本でも親本でも欠落している］"
+locators = [
+  { work_id = "000281_3595", indexed_path = "cards/000281/files/3595_ruby_38064.zip::ideorogi_gairon.txt", byte_start = 335659, raw = "［＃「＊」に対応する注記が底本でも親本でも欠落している］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000281/files/3595_ruby_38064.zip::ideorogi_gairon.txt:709"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note content is missing from every named witness."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」に欄外校注：裁判官が説諭して示談にせしむること］"
+locators = [
+  { work_id = "000989_1490", indexed_path = "cards/000989/files/1490_ruby.zip::eikokukoshi.txt", byte_start = 9523, raw = "［＃「勧解」に欄外校注：裁判官が説諭して示談にせしむること］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/1490_ruby.zip::eikokukoshi.txt:38"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The marginal gloss is unquoted, so its extent within the statement is not marked."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」の前で改行されているのは底本のママ］"
+locators = [
+  { work_id = "001383_59827", indexed_path = "cards/001383/files/59827_ruby_73151.zip::nekoto_shozoto_futarino_onna_shinkana.txt", byte_start = 78980, raw = "［＃「とでも云うように、又」の前で改行されているのは底本のママ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001383/files/59827_ruby_73151.zip::nekoto_shozoto_futarino_onna_shinkana.txt:228"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note concerns a line break, which has no span in the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」の左に「○○」の注記」］"
+locators = [
+  { work_id = "000146_49258", indexed_path = "cards/000146/files/49258_ruby_36099.zip::09gochunikki9.txt", byte_start = 198363, raw = "［＃「僕」の左に「ヲレ」の注記」］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000146/files/49258_ruby_36099.zip::09gochunikki9.txt:2367"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "An unmatched 」 after the note keyword leaves the marker boundary undetermined."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は「○○」「○○」などの誤記か］"
+locators = [
+  { work_id = "000989_1488", indexed_path = "cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt", byte_start = 630255, raw = "［＃「些《ちと》とも」は「些《ち》とも」「些《ちっ》とも」などの誤記か］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt:2950"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note offers several corrections without choosing one."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」はママ、「○○」か「○○」であるかの判別付かず］"
+locators = [
+  { work_id = "000989_1488", indexed_path = "cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt", byte_start = 495547, raw = "［＃「亥刻《こゝのつ》」はママ、「子刻《こゝのつ》」か「亥刻《よつ》」であるかの判別付かず］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt:2182"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note offers two readings without choosing one."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」はママ、『広辞苑』では「○○」］"
+locators = [
+  { work_id = "000255_1405", indexed_path = "cards/000255/files/1405_ruby.zip::tenshukakunooto.txt", byte_start = 66213, raw = "［＃「加陵頻迦《かりょうびんか》」はママ、『広辞苑』では「迦陵頻伽《かりょうびんが》」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000255/files/1405_ruby.zip::tenshukakunooto.txt:366"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note compares the text with a dictionary reading, not with a witness of the work."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は初刊本「○○」創元社、昭和N年N月N日発行では「○○」］"
+locators = [
+  { work_id = "000218_1914", indexed_path = "cards/000218/files/1914_ruby_63481.zip::jinseiron_note.txt", byte_start = 222474, raw = "［＃「把握するのである。」は初刊本「人生論ノート」創元社、昭和16年8月11日発行では「把握するのである。しかしながら愛するといふことは如何に困難であるか。」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000218/files/1914_ruby_63481.zip::jinseiron_note.txt:850"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the first edition that differs from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は判読困難につき推定、コマN-左-N］"
+locators = [
+  { work_id = "000212_4840", indexed_path = "cards/000212/files/4840_ruby_19249.zip::mishiranu_sekai.txt", byte_start = 18704, raw = "［＃「な」は判読困難につき推定、コマ25-左-3］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000212/files/4840_ruby_19249.zip::mishiranu_sekai.txt:193"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The reading is a transcriber's estimate from an illegible source."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本では「○○」N-下段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 106245, raw = "［＃「。」は底本では「、」42-下段-6］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:588"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The page locator follows the reading without the 、 separator."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本では「○○」、以降同様、N-下段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 213430, raw = "［＃「ヤクーツク」は底本では「ヤークツク」、以降同様、79-下段-21］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:1148"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "以降同様 extends the note to later occurrences that the marker does not locate."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本には無い、『谷崎潤一郎全集　第十八巻』中央公論新社（N年N月N日初版発行）及び底本の親本『猫と庄造と二人のをんな』創元社（昭和N年N月N日再版発行）による。］"
+locators = [
+  { work_id = "001383_59300", indexed_path = "cards/001383/files/59300_ruby_69898.zip::nekoto_shozoto_futarino_onna_bunko.txt", byte_start = 162832, raw = "［＃「そしたらお母さん、福子の廻し者だつかいな。」は底本には無い、『谷崎潤一郎全集　第十八巻』中央公論新社（2016年5月10日初版発行）及び底本の親本『猫と庄造と二人のをんな』創元社（昭和21年9月20日再版発行）による。］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/59300_ruby_69898.zip::nekoto_shozoto_futarino_onna_bunko.txt:373"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The text is supplied from other editions and is absent from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本には記載なし。『谷崎潤一郎全集　第二十巻』（中央公論新社N年N月N日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）による］"
+locators = [
+  { work_id = "001383_57394", indexed_path = "cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt", byte_start = 87648, raw = "［＃「―――」は底本には記載なし。『谷崎潤一郎全集　第二十巻』（中央公論新社2015年7月10日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）による］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt:188"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The text is supplied from other editions and is absent from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本には記載なし。『谷崎潤一郎全集　第十九巻』（中央公論新社N年N月N日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）による］"
+locators = [
+  { work_id = "001383_56698", indexed_path = "cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt", byte_start = 364171, raw = "［＃「雪子」は底本には記載なし。『谷崎潤一郎全集　第十九巻』（中央公論新社2015年6月10日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）による］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt:1237"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The text is supplied from other editions and is absent from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本の「○○」に掲載］"
+locators = [
+  { work_id = "000311_2987", indexed_path = "cards/000311/files/2987_ruby_10090.zip::ryorin.txt", byte_start = 26479, raw = "［＃「附記」は底本の「解題」に掲載］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000311/files/2987_ruby_10090.zip::ryorin.txt:40"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement locates text in another part of the base volume and does not refer to a span of the work."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本のママ。文脈からは「○○」と思われる。］"
+locators = [
+  { work_id = "000160_2638", indexed_path = "cards/000160/files/2638_ruby_23932.zip::kaisei_gan.txt", byte_start = 89411, raw = "［＃「新雑誌」は底本のママ。文脈からは「新聞と雑誌」と思われる。］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/2638_ruby_23932.zip::kaisei_gan.txt:562"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The conjectured reading is inferred from context and the text keeps the base reading."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は底本のママ。文脈上からは「○○」（前出）もしくは「○○」（後出）が妥当と思われる。］"
+locators = [
+  { work_id = "000160_2638", indexed_path = "cards/000160/files/2638_ruby_23932.zip::kaisei_gan.txt", byte_start = 103650, raw = "［＃「三根夫クン」は底本のママ。文脈上からは「ミネ君」（前出）もしくは「三根クン」（後出）が妥当と思われる。］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/2638_ruby_23932.zip::kaisei_gan.txt:639"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note offers two context readings without choosing one."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は本文中の注記］"
+locators = [
+  { work_id = "000124_2417", indexed_path = "cards/000124/files/2417_ruby_21853.zip::oguma15.txt", byte_start = 216926, raw = "［＃「（四字不明）」は本文中の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000124/files/2417_ruby_21853.zip::oguma15.txt:1354"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note classifies its quotation as an in-text note and states no textual relation."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は筑摩版では「○○」なし］"
+locators = [
+  { work_id = "000031_863", indexed_path = "cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt", byte_start = 274702, raw = "［＃「動かない、」は筑摩版では「、」なし］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt:883"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the 筑摩 edition that differs from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」は筑摩版では末尾の「○○」なし］"
+locators = [
+  { work_id = "000031_863", indexed_path = "cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt", byte_start = 92270, raw = "［＃「にらんだんだ」は筑摩版では末尾の「んだ」なし］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt:300"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the 筑摩 edition that differs from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」または「○○」と思われる］"
+locators = [
+  { work_id = "000124_655", indexed_path = "cards/000124/files/655_ruby.zip::oguma14_r.txt", byte_start = 54447, raw = "［＃「色々に盛装して」または「色々な盛装をして」と思われる］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000124/files/655_ruby.zip::oguma14_r.txt:264"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note offers two readings without identifying the printed text they replace."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ここに「○○」と注記］"
+locators = [
+  { work_id = "000372_42810", indexed_path = "cards/000372/files/42810_ruby_15455.zip::sinajinkan_syokujinniku.txt", byte_start = 46392, raw = "［＃ここに「本全集第三卷所收」と注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000372/files/42810_ruby_15455.zip::sinajinkan_syokujinniku.txt:208"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reproduces a cross-reference and states no textual relation."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃テキストの中でN種類の文字の大きさを注記している。それぞれの大きさは、特大文字＞大文字＞中文字＞（通常の本文の文字）＞小文字］"
+locators = [
+  { work_id = "000096_2100", indexed_path = "cards/000096/files/2100_ruby.zip::dark_minister.txt", byte_start = 767, raw = "［＃テキストの中で４種類の文字の大きさを注記している。それぞれの大きさは、特大文字＞大文字＞中文字＞（通常の本文の文字）＞小文字］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000096/files/2100_ruby.zip::dark_minister.txt:20"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement describes the transcription convention and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ママ、「○○」又は「○○」？、N-上段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 119641, raw = "［＃ママ、「海上に」又は「海底から」？、47-上段-22］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:672"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The sic note offers two readings without choosing one."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ルビの「○○」と「○○」の間に「○○」の注記］"
+locators = [
+  { work_id = "000050_3581", indexed_path = "cards/000050/files/3581_ruby_32809.zip::tosei_joso.txt", byte_start = 17601, raw = "［＃ルビの「ふ」と「どし」の間に「（ママ）」の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000050/files/3581_ruby_32809.zip::tosei_joso.txt:114"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note places a mark between two ruby characters, which no ruby span represents."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ルビの「○○」は、『谷崎潤一郎全集　第二十巻』（中央公論新社N年N月N日初版発行）では「○○」、『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）では「○○」］"
+locators = [
+  { work_id = "001383_57394", indexed_path = "cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt", byte_start = 221302, raw = "［＃ルビの「にう」は、『谷崎潤一郎全集　第二十巻』（中央公論新社2015年7月10日初版発行）では「にゆう」、『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「にふ」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/57394_ruby_73659.zip::03sasameyuki_gekan.txt:561"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports ruby readings of collected editions that differ from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃ルビの「○○」は、『谷崎潤一郎全集　第十九巻』（中央公論新社N年N月N日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社N年N月N日発行）では「○○」］"
+locators = [
+  { work_id = "001383_56698", indexed_path = "cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt", byte_start = 217197, raw = "［＃ルビの「いってん」は、『谷崎潤一郎全集　第十九巻』（中央公論新社2015年6月10日初版発行）と『谷崎潤一郎全集　第十五卷』（中央公論社1968年1月25日発行）では「いてん」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001383/files/56698_ruby_59448.zip::01sasameyuki_jokan.txt:693"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports ruby readings of collected editions that differ from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃不自然な途切れとN行アキは、ママ］"
+locators = [
+  { work_id = "000160_3232", indexed_path = "cards/000160/files/3232_ruby_11132.zip::2000nen_senso.txt", byte_start = 68033, raw = "［＃不自然な途切れと１行アキは、ママ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/3232_ruby_11132.zip::2000nen_senso.txt:463"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The sic note concerns a break and a blank line, which have no span in the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃入力者註：以下の九ヶ所の底本のミスと思われるものは全集版に合わせて修正した。\r\n　全集版：東京創元社『定本北條民雄全集・上巻』昭和五十五年刊\r\n　数字は定本のページ数と行数を示す。「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」と」→「○○」＜改行＞と」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」］"
+locators = [
+  { work_id = "000997_398", indexed_path = "cards/000997/files/398_ruby.zip::inochino.txt", byte_start = 74055, raw = "［＃入力者註：以下の九ヶ所の底本のミスと思われるものは全集版に合わせて修正した。\r\n　全集版：東京創元社『定本北條民雄全集・上巻』昭和五十五年刊\r\n　数字は定本のページ数と行数を示す。「底本」→「修正」\r\n　5-13「識らず墜《お》ち込んで」→「識らず堕《お》ち込んで」\r\n　6-1「傾き初めた太陽の」→「傾き始めた太陽の」\r\n　8-2「患者の生活もその」→「患者の住居もその」\r\n　14-17「一端を摘《つか》み取る」→「一端を掴《つか》み取る」\r\n　15-9「眉を窄《すぼ》めた」→「肩を窄《すぼ》めた」\r\n　16-6「ちょっと急がしかった」→「ちょっと忙しかった」\r\n　27-14「失礼ですけれど」と」→「失礼ですけれど」＜改行＞と」\r\n　43-5「外を見なががら」→「外を見ながら」\r\n　43-17「佐柄木に復っていた」→「佐柄木が復っていた」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000997/files/398_ruby.zip::inochino.txt:315"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The inputter note lists corrections from the 全集 edition at page-line locations of another edition."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃初出の『四季』第四號・昭和十年二月號では「○○」となっている］"
+locators = [
+  { work_id = "000067_1790", indexed_path = "cards/000067/files/1790_ruby.zip::shukumei.txt", byte_start = 55373, raw = "［＃初出の『四季』第四號・昭和十年二月號では「孤獨を愛する人にとつて」となっている］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000067/files/1790_ruby.zip::shukumei.txt:398"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the first publication that differs from the base text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃圖中」は底本では「○○」］"
+locators = [
+  { work_id = "001242_46443", indexed_path = "cards/001242/files/46443_ruby_33559.zip::korobokkuru_fuzoku_ko.txt", byte_start = 110005, raw = "［＃圖中」は底本では「國中」］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/001242/files/46443_ruby_33559.zip::korobokkuru_fuzoku_ko.txt:252"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The current reading lacks its opening 「, so its extent is unknown."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃岩波文庫版では「○○」］"
+locators = [
+  { work_id = "000037_1417", indexed_path = "cards/000037/files/1417_ruby_22264.zip::sori.txt", byte_start = 34695, raw = "［＃岩波文庫版では「殺され」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000037/files/1417_ruby_22264.zip::sori.txt:258"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the 岩波文庫 edition without the base-text span it replaces."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本N頁に「○○」がある］"
+locators = [
+  { work_id = "000230_1154", indexed_path = "cards/000230/files/1154_ruby_3529.zip::saishu_sensoron.txt", byte_start = 92971, raw = "［＃底本６４頁に「付表第一　戦争進化景況一覧表」がある］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000230/files/1154_ruby_3529.zip::saishu_sensoron.txt:167"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note refers to a table or figure that is not in the transcribed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本N頁に「○○」の図がある］"
+locators = [
+  { work_id = "000230_1154", indexed_path = "cards/000230/files/1154_ruby_3529.zip::saishu_sensoron.txt", byte_start = 25860, raw = "［＃底本２５頁に「ドイツの対仏作戦に於ける軍主力の前進方向」の図がある］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000230/files/1154_ruby_3529.zip::saishu_sensoron.txt:67"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note refers to a table or figure that is not in the transcribed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本N頁に「○○」入る］"
+locators = [
+  { work_id = "000230_55635", indexed_path = "cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt", byte_start = 14310, raw = "［＃底本１２１頁に「付表第二　近世戦争進化景況一覧表」入る］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt:128"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note refers to a table or figure that is not in the transcribed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本N頁に君主の戦争の表あり］"
+locators = [
+  { work_id = "000230_55635", indexed_path = "cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt", byte_start = 100595, raw = "［＃底本１７３頁に君主の戦争の表あり］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt:345"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note refers to a table that is not in the transcribed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本N頁左上に戦争指導に関する表あり］"
+locators = [
+  { work_id = "000230_55635", indexed_path = "cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt", byte_start = 91848, raw = "［＃底本１６７頁左上に戦争指導に関する表あり］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000230/files/55635_ruby_49036.zip::sensoshi_taikan.txt:314"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note refers to a table that is not in the transcribed text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本「○○」。読みにくいので『選集』により訂正］"
+locators = [
+  { work_id = "000159_850", indexed_path = "cards/000159/files/850_ruby.zip::furomango.txt", byte_start = 16003, raw = "［＃底本「立所」。読みにくいので『選集』により訂正］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000159/files/850_ruby.zip::furomango.txt:18"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The correction follows the 選集 edition and the note does not quote the corrected text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本「○○」］"
+locators = [
+  { work_id = "000159_858", indexed_path = "cards/000159/files/858_ruby.zip::Verito.txt", byte_start = 8320, raw = "［＃底本「An revoir」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000159/files/858_ruby.zip::Verito.txt:23"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The base reading is given without the span of the published text it replaces."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本に「○○」なし、N-上段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 262460, raw = "［＃底本に「。」なし、97-上段-8］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:1426"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The omission statement does not identify the text after which the base text lacks 。."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の『米又は粟』から変更］"
+locators = [
+  { work_id = "000124_655", indexed_path = "cards/000124/files/655_ruby.zip::oguma14_r.txt", byte_start = 72458, raw = "［＃底本の『米又は粟』から変更］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000124/files/655_ruby.zip::oguma14_r.txt:379"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The base reading is given without the span of the published text it replaces."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本のママ、「○○」ではなく「○○」］"
+locators = [
+  { work_id = "000280_1706", indexed_path = "cards/000280/files/1706_ruby.zip::hototogisu.txt", byte_start = 384898, raw = "［＃底本のママ、「お話」ではなく「お話し」］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000280/files/1706_ruby.zip::hototogisu.txt:1486"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The sic statement does not identify which printed text it concerns."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の注によれば、欠落したN字は初出では「○○」となっている］"
+locators = [
+  { work_id = "000252_1398", indexed_path = "cards/000252/files/1398_ruby.zip::hikarinonakani.txt", byte_start = 67742, raw = "［＃底本の注によれば、欠落した９字は初出では「半兵衛に打たれて」となっている］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000252/files/1398_ruby.zip::hikarinonakani.txt:293"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports a reading of the first publication cited by the base text's commentary."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の誤記は岩波文庫、新潮文庫、角川文庫の全てで確認できたもののみ記述した］"
+locators = [
+  { work_id = "000148_775", indexed_path = "cards/000148/files/775_txt.zip::koujin.txt", byte_start = 679363, raw = "［＃底本の誤記は岩波文庫、新潮文庫、角川文庫の全てで確認できたもののみ記述した］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000148/files/775_txt.zip::koujin.txt:3085"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement describes the transcription method and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の閉じ括弧は「○○」、N-上N］"
+locators = [
+  { work_id = "000255_1405", indexed_path = "cards/000255/files/1405_ruby.zip::tenshukakunooto.txt", byte_start = 126144, raw = "［＃底本の閉じ括弧は「』」、69-上18］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000255/files/1405_ruby.zip::tenshukakunooto.txt:880"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note does not identify which closing bracket in the text it concerns."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃底本の閉じ括弧は「○○」、N-下N］"
+locators = [
+  { work_id = "000255_1405", indexed_path = "cards/000255/files/1405_ruby.zip::tenshukakunooto.txt", byte_start = 126088, raw = "［＃底本の閉じ括弧は「』」、58-下15］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000255/files/1405_ruby.zip::tenshukakunooto.txt:880"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note does not identify which closing bracket in the text it concerns."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃引用部分伏せ字の原文は、それぞれ「○○」と「○○」］"
+locators = [
+  { work_id = "000037_1424", indexed_path = "cards/000037/files/1424_ruby_20336.zip::hansen_bungakuron.txt", byte_start = 5609, raw = "［＃引用部分伏せ字の原文は、それぞれ「すめらみこと」と「おほみづ」］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000037/files/1424_ruby_20336.zip::hansen_bungakuron.txt:53"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note gives the uncensored original of censored quotations without locating them."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃彼は」は底本では「○○」］"
+locators = [
+  { work_id = "000906_42458", indexed_path = "cards/000906/files/42458_ruby_33172.zip::shiinoki.txt", byte_start = 45239, raw = "［＃彼は」は底本では「僕は」］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000906/files/42458_ruby_33172.zip::shiinoki.txt:259"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The current reading lacks its opening 「, so its extent is unknown."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃文意から「○○」は「○○」の誤り？］"
+locators = [
+  { work_id = "000866_2653", indexed_path = "cards/000866/files/2653_ruby_20665.zip::ando_shoeki.txt", byte_start = 27257, raw = "［＃文意から「曉」は「堯」の誤り？］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000866/files/2653_ruby_20665.zip::ando_shoeki.txt:41"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The error question quotes a target without stating where it occurs."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃欄外に校注：おだやか○平穏○］"
+locators = [
+  { work_id = "000989_2614", indexed_path = "cards/000989/files/2614_ruby_17951.zip::katakiuchi_fudasho_reigen.txt", byte_start = 81585, raw = "［＃欄外に校注：おだやか○平穏○］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000989/files/2614_ruby_17951.zip::katakiuchi_fudasho_reigen.txt:368"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The marginal gloss does not identify the text it comments on."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃筑摩版ではここに「○○」が入る］"
+locators = [
+  { work_id = "000031_863", indexed_path = "cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt", byte_start = 146668, raw = "［＃筑摩版ではここに「彼は」が入る］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000031/files/863_ruby_22417.zip::umini_ikuru_hitobito.txt:460"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note reports text present only in the 筑摩 edition."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃茂木惣兵衛、後出の清ベエは誤記］"
+locators = [
+  { work_id = "000311_46247", indexed_path = "cards/000311/files/46247_ruby_58050.zip::15nikki1929.txt", byte_start = 174089, raw = "［＃茂木惣兵衛、後出の清ベエは誤記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/46247_ruby_58050.zip::15nikki1929.txt:1238"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note concerns a later occurrence that it does not locate."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃表罫囲み内の特に注記のない文字は中文字］"
+locators = [
+  { work_id = "000096_2100", indexed_path = "cards/000096/files/2100_ruby.zip::dark_minister.txt", byte_start = 417121, raw = "［＃表罫囲み内の特に注記のない文字は中文字］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000096/files/2100_ruby.zip::dark_minister.txt:1339"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The statement describes the transcription convention and does not refer to a span of the text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃（を脱カ）の注記］"
+locators = [
+  { work_id = "000038_1410", indexed_path = "cards/000038/files/1410_ruby_5686.zip::eno_kanashimi_kyu.txt", byte_start = 30013, raw = "［＃（を脱カ）の注記］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000038/files/1410_ruby_5686.zip::eno_kanashimi_kyu.txt:60"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-16"
+notes = "The note content is not attached to a quoted target text."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」はママ］"
+locators = [
+  { work_id = "000012_435", indexed_path = "cards/000012/files/435_ruby_20960.zip::kanashimino_hi_yori.txt", byte_start = 23972, raw = "［＃「句点脱落」はママ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000012/files/435_ruby_20960.zip::kanashimino_hi_yori.txt:136"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The quoted text describes a missing full stop and does not occur in the line, so the note has no target span."
+
+[[decision]]
+row = "annotation.chuuki"
+form = "［＃「○○」はママ］"
+locators = [
+  { work_id = "001311_49855", indexed_path = "cards/001311/files/49855_ruby_39248.zip::juhyo.txt", byte_start = 396978, raw = "［＃「燃えたんだ」はママ］" },
+]
+reason = "source-conflict"
+evidence = ["cards/001311/files/49855_ruby_39248.zip::juhyo.txt:2844"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The line prints 焼えたんだ before the note, which quotes 燃えたんだ; no text before the marker matches the quotation."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃ページの左右中央］"
+locators = [
+  { work_id = "000094_2525", indexed_path = "cards/000094/files/2525_ruby_15769.zip::koganemushi.txt", byte_start = 917, raw = "［＃ページの左右中央］" },
+  { work_id = "000136_731", indexed_path = "cards/000136/files/731_ruby.zip::seisanryouhari.txt", byte_start = 515, raw = "［＃ページの左右中央］" },
+  { work_id = "000156_18368", indexed_path = "cards/000156/files/18368_ruby_23228.zip::bosetsurin.txt", byte_start = 833, raw = "［＃ページの左右中央］" },
+  { work_id = "000255_48087", indexed_path = "cards/000255/files/48087_ruby_33154.zip::remonno_hanasaku_oka.txt", byte_start = 508, raw = "［＃ページの左右中央］" },
+  { work_id = "000256_2590", indexed_path = "cards/000256/files/2590_ruby_20694.zip::aito_ninshiki.txt", byte_start = 945, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 10395, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 14707, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 17744, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 20478, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 27175, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 32060, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 40454, raw = "［＃ページの左右中央］" },
+  { work_id = "000288_1760", indexed_path = "cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt", byte_start = 42566, raw = "［＃ページの左右中央］" },
+  { work_id = "000885_2557", indexed_path = "cards/000885/files/2557_ruby_13911.zip::akiko_shihen_zenshu.txt", byte_start = 810, raw = "［＃ページの左右中央］" },
+  { work_id = "000885_2557", indexed_path = "cards/000885/files/2557_ruby_13911.zip::akiko_shihen_zenshu.txt", byte_start = 4045, raw = "［＃ページの左右中央］" },
+  { work_id = "001191_55276", indexed_path = "cards/001191/files/55276_ruby_59506.zip::hikaku_shinwagaku.txt", byte_start = 10129, raw = "［＃ページの左右中央］" },
+  { work_id = "001266_46820", indexed_path = "cards/001266/files/46820_ruby_29304.zip::shokubutsu_ichinichi.txt", byte_start = 512077, raw = "［＃ページの左右中央］" },
+  { work_id = "001296_47296", indexed_path = "cards/001296/files/47296_ruby_29415.zip::rimbaud.txt", byte_start = 849, raw = "［＃ページの左右中央］" },
+  { work_id = "001296_47296", indexed_path = "cards/001296/files/47296_ruby_29415.zip::rimbaud.txt", byte_start = 51884, raw = "［＃ページの左右中央］" },
+  { work_id = "001296_47296", indexed_path = "cards/001296/files/47296_ruby_29415.zip::rimbaud.txt", byte_start = 70723, raw = "［＃ページの左右中央］" },
+  { work_id = "001296_47296", indexed_path = "cards/001296/files/47296_ruby_29415.zip::rimbaud.txt", byte_start = 116967, raw = "［＃ページの左右中央］" },
+  { work_id = "001310_55609", indexed_path = "cards/001310/files/55609_ruby_53015.zip::haikueno_michi.txt", byte_start = 1027, raw = "［＃ページの左右中央］" },
+  { work_id = "001670_55088", indexed_path = "cards/001670/files/55088_ruby_55289.zip::gakusei_monogatari.txt", byte_start = 33914, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60784", indexed_path = "cards/002043/files/60784_ruby_72419.zip::shingeki_01.txt", byte_start = 493, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60785", indexed_path = "cards/002043/files/60785_ruby_72519.zip::shingeki_02.txt", byte_start = 602, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60866", indexed_path = "cards/002043/files/60866_ruby_72731.zip::shingeki_03.txt", byte_start = 616, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60867", indexed_path = "cards/002043/files/60867_ruby_72733.zip::shingeki_04.txt", byte_start = 600, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60945", indexed_path = "cards/002043/files/60945_ruby_73136.zip::shingeki_05.txt", byte_start = 610, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60946", indexed_path = "cards/002043/files/60946_ruby_73138.zip::shingeki_06.txt", byte_start = 497, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_62059", indexed_path = "cards/002043/files/62059_ruby_76688.zip::tregarthen_no_tsuma.txt", byte_start = 1449, raw = "［＃ページの左右中央］" },
+  { work_id = "002265_62208", indexed_path = "cards/002265/files/62208_ruby_77583.zip::moya_wakusei.txt", byte_start = 953, raw = "［＃ページの左右中央］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000288/files/1760_ruby_23582.zip::rubaiyat.txt:58", "cards/000288/files/1760_23850.html:52", "cards/000094/files/2525_ruby_15769.zip::koganemushi.txt:25", "cards/000094/files/2525_15827.html:26", "cards/000136/files/731_ruby.zip::seisanryouhari.txt:17", "cards/000136/files/731.html:50"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The blank lines around the centred text are not 2 and 2, 1 and 3, or 3 and 1, the only counts to which the input manual assigns a position on the page. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃ページの左右中央］"
+locators = [
+  { work_id = "000067_1768", indexed_path = "cards/000067/files/1768_ruby_18600.zip::aoneko.txt", byte_start = 148418, raw = "［＃ページの左右中央］" },
+  { work_id = "000067_1789", indexed_path = "cards/000067/files/1789_ruby_20545.zip::01teihon_aoneko.txt", byte_start = 99776, raw = "［＃ページの左右中央］" },
+  { work_id = "001763_59947", indexed_path = "cards/001763/files/59947_ruby_75266.zip::sato_haruo_shishu.txt", byte_start = 769, raw = "［＃ページの左右中央］" },
+  { work_id = "001763_59947", indexed_path = "cards/001763/files/59947_ruby_75266.zip::sato_haruo_shishu.txt", byte_start = 861, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60202", indexed_path = "cards/002043/files/60202_ruby_69807.zip::yokka_hakuma.txt", byte_start = 723, raw = "［＃ページの左右中央］" },
+  { work_id = "002043_60318", indexed_path = "cards/002043/files/60318_ruby_70100.zip::yokka_yamiyo.txt", byte_start = 721, raw = "［＃ページの左右中央］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000067/files/1768_ruby_18600.zip::aoneko.txt:1632", "cards/000067/files/1768_18738.html:1570", "cards/001763/files/59947_ruby_75266.zip::sato_haruo_shishu.txt:22", "cards/001763/files/59947_75298.html:24", "cards/002043/files/60318_ruby_70100.zip::yokka_yamiyo.txt:23", "cards/002043/files/60318_70101.html:31"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The page has no source extent: the text ends at the colophon or at ［＃改段］ without a page break, or a figure precedes the marker on the same page. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃ページの左右中央に］"
+locators = [
+  { work_id = "000318_2086", indexed_path = "cards/000318/files/2086_ruby_15763.zip::koigoromo.txt", byte_start = 826, raw = "［＃ページの左右中央に］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000318/files/2086_ruby_15763.zip::koigoromo.txt:22", "cards/000318/files/2086_15764.html:21"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "One blank line precedes and follows the dedication, a count to which the input manual assigns no position on the page. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃左右中央］"
+locators = [
+  { work_id = "001093_42595", indexed_path = "cards/001093/files/42595_ruby_29532.zip::08_antolnette.txt", byte_start = 727, raw = "［＃左右中央］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/001093/files/42595_ruby_29532.zip::08_antolnette.txt:21", "cards/001093/files/42595_29602.html:24"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "No blank line precedes or follows the centred text, so the input manual assigns it no position on the page. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃左右中央］"
+locators = [
+  { work_id = "001093_42590", indexed_path = "cards/001093/files/42590_ruby_29004.zip::03_akebono.txt", byte_start = 329092, raw = "［＃左右中央］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/001093/files/42590_ruby_29004.zip::03_akebono.txt:624", "cards/001093/files/42590_29596.html:627"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The centred text runs to the colophon without a page break, so the page has no source end. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "decoration.bold_italic"
+form = "［＃ゴシック体］"
+locators = [
+  { work_id = "000096_2100", indexed_path = "cards/000096/files/2100_ruby.zip::dark_minister.txt", byte_start = 105062, raw = "［＃ゴシック体］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000096/files/2100_ruby.zip::dark_minister.txt:349", "cards/000096/files/2100.html:366"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The marker stands between 携帯品 and the following dash clause and has no closer, so it may set the word before it or open a style for the rest of the line. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "decoration.bold_italic"
+form = "［＃「○○」は斜体字］"
+locators = [
+  { work_id = "000165_891", indexed_path = "cards/000165/files/891_ruby_4415.zip::ibungakushakyo.txt", byte_start = 9942, raw = "［＃「Miss　B. A. Bae.」は斜体字］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000165/files/891_ruby_4415.zip::ibungakushakyo.txt:25", "cards/000165/files/891_20724.html:24"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The quotation separates Miss and B. with a full-width space, while the text uses half-width spaces and gives each word a ruby. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃「○○"
+locators = [
+  { work_id = "000008_1083", indexed_path = "cards/000008/files/1083_ruby.zip::nishingyojyou.txt", byte_start = 65311, raw = "［＃「ヤンに傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000008/files/1083_ruby.zip::nishingyojyou.txt:209"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The quotation opened before ヤン is not closed, so the emphasized span has no end."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃ここで字下げ終わり」］"
+locators = [
+  { work_id = "000083_1362", indexed_path = "cards/000083/files/1362_ruby_35873.zip::hekiteikanno_tatakai.txt", byte_start = 32004, raw = "［＃ここで字下げ終わり」］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000083/files/1362_ruby_35873.zip::hekiteikanno_tatakai.txt:61"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "A closing quotation mark follows the indentation closer without an opening one, so the bracket matches neither the closer nor a quoted target."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃引用、終わり］"
+locators = [
+  { work_id = "000160_1255", indexed_path = "cards/000160/files/1255_ruby_6570.zip::haisennikki.txt", byte_start = 171303, raw = "［＃引用、終わり］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000160/files/1255_ruby_6570.zip::haisennikki.txt:1085"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The work has no quotation opener that this closer could end."
+
+[[decision]]
+row = "structure.quote_block"
+form = "［＃引用、終わり］"
+locators = [
+  { work_id = "000160_1255", indexed_path = "cards/000160/files/1255_ruby_6570.zip::haisennikki.txt", byte_start = 171303, raw = "［＃引用、終わり］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000160/files/1255_ruby_6570.zip::haisennikki.txt:1085", "cards/000160/files/1255_6571.html:1079"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The work has no quotation opener that this closer could end, and the closer has no scope keyword; the published XHTML prints it as an unprocessed note."
+
+[[decision]]
+row = "layout.center_page"
+form = "［＃ページ上段の左右中央］"
+locators = [
+  { work_id = "000281_3596", indexed_path = "cards/000281/files/3596_ruby_38216.zip::nihon_ideorogi_ron.txt", byte_start = 4148, raw = "［＃ページ上段の左右中央］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000281/files/3596_ruby_38216.zip::nihon_ideorogi_ron.txt:59", "cards/000281/files/3596_39403.html:60"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The marker places the following heading in the upper section of its page, but no page break ends the placed text and the source gives no section extent; the published XHTML prints the marker unapplied."
+
+[[decision]]
+row = "annotation.layout_note"
+form = "［＃場面設定の表題、及び「○○」で始まる最初の行以外は、N文字下げた位置で頭を揃える］"
+locators = [
+  { work_id = "000072_864", indexed_path = "cards/000072/files/864_ruby.zip::umon30.txt", byte_start = 699, raw = "［＃場面設定の表題、及び「Ｔ」で始まる最初の行以外は、１文字下げた位置で頭を揃える］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000072/files/864_ruby.zip::umon30.txt:18", "cards/000072/files/864.html:12"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The instruction indents every line except the scene titles and the first line that starts with Ｔ, and the source does not mark which lines are scene titles."
+
+[[decision]]
+row = "annotation.layout_note"
+form = "［＃本文の台詞部分はN行目から、その台詞の最後まで天よりN字下げ。ト書き部分は天よりN字下げ（ト書きの段落のN行目はN字下げてある）］"
+locators = [
+  { work_id = "000311_2018", indexed_path = "cards/000311/files/2018_ruby_5907.zip::yoi.txt", byte_start = 607, raw = "［＃本文の台詞部分は２行目から、その台詞の最後まで天より１字下げ。ト書き部分は天より４字下げ（ト書きの段落の１行目は４字下げてある）］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/2018_ruby_5907.zip::yoi.txt:17"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The instruction selects the dialogue and the stage directions of the text, and the source does not mark which lines are dialogue."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃N字下げて］"
+locators = [
+  { work_id = "000182_946", indexed_path = "cards/000182/files/946_ruby.zip::zennokenkyuu_ruby.txt", byte_start = 3373, raw = "［＃１９字下げて］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000182/files/946_ruby.zip::zennokenkyuu_ruby.txt:24"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The indentation statement ends in て without a scope opener or closer, so its extent is not stated."
+
+[[decision]]
+row = "source.page_reference"
+form = "［＃、N-上段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 232719, raw = "［＃、87-上段-7］" },
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 232804, raw = "［＃、87-上段-9］" },
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 247998, raw = "［＃、92-上段-9］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:1296", "cards/000160/files/875_ruby.zip::madearth_ruby.txt:1297", "cards/000160/files/875_ruby.zip::madearth_ruby.txt:1347"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The marker gives a page and column locator after a comma but no statement it qualifies."
+
+[[decision]]
+row = "source.page_reference"
+form = "［＃、N-下段-N］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 252731, raw = "［＃、93-下段-9］" },
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 256493, raw = "［＃、94-下段-19］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:1356", "cards/000160/files/875_ruby.zip::madearth_ruby.txt:1370"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The marker gives a page and column locator after a comma but no statement it qualifies."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃以降の「○○」で始まる通信文のN行目以降はN字下げ］"
+locators = [
+  { work_id = "000160_875", indexed_path = "cards/000160/files/875_ruby.zip::madearth_ruby.txt", byte_start = 259134, raw = "［＃以降の「――」で始まる通信文の2行目以降は2字下げ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/875_ruby.zip::madearth_ruby.txt:1396"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The statement opens an indentation of the continuation lines of later messages but does not state where the scope ends."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃（止（波））］"
+locators = [
+  { work_id = "000933_47180", indexed_path = "cards/000933/files/47180_ruby_32772.zip::keiyoshino_ron.txt", byte_start = 73499, raw = "［＃（止（波））］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000933/files/47180_ruby_32772.zip::keiyoshino_ron.txt:334"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The nested parentheses do not delimit a target or a kunten reading."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃「○○」は中中見出し］"
+locators = [
+  { work_id = "002043_59605", indexed_path = "cards/002043/files/59605_ruby_67423.zip::okanno_omomi.txt", byte_start = 234471, raw = "［＃「第二十章　必死の努力」は中中見出し］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/002043/files/59605_ruby_67423.zip::okanno_omomi.txt:1076"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The notation defines large, middle and small headings but no 中中見出し level."
+
+[[decision]]
+row = "decoration.boten"
+form = "［＃「○○」に傍点］"
+locators = [
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52421, raw = "［＃「やわい」に傍点］" },
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52505, raw = "［＃「。やわ」に傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt:297"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The base-edition quotation of the variant note lacks its closing 」, and its nested emphasis note quotes 。やわ across the sentence boundary."
+
+[[decision]]
+row = "decoration.boten"
+form = "［＃「○○」に白丸傍点］"
+locators = [
+  { work_id = "000148_796", indexed_path = "cards/000148/files/796_txt.zip::syaseibun.txt", byte_start = 2037, raw = "［＃「作者の心的状態である」に白丸傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000148/files/796_txt.zip::syaseibun.txt:12", "cards/000148/files/796_43612.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note stands before である, which its quotation includes, so no text before the note matches the target. A later edition places the note after である."
+
+[[decision]]
+row = "emphasis.basic"
+form = "［＃「○○」に傍点］"
+locators = [
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52421, raw = "［＃「やわい」に傍点］" },
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52505, raw = "［＃「。やわ」に傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt:297"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The base-edition quotation of the variant note lacks its closing 」, and its nested emphasis note quotes 。やわ across the sentence boundary."
+
+[[decision]]
+row = "emphasis.basic"
+form = "［＃「○○」に白丸傍点］"
+locators = [
+  { work_id = "000148_796", indexed_path = "cards/000148/files/796_txt.zip::syaseibun.txt", byte_start = 2037, raw = "［＃「作者の心的状態である」に白丸傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000148/files/796_txt.zip::syaseibun.txt:12", "cards/000148/files/796_43612.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note stands before である, which its quotation includes, so no text before the note matches the target. A later edition places the note after である."
+
+[[decision]]
+row = "reference.frontref"
+form = "［＃「○○」に傍点］"
+locators = [
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52421, raw = "［＃「やわい」に傍点］" },
+  { work_id = "000255_43662", indexed_path = "cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt", byte_start = 52505, raw = "［＃「。やわ」に傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000255/files/43662_ruby_17828.zip::dosenkai_jihen.txt:297"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The base-edition quotation of the variant note lacks its closing 」, and its nested emphasis note quotes 。やわ across the sentence boundary."
+
+[[decision]]
+row = "reference.frontref"
+form = "［＃「○○」に白丸傍点］"
+locators = [
+  { work_id = "000148_796", indexed_path = "cards/000148/files/796_txt.zip::syaseibun.txt", byte_start = 2037, raw = "［＃「作者の心的状態である」に白丸傍点］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000148/files/796_txt.zip::syaseibun.txt:12", "cards/000148/files/796_43612.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note stands before である, which its quotation includes, so no text before the note matches the target. A later edition places the note after である."
+
+[[decision]]
+row = "decoration.font_size"
+form = "［＃「○○」は行右小書き］"
+locators = [
+  { work_id = "000067_2843", indexed_path = "cards/000067/files/2843_ruby_26236.zip::shino_genri.txt", byte_start = 88295, raw = "［＃「＊」は行右小書き］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000067/files/2843_ruby_26236.zip::shino_genri.txt:219", "cards/000067/files/2843_26253.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note follows the opening 「 after ＊, so no text directly before it matches the target. The published XHTML prints the note unapplied."
+
+[[decision]]
+row = "gaiji.marker"
+form = "※［＃…］"
+locators = [
+  { work_id = "000243_1328", indexed_path = "cards/000243/files/1328_ruby.zip::yakimonodokuhon.txt", byte_start = 47087, raw = "※［＃「※」は「上が「夕＋ふしづくり」＋下が「皿」」、第3水準1-88-72、読みは「わん」、59-7］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000243/files/1328_ruby.zip::yakimonodokuhon.txt:138", "cards/000243/files/1328_45856.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "An unmatched ※［ precedes the reference and opens a bracket that the line never closes. A later edition gives the glyph once, without the unmatched bracket."
+
+[[decision]]
+row = "gaiji.jis_code"
+form = "※［＃○○、第N水準N-N-N、N-N］"
+locators = [
+  { work_id = "000243_1328", indexed_path = "cards/000243/files/1328_ruby.zip::yakimonodokuhon.txt", byte_start = 47087, raw = "※［＃「※」は「上が「夕＋ふしづくり」＋下が「皿」」、第3水準1-88-72、読みは「わん」、59-7］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000243/files/1328_ruby.zip::yakimonodokuhon.txt:138", "cards/000243/files/1328_45856.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "An unmatched ※［ precedes the reference and opens a bracket that the line never closes. A later edition gives the glyph once, without the unmatched bracket."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000051_62060", indexed_path = "cards/000051/files/62060_ruby_77343.zip::yujoki.txt", byte_start = 45279, raw = "《》" },
+  { work_id = "000148_56923", indexed_path = "cards/000148/files/56923_ruby_66668.zip::mon.txt", byte_start = 137572, raw = "《》" },
+  { work_id = "000565_48686", indexed_path = "cards/000565/files/48686_ruby_37007.zip::momo_hagaki.txt", byte_start = 4533, raw = "《》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000051/files/62060_ruby_77343.zip::yujoki.txt:189", "cards/000148/files/56923_ruby_66668.zip::mon.txt:257", "cards/000565/files/48686_ruby_37007.zip::momo_hagaki.txt:27"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading is empty, so the ruby has no content to attach."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000320_2168", indexed_path = "cards/000320/files/2168_ruby_16254.zip::pariyori.txt", byte_start = 329529, raw = "《六月十日》" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000320/files/2168_ruby_16254.zip::pariyori.txt:403"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading follows a full stop and is a date, not a reading of the preceding text; the published XHTML attaches it to the full stop."
+
+[[decision]]
+row = "kunten.kaeriten"
+form = "［＃「○○」は返り点］"
+locators = [
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 114139, raw = "［＃「レ一二」は返り点］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000301/files/1872_ruby.zip::housouyawa.txt:458", "cards/000301/files/1872.html:449"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note quotes the mark set レ一二, which is not the text before it (処分可レ依二腕力一), and states no region. The heading line is one candidate region; the note does not exclude the rest of the section. The published XHTML colours レ, 二 and 一 in the heading without stating the region."
+
+[[decision]]
+row = "warichu.basic"
+form = "［＃「○○」は割り注で処理］"
+locators = [
+  { work_id = "000933_47196", indexed_path = "cards/000933/files/47196_ruby_35629.zip::nihonbungakuno_hassei1.txt", byte_start = 20606, raw = "［＃「細字の部分」は割り注で処理］" },
+]
+reason = "source-conflict"
+evidence = ["cards/000933/files/47196_ruby_35629.zip::nihonbungakuno_hassei1.txt:61", "cards/000933/files/47196_35957.html:55"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note quotes 細字の部分, prose that refers to the small print of the base text. The published XHTML opens the warichu after that phrase, at （――は, and does not close it within the paragraph."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃場面設定の表題、及び「○○」で始まる最初の行以外は、N文字下げた位置で頭を揃える］"
+locators = [
+  { work_id = "000072_864", indexed_path = "cards/000072/files/864_ruby.zip::umon30.txt", byte_start = 699, raw = "［＃場面設定の表題、及び「Ｔ」で始まる最初の行以外は、１文字下げた位置で頭を揃える］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000072/files/864_ruby.zip::umon30.txt:18", "cards/000072/files/864.html:12"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note states an alignment for every line except scene titles and the first line beginning with Ｔ; the source does not mark which lines are scene titles. The published XHTML prints the note as text, with せりふの行 in place of 最初の行."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃本文の台詞部分はN行目から、その台詞の最後まで天よりN字下げ。ト書き部分は天よりN字下げ（ト書きの段落のN行目はN字下げてある）］"
+locators = [
+  { work_id = "000311_2018", indexed_path = "cards/000311/files/2018_ruby_5907.zip::yoi.txt", byte_start = 607, raw = "［＃本文の台詞部分は２行目から、その台詞の最後まで天より１字下げ。ト書き部分は天より４字下げ（ト書きの段落の１行目は４字下げてある）］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/2018_ruby_5907.zip::yoi.txt:17", "cards/000311/files/2018_5908.html:25"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note states one indentation for dialogue and another for stage directions; the source does not mark which paragraphs are dialogue. The published XHTML omits the note and sets the play in one blockquote."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ。鍵括弧のついた台詞のみ、N字下げ。］"
+locators = [
+  { work_id = "000311_2023", indexed_path = "cards/000311/files/2023_ruby.zip::saru.txt", byte_start = 14489, raw = "［＃ここから４字下げ。鍵括弧のついた台詞のみ、３字下げ。］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000311/files/2023_ruby.zip::saru.txt:133", "cards/000311/files/2023.html:127"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer before the end of the play, so the block has no source end."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃次行は三字下げ、九字空き地付きで］"
+locators = [
+  { work_id = "000331_2613", indexed_path = "cards/000331/files/2613_ruby.zip::suterukane.txt", byte_start = 5149, raw = "［＃次行は三字下げ、九字空き地付きで］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000331/files/2613_ruby.zip::suterukane.txt:35", "cards/000331/files/2613.html:16"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note does not quote the part of the next line placed at the line end, and 九字空き may state either the gap before that part or its distance from the line end. The published XHTML right-aligns 永代経料 without an offset."
+
+[[decision]]
+row = "source.reviewed_residual_command"
+form = "［＃次行は四字下げ、一字空き地付きで］"
+locators = [
+  { work_id = "000331_2613", indexed_path = "cards/000331/files/2613_ruby.zip::suterukane.txt", byte_start = 5252, raw = "［＃次行は四字下げ、一字空き地付きで］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000331/files/2613_ruby.zip::suterukane.txt:37", "cards/000331/files/2613.html:34"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note does not quote the part of the next line placed at the line end, and 一字空き may state either the gap before that part or its distance from the line end. The published XHTML right-aligns the final ×　×　家 without an offset."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ］"
+locators = [
+  { work_id = "001674_54899", indexed_path = "cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt", byte_start = 83217, raw = "［＃ここから２字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt:1737", "cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt:1745", "cards/001674/files/54899_71675.html:1744", "cards/001674/files/54899_71675.html:1752"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer; the next note of the kind is the opener ［＃ここから３字下げ］ on line 1745, after the ［＃ページの左右中央］ page ends at ［＃改ページ］. The published XHTML ends jisage_2 at that opener, which the source does not state."
+
+[[decision]]
+row = "indentation.basic"
+form = "［＃ここからN字下げ］"
+locators = [
+  { work_id = "001674_54899", indexed_path = "cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt", byte_start = 83217, raw = "［＃ここから２字下げ］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt:1737", "cards/001674/files/54899_ruby_71629.zip::tsuru_akira_zen_senryu.txt:1745", "cards/001674/files/54899_71675.html:1744", "cards/001674/files/54899_71675.html:1752"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The opener has no closer; the next note of the kind is the opener ［＃ここから３字下げ］ on line 1745, after the ［＃ページの左右中央］ page ends at ［＃改ページ］. The published XHTML ends jisage_2 at that opener, which the source does not state."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃二字下げ終わり］"
+locators = [
+  { work_id = "000038_327", indexed_path = "cards/000038/files/327_ruby.zip::koiwokoi.txt", byte_start = 21013, raw = "［＃二字下げ終わり］" },
+  { work_id = "000038_327", indexed_path = "cards/000038/files/327_ruby.zip::koiwokoi.txt", byte_start = 21657, raw = "［＃二字下げ終わり］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000038/files/327_ruby.zip::koiwokoi.txt:143", "cards/000038/files/327_ruby.zip::koiwokoi.txt:150", "cards/000038/files/327.html:142", "cards/000038/files/327.html:149"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "Each closer ends the line that ［＃改行ごとに二字下げ］ begins. The policy states an indentation at each line break, and the text between the two notes contains none, so the source does not state which line takes the indentation. The published XHTML prints both notes as text and sets no indentation."
+
+[[decision]]
+row = "layout.yokogumi"
+form = "［＃以下のNつの英文はすべてイタリック文字、横書き］"
+locators = [
+  { work_id = "000025_1144", indexed_path = "cards/000025/files/1144_txt_11073.zip::oshiminaku_aiwa_ubau.txt", byte_start = 628, raw = "［＃以下の２つの英文はすべてイタリック文字、横書き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000025/files/1144_txt_11073.zip::oshiminaku_aiwa_ubau.txt:18", "cards/000025/files/1144_txt_11073.zip::oshiminaku_aiwa_ubau.txt:31", "cards/000025/files/1144_11850.html:24", "cards/000025/files/1144_11850.html:39"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note counts two English texts and has no closer. It does not state whether the right-aligned attribution after each text, or the blank line between them, belongs to the texts. The published XHTML is generated from the ruby edition, whose openers and closers state the extent."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000058_371", indexed_path = "cards/000058/files/371_ruby.zip::hamagiku_ruby.txt", byte_start = 7114, raw = "《きゅうかつ》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000058/files/371_ruby.zip::hamagiku_ruby.txt:38", "cards/000058/files/371.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The glyph reference before the reading opens with ［ and no ＃, so the notation defines no reference that could serve as the base. The published XHTML sets 久※ as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000083_492", indexed_path = "cards/000083/files/492_ruby.zip::mumei_ruby.txt", byte_start = 14836, raw = "《もが》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000083/files/492_ruby.zip::mumei_ruby.txt:24", "cards/000083/files/492.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The glyph description before the reading is written in ASCII brackets without ※ or a code, so the notation defines no reference that could serve as the base. The published XHTML sets the glyph alone as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000271_1556", indexed_path = "cards/000271/files/1556_ruby.zip::takiguchi.txt", byte_start = 78167, raw = "《はんときばか》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000271/files/1556_ruby.zip::takiguchi.txt:137", "cards/000271/files/1556.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The glyph reference before 計 is closed by 」 instead of ］, so the reference has no boundary in the notation. The published XHTML sets 半※計 as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000280_1706", indexed_path = "cards/000280/files/1706_ruby.zip::hototogisu.txt", byte_start = 29436, raw = "《へご》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000280/files/1706_ruby.zip::hototogisu.txt:120", "cards/000280/files/1706.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The glyph reference reads ※［※］は「木へん+羅」…」, which opens no ［＃ annotation and is closed by 」, so the notation defines no reference that could serve as the base. The published XHTML sets 杪※ as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "001774_56171", indexed_path = "cards/001774/files/56171_ruby_51038.zip::girishajuuji.txt", byte_start = 4806, raw = "《いのり》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/001774/files/56171_ruby_51038.zip::girishajuuji.txt:65", "cards/001774/files/56171_53104.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The quoted description 「示＋壽 in the glyph reference is closed by ］ instead of 」, so the reference has no boundary in the notation. The published XHTML sets 祈祷 as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000182_1755", indexed_path = "cards/000182/files/1755_ruby.zip::zettaimujunteki.txt", byte_start = 116393, raw = "《ますます》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000182/files/1755_ruby.zip::zettaimujunteki.txt:94", "cards/000182/files/1755.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The file writes glyph references with 【＃ and 】, which the notation does not define, and this reference follows the reading. The published XHTML sets 益※ as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000182_1755", indexed_path = "cards/000182/files/1755_ruby.zip::zettaimujunteki.txt", byte_start = 144932, raw = "《なんじ》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000182/files/1755_ruby.zip::zettaimujunteki.txt:112", "cards/000182/files/1755.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The glyph reference before the reading is written with 【＃ and 】, which the notation does not define. The published XHTML sets the glyph alone as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000129_2522", indexed_path = "cards/000129/files/2522_ruby.zip::seinen.txt", byte_start = 273653, raw = "《メセエヌ》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000129/files/2522_ruby.zip::seinen.txt:851", "cards/000129/files/2522.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The accent note before the reading opens with ［ followed by a space, so it is not an annotation in the notation and the base before it cannot be delimited. The published XHTML sets mecene as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000093_525", indexed_path = "cards/000093/files/525_ruby.zip::jinjya_ruby.txt", byte_start = 62261, raw = "《ゼ・タブー・システム・イン・ジャパン》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000093/files/525_ruby.zip::jinjya_ruby.txt:62", "cards/000093/files/525.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading follows the closing 」 of a quoted title, so no base precedes it directly. The following input note states that the reading is kept as the base edition prints it. The published XHTML sets 日本斎忌考 inside the quotation marks as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000126_669", indexed_path = "cards/000126/files/669_ruby.zip::olympos_ruby.txt", byte_start = 75652, raw = "《スタアンリバティ》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000126/files/669_ruby.zip::olympos_ruby.txt:170", "cards/000126/files/669.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading follows the closing 』 of a quoted phrase, so no base precedes it directly. The published XHTML, made from an earlier transcription with a ルビ note, sets 厳粛なる自由 inside the quotation marks as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000311_2643", indexed_path = "cards/000311/files/2643_ruby_7376.zip::london_1929.txt", byte_start = 65491, raw = "《エクスクラメーション》" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000311/files/2643_ruby_7376.zip::london_1929.txt:234", "cards/000311/files/2643_7377.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading follows a fullwidth exclamation mark, which the notation does not establish as a ruby base. The published XHTML prints the mark, the reading and its delimiters as text."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000148_764", indexed_path = "cards/000148/files/764_ruby.zip::hennaoto2_ruby.txt", byte_start = 93, raw = "《》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000148/files/764_ruby.zip::hennaoto2_ruby.txt:7", "cards/000148/files/764.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The front-matter legend is set between lines of nine hyphens, shorter than the separator lines of the transcription format, so the legend line 《》：ルビ is read as body text. The 《》 is the legend's example of the ruby notation, not a reading."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "000301_1872", indexed_path = "cards/000301/files/1872_ruby.zip::housouyawa.txt", byte_start = 183001, raw = "《ドアン》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000301/files/1872_ruby.zip::housouyawa.txt:710", "cards/000301/files/1872.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The text を置いたもの］ stands between the glyph reference and the reading, so no base precedes the reading directly. The published XHTML, made from an earlier transcription, sets the glyph alone as the base."
+
+[[decision]]
+row = "ruby.basic"
+form = "《○○》"
+locators = [
+  { work_id = "001930_58400", indexed_path = "cards/001930/files/58400_ruby_69156.zip::hokuetsu_seppu.txt", byte_start = 400226, raw = "《し》" },
+]
+reason = "source-conflict"
+evidence = ["cards/001930/files/58400_ruby_69156.zip::hokuetsu_seppu.txt:575", "cards/001930/files/58400_69157.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note before the reading quotes 「刺」, while the preceding text has 剌, so the note's target does not occur before it. The published XHTML sets the reading over the note alone."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」は底本では「○○"
+locators = [
+  { work_id = "000012_24448", indexed_path = "cards/000012/files/24448_ruby_11788.zip::tama.txt", byte_start = 11931, raw = "［＃「巍《たかし》が」は底本では「巍《たかし》を］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000012/files/24448_ruby_11788.zip::tama.txt:51", "cards/000012/files/24448_14023.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The base-edition quotation of the note is not closed by 」 before ］, so the extent of the base-edition reading is not delimited."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」は底本では「○○"
+locators = [
+  { work_id = "000064_55665", indexed_path = "cards/000064/files/55665_ruby_54734.zip::wakarejimo.txt", byte_start = 125182, raw = "［＃「扨《さて》」は底本では「扨《さて》て］" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000064/files/55665_ruby_54734.zip::wakarejimo.txt:69", "cards/000064/files/55665_54779.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The base-edition quotation of the note is not closed by 」 before ］, so the extent of the base-edition reading is not delimited."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃《えは》はママ］"
+locators = [
+  { work_id = "000164_2948", indexed_path = "cards/000164/files/2948_ruby.zip::gokuchuseikatsu.txt", byte_start = 40990, raw = "［＃《えは》はママ］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000164/files/2948_ruby.zip::gokuchuseikatsu.txt:169", "cards/000164/files/2948.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note quotes the reading 《えは》 without its base, a form the notation does not define. It refers to the reading of the preceding 餌《えは》; the published XHTML, made from an earlier transcription, gives ［＃ルビの「えは」はママ］."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」に《フライング・ダッジマン》のルビ］"
+locators = [
+  { work_id = "000126_729", indexed_path = "cards/000126/files/729_ruby.zip::sayounara_ruby.txt", byte_start = 67754, raw = "［＃「さまよえる和蘭人」に《フライング・ダッジマン》のルビ］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000126/files/729_ruby.zip::sayounara_ruby.txt:82", "cards/000126/files/729.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note supplies a right-side reading enclosed in ruby delimiters, a note form the notation does not define. The published XHTML sets フライング・ダッジマン over さまよえる和蘭人."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」に「○○」印、欄外に校注：「○○」］"
+locators = [
+  { work_id = "000989_4489", indexed_path = "cards/000989/files/4489_ruby_42584.zip::matsuno_misao_02.txt", byte_start = 132982, raw = "［＃「国尽《くにづく》し」に「＊」印、欄外に校注：「国の名をかきあつめたるもの。」］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000989/files/4489_ruby_42584.zip::matsuno_misao_02.txt:577", "cards/000989/files/4489_42682.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note combines a supplied mark with a margin gloss introduced by a colon, a form the notation does not define. The published XHTML prints the note as a note with the quoted ruby inside it."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」は「○○」「○○」などの誤記か］"
+locators = [
+  { work_id = "000989_1488", indexed_path = "cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt", byte_start = 630255, raw = "［＃「些《ちと》とも」は「些《ち》とも」「些《ちっ》とも」などの誤記か］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt:2950", "cards/000989/files/1488_16148.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note proposes two alternative corrections with などの誤記か, a form the notation does not define. The published XHTML prints the note as a note with the quoted rubies inside it."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」はママ、「○○」か「○○」であるかの判別付かず］"
+locators = [
+  { work_id = "000989_1488", indexed_path = "cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt", byte_start = 495547, raw = "［＃「亥刻《こゝのつ》」はママ、「子刻《こゝのつ》」か「亥刻《よつ》」であるかの判別付かず］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000989/files/1488_ruby_5040.zip::kikumoyo_sarayama_kidan.txt:2182", "cards/000989/files/1488_16148.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note states that the text is reproduced and that neither of two corrections can be chosen, a form the notation does not define. The published XHTML prints the note as a note with the quoted rubies inside it."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃「○○」はママ、『広辞苑』では「○○」］"
+locators = [
+  { work_id = "000255_1405", indexed_path = "cards/000255/files/1405_ruby.zip::tenshukakunooto.txt", byte_start = 66213, raw = "［＃「加陵頻迦《かりょうびんか》」はママ、『広辞苑』では「迦陵頻伽《かりょうびんが》」］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000255/files/1405_ruby.zip::tenshukakunooto.txt:366", "cards/000255/files/1405.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note combines a sic statement with the spelling of a dictionary, a form the notation does not define. The published XHTML prints the note as a note with the quoted rubies inside it."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃入力者註：以下の九ヶ所の底本のミスと思われるものは全集版に合わせて修正した。\r\n　全集版：東京創元社『定本北條民雄全集・上巻』昭和五十五年刊\r\n　数字は定本のページ数と行数を示す。「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」と」→「○○」＜改行＞と」\r\n　N-N「○○」→「○○」\r\n　N-N「○○」→「○○」］"
+locators = [
+  { work_id = "000997_398", indexed_path = "cards/000997/files/398_ruby.zip::inochino.txt", byte_start = 74055, raw = "［＃入力者註：以下の九ヶ所の底本のミスと思われるものは全集版に合わせて修正した。\r\n　全集版：東京創元社『定本北條民雄全集・上巻』昭和五十五年刊\r\n　数字は定本のページ数と行数を示す。「底本」→「修正」\r\n　5-13「識らず墜《お》ち込んで」→「識らず堕《お》ち込んで」\r\n　6-1「傾き初めた太陽の」→「傾き始めた太陽の」\r\n　8-2「患者の生活もその」→「患者の住居もその」\r\n　14-17「一端を摘《つか》み取る」→「一端を掴《つか》み取る」\r\n　15-9「眉を窄《すぼ》めた」→「肩を窄《すぼ》めた」\r\n　16-6「ちょっと急がしかった」→「ちょっと忙しかった」\r\n　27-14「失礼ですけれど」と」→「失礼ですけれど」＜改行＞と」\r\n　43-5「外を見なががら」→「外を見ながら」\r\n　43-17「佐柄木に復っていた」→「佐柄木が復っていた」］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000997/files/398_ruby.zip::inochino.txt:315", "cards/000997/files/398.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note is a multi-line input statement that lists corrections against another edition, a form the notation does not define. The published XHTML prints it as a note."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃文泉堂書店版では「○○」のルビ］"
+locators = [
+  { work_id = "000040_1326", indexed_path = "cards/000040/files/1326_ruby.zip::wagamachi.txt", byte_start = 9905, raw = "［＃文泉堂書店版では「《い》」のルビ］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000040/files/1326_ruby.zip::wagamachi.txt:56", "cards/000040/files/1326.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note quotes a reading of another edition without its base, a form the notation does not define. The published XHTML, made from an earlier transcription, quotes the reading as 「い」."
+
+[[decision]]
+row = "ruby.basic"
+form = "［＃（保利《ホリ》）］"
+locators = [
+  { work_id = "000933_47180", indexed_path = "cards/000933/files/47180_ruby_32772.zip::keiyoshino_ron.txt", byte_start = 71922, raw = "［＃（保利《ホリ》）］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000933/files/47180_ruby_32772.zip::keiyoshino_ron.txt:325", "cards/000933/files/47180_33641.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note encloses a gloss with its own reading in parentheses, a form the notation does not define. The published XHTML sets 保利《ホリ》 as a small superscript gloss."
+
+[[decision]]
+row = "layout.tcy"
+form = "［＃「○○」は縦中横］"
+locators = [
+  { work_id = "000311_15995", indexed_path = "cards/000311/files/15995_txt_28308.zip::dohyo_sosaku_memo.txt", byte_start = 2099, raw = "［＃「52-」は縦中横］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000311/files/15995_txt_28308.zip::dohyo_sosaku_memo.txt:46", "cards/000311/files/15995_28870.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The tate-chu-yoko note lies inside the note ［＃「ｍ」の左に「52-…歳」］, which has no 注記 keyword and so is not a margin-note form of the notation. The published XHTML prints the enclosing note as a note and sets 52- horizontally inside it."
+
+[[decision]]
+row = "layout.tcy"
+form = "［＃「○○」は縦中横］"
+locators = [
+  { work_id = "001569_52468", indexed_path = "cards/001569/files/52468_ruby_49668.zip::yuki.txt", byte_start = 131858, raw = "［＃「32」は縦中横］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/001569/files/52468_ruby_49668.zip::yuki.txt:337", "cards/001569/files/52468_49669.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The tate-chu-yoko note lies inside the cross-reference note 「…」は「第32図」を指す。, a form the notation does not define. The published XHTML prints the enclosing note as a note and sets 32 horizontally inside it."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃以下、この段落の数字付き（）は一字扱いである。］"
+locators = [
+  { work_id = "000093_525", indexed_path = "cards/000093/files/525_ruby.zip::jinjya_ruby.txt", byte_start = 915, raw = "［＃以下、この段落の数字付き（）は一字扱いである。］" },
+  { work_id = "000093_525", indexed_path = "cards/000093/files/525_ruby.zip::jinjya_ruby.txt", byte_start = 99546, raw = "［＃以下、この段落の数字付き（）は一字扱いである。］" },
+]
+reason = "insufficient-source-authority"
+evidence = ["cards/000093/files/525_ruby.zip::jinjya_ruby.txt:18", "cards/000093/files/525_ruby.zip::jinjya_ruby.txt:86", "cards/000093/files/525.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note states that each parenthesized numeral occupies one character but not whether the base edition prints a parenthesized-numeral glyph such as ⑴ or sets the numeral in tate-chu-yoko. On line 18 the note also follows （１）, and 以下 does not state whether that numeral is included. The published HTML of this transcription omits the note and prints the numerals unchanged."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃N段目、Sinhaのnは上ドット付き、Visnuのsnはともに下ドット付き］"
+locators = [
+  { work_id = "001096_43554", indexed_path = "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt", byte_start = 61193, raw = "［＃４段目、Sinhaのnは上ドット付き、Visnuのsnはともに下ドット付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:88", "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:96", "cards/001096/files/43554_30446.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note selects its letters by a row number of the genealogy diagram above it. The source does not state whether the connector lines count as rows; only a count of the name rows places Sinha and Visnu in row 4. The diagram also has an undotted Sinha-varman in row 5. The published XHTML prints the note as a note."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃N段目、Visnuのsnはともに下ドット付き］"
+locators = [
+  { work_id = "001096_43554", indexed_path = "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt", byte_start = 61289, raw = "［＃６段目、Visnuのsnはともに下ドット付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:92", "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:97", "cards/001096/files/43554_30446.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note selects its letters by a row number of the genealogy diagram above it, and the source does not state whether the connector lines count as rows. The published XHTML prints the note as a note."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃N段目、Sinhaのnは上ドット付き］"
+locators = [
+  { work_id = "001096_43554", indexed_path = "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt", byte_start = 61352, raw = "［＃７段目、Sinhaのnは上ドット付き］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:94", "cards/001096/files/43554_ruby_29725.zip::kongochisanzo.txt:98", "cards/001096/files/43554_30446.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note selects its letter by a row number of the genealogy diagram above it, and the source does not state whether the connector lines count as rows. The published XHTML prints the note as a note."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃「○○」から「○○」まで大文字、ゴシック体。「○○」は二倍二重ダーシ］"
+locators = [
+  { work_id = "000096_2100", indexed_path = "cards/000096/files/2100_ruby.zip::dark_minister.txt", byte_start = 368639, raw = "［＃「入場料」から「七円」まで大文字、ゴシック体。「＝＝」は二倍二重ダーシ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000096/files/2100_ruby.zip::dark_minister.txt:1209", "cards/000096/files/2100.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The quoted ＝＝ occurs twice on the line, before 入場料 and after 七円, and the note does not state whether it refers to one or both. The published HTML prints the note as text."
+
+[[decision]]
+row = "glyph.variant_note"
+form = "［＃上記、N、N行目とN行目の「○○」は中文字、それ以外は小文字。N行目「○○」は○付き文字］"
+locators = [
+  { work_id = "000096_2100", indexed_path = "cards/000096/files/2100_ruby.zip::dark_minister.txt", byte_start = 294739, raw = "［＃上記、１、２行目と４行目の「志村浩太郎　印」は中文字、それ以外は小文字。４行目「印」は○付き文字］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000096/files/2100_ruby.zip::dark_minister.txt:1000", "cards/000096/files/2100_ruby.zip::dark_minister.txt:1002", "cards/000096/files/2100.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "上記 does not state which preceding lines the note counts or where それ以外 ends, and １、２行目と４行目の「志村浩太郎　印」 reads either as lines 1 and 2 and the quoted text of line 4, or as the quoted text of lines 1, 2 and 4. The published HTML prints the note as text."
+
+[[decision]]
+row = "ruby.basic"
+form = "｜○○《○○》"
+locators = [
+  { work_id = "000271_1556", indexed_path = "cards/000271/files/1556_ruby.zip::takiguchi.txt", byte_start = 10626, raw = "｜※［＃「※」は「りっしんべん＋夢」と同義、「夢の夕部分を目に置き換えたもの」、読みは「ぼう」、第4水準2-12-81、7-5」然《ぼうぜん》" },
+]
+reason = "malformed-boundary"
+evidence = ["cards/000271/files/1556_ruby.zip::takiguchi.txt:30", "cards/000271/files/1556.html:21", "cards/000271/files/1556_ruby_1907.zip::takiguchi_nyudo.txt:31"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The gaiji note after ｜※ is closed by 」 instead of ］, so the notation does not determine where the ruby base begins or ends. The published XHTML prints ※然（ぼうぜん）, and the later edition 1556_ruby_1907.zip writes the base as a well-formed gaiji note followed by 然."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ、地からN字下げ］"
+locators = [
+  { work_id = "000009_50714", indexed_path = "cards/000009/files/50714_ruby_36987.zip::tsuchiirono_kao.txt", byte_start = 511, raw = "［＃ここから２字下げ、地から３字下げ］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000009/files/50714_ruby_36987.zip::tsuchiirono_kao.txt:17", "cards/000009/files/50714_36988.html:27"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "地から３字下げ refers to the foot edge with a verb of movement away from the head, so the clause does not state whether it sets a foot margin of three characters; the published XHTML sets the block at a plain 2em."
+
+[[decision]]
+row = "indentation.jisage_block"
+form = "［＃ここからN字下げ、文章は横組み、「○○」が左側、「○○」が右側に配置されている、罫囲み］"
+locators = [
+  { work_id = "000160_2615", indexed_path = "cards/000160/files/2615_ruby_23958.zip::shonen_tanteicho.txt", byte_start = 327294, raw = "［＃ここから２字下げ、文章は横組み、「三日月型の分」が左側、「扇型の分」が右側に配置されている、罫囲み］" },
+]
+reason = "ambiguous-target"
+evidence = ["cards/000160/files/2615_ruby_23958.zip::shonen_tanteicho.txt:1830", "cards/000160/files/2615_23959.html:1834"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The clause describes the printed arrangement of two framed parts side by side and does not state which transcribed lines form each column or where the frame lies; the published XHTML sets both parts one after the other in a plain 2em block."

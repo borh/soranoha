@@ -30,10 +30,9 @@ pub enum Token {
         span: Span,
     },
 
-    /// Line-feed (`\n`). Emitted as its own token rather than folded
-    /// into the surrounding Text because line-structure matters for
-    /// block-level container recognition (the pair stage pairs
-    /// block-opener / block-closer lines by position).
+    /// Line feed (`\n`). A separate token, because block-level container
+    /// recognition depends on line structure: the pair stage pairs
+    /// block-opener and block-closer lines by position.
     Newline {
         /// Sanitized-source byte offset of the `\n`.
         pos: u32,
@@ -46,7 +45,8 @@ mod tests {
 
     #[test]
     fn single_char_trigger_byte_lens_match_utf8() {
-        // Verifies that the re-exported functions produce identical results.
+        // Checks the re-exported `ab_aozora_spec::TriggerKind::source_byte_len`
+        // against the UTF-8 lengths of `｜` and `《`.
         assert_eq!(TriggerKind::Bar.source_byte_len(), 3);
         assert_eq!(TriggerKind::AngleQuoteOpen.source_byte_len(), 3);
     }

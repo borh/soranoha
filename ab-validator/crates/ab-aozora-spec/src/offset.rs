@@ -1,11 +1,11 @@
 //! Coordinate-system newtypes for byte offsets.
 //!
-//! The lex pipeline operates over **three** distinct coordinate
-//! spaces that all happen to use `u32` byte offsets:
+//! The lex pipeline operates over three distinct coordinate spaces,
+//! each using `u32` byte offsets:
 //!
 //! 1. **Source**: bytes of the original input string the caller
-//!    handed to [`Document::new`](`crate`)<!-- doc-link via meta crate -->.
-//!    BOM, CRLF and decorative-rule positions are still in their
+//!    passed to [`Document::new`](`crate`)<!-- doc-link via meta crate -->.
+//!    BOM, CRLF and decorative-rule positions remain at their
 //!    original positions.
 //! 2. **Sanitized source**: bytes of the sanitize-stage output.
 //!    BOM-stripped, CR/LF-normalised, accent-decomposed,
@@ -19,23 +19,20 @@
 //!    occupies one PUA codepoint here regardless of its source
 //!    width.
 //!
-//! The newtypes [`SourceOffset`] and [`NormalizedOffset`] make
-//! cross-space mismatches ("I passed a normalized offset where the
-//! API expected a source offset") a build error without paying any
-//! runtime cost; both compile to a `u32` field access.
+//! With the newtypes [`SourceOffset`] and [`NormalizedOffset`], passing
+//! an offset from one space where the API expects the other is a
+//! compile error; both compile to a `u32` field access.
 //!
 //! # Conversion policy
 //!
 //! - `u32 → SourceOffset` and `u32 → NormalizedOffset` are infallible
-//!   (`From` impls). Constructing a coordinate from a raw byte index
-//!   is the caller acting as the authority on which space the index
-//!   names.
-//! - There is **no** cross-conversion between [`SourceOffset`] and
-//!   [`NormalizedOffset`]. Translating between coordinate spaces
+//!   (`From` impls). A caller that constructs a coordinate from a raw
+//!   byte index asserts which space the index belongs to.
+//! - [`SourceOffset`] and [`NormalizedOffset`] have no conversion
+//!   between each other. Translating between coordinate spaces
 //!   requires a side-table (the `source_nodes` slice on the lex
-//!   output), and the lack of `From` impls forces callers to go
-//!   through that table rather than reinterpret a `u32` they
-//!   already have.
+//!   output); without a `From` impl between the two types, callers
+//!   translate through that table instead of reinterpreting a `u32`.
 //! - Both newtypes expose a [`get`](SourceOffset::get) accessor for
 //!   internal arithmetic.
 
@@ -52,8 +49,8 @@
 pub struct SourceOffset(pub u32);
 
 impl SourceOffset {
-    /// Construct from a raw byte index. The caller is asserting that
-    /// `v` names a position in the sanitized-source coordinate space.
+    /// Construct from a raw byte index. The caller asserts that `v`
+    /// is a position in the sanitized-source coordinate space.
     #[must_use]
     pub const fn new(v: u32) -> Self {
         Self(v)
@@ -86,8 +83,8 @@ impl From<u32> for SourceOffset {
 pub struct NormalizedOffset(pub u32);
 
 impl NormalizedOffset {
-    /// Construct from a raw byte index. The caller is asserting that
-    /// `v` names a position in the normalized-text coordinate space.
+    /// Construct from a raw byte index. The caller asserts that `v`
+    /// is a position in the normalized-text coordinate space.
     #[must_use]
     pub const fn new(v: u32) -> Self {
         Self(v)
@@ -145,16 +142,14 @@ mod tests {
     fn coordinate_spaces_are_disjoint() {
         let s = SourceOffset::new(5);
         let n = NormalizedOffset::new(5);
-        // Both reach the same underlying byte value through `.get()`.
+        // Both return the same underlying byte value from `.get()`.
         assert_eq!(s.get(), n.get());
     }
 
     #[test]
     fn newtypes_are_word_sized() {
-        // Pin the no-overhead promise: each newtype is exactly the
-        // size of a `u32`. A future change that wraps the inner
-        // value in something heavier (e.g. `NonZeroU32`, an enum)
-        // surfaces here.
+        // Each newtype has the size of a `u32`; wrapping the inner
+        // value in a type larger than `u32` fails these assertions.
         use core::mem::size_of;
         assert_eq!(size_of::<SourceOffset>(), size_of::<u32>());
         assert_eq!(size_of::<NormalizedOffset>(), size_of::<u32>());

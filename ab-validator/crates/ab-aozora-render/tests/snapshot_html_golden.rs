@@ -8,10 +8,9 @@
 //! mask incidental whitespace runs so reviewers can focus on the
 //! structural part of the diff.
 //!
-//! Coverage rationale: each test pins one *kind* of construct in
-//! isolation. A renderer regression that subtly alters the wrapper
-//! tag for one variant surfaces as a one-test diff instead of a
-//! mass conformance failure.
+//! Each test covers one kind of construct in isolation, so a renderer
+//! change that alters the wrapper tag for one variant appears as a
+//! one-test diff instead of a mass conformance failure.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::render_html;
@@ -59,27 +58,27 @@ fn snapshot_paired_indent_container() {
 
 #[test]
 fn snapshot_xss_payload_is_escaped() {
-    // Any rendered `<script>` substring is a security regression.
-    // Snapshot pins the escaped form so reviewers see exactly what
-    // the renderer emits for hostile input.
+    // A rendered `<script>` substring would be a script-injection
+    // defect. The snapshot records the escaped form the renderer emits
+    // for this input.
     insta::assert_snapshot!(render("<script>alert(1)</script>"));
 }
 
 #[test]
 fn snapshot_contiguous_forward_styles_referent() {
-    // a non-adjacent referent in the same plain run is styled in place
+    // A non-adjacent referent in the same plain run is styled in place
     // (a `Detached` decoration spliced at 青空) while the bracket stays
-    // `Referenced` and renders nothing — 青空 appears once, now bouten-styled,
+    // `Referenced` and renders nothing — 青空 appears once, bouten-styled,
     // preserving the no-double-render invariant.
     insta::assert_snapshot!(render("青空の下を歩く［＃「青空」に傍点］"));
 }
 
 #[test]
 fn snapshot_referenced_ruby_base_forward_no_double_render() {
-    // the bouten target resolves to a ruby base (not representable as a
+    // The bouten target resolves to a ruby base (not representable as a
     // text-only leaf), so the bracket stays `Referenced` (renders nothing) and
     // the lowering pass decorates the ruby's base instead — 我 renders once,
-    // now emphasis-wrapped inside the `<ruby>`, preserving the
+    // wrapped in the emphasis element inside the `<ruby>`, preserving the
     // no-double-render invariant.
     insta::assert_snapshot!(render("我《われ》の名は［＃「我」に傍点］"));
 }

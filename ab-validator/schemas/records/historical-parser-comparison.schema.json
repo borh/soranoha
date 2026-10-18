@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ab-validator/historical-parser-comparison.schema.json",
+  "title": "Historical parser comparison",
+  "description": "How earlier Aozora parsers and their AAT adapters handled each syntax row in data/aozora-syntax-coverage.toml.",
+  "type": "object",
+  "required": [
+    "row"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "row": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ComparisonRow"
+      }
+    }
+  },
+  "$defs": {
+    "ComparisonRow": {
+      "type": "object",
+      "required": [
+        "syntax_row_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "syntax_row_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parsers": {
+          "type": "object",
+          "description": "Open-keyed map of parser id to ParserCell. Adding a parser changes no existing entry.",
+          "additionalProperties": {
+            "$ref": "#/$defs/ParserCell"
+          }
+        },
+        "adapters": {
+          "type": "object",
+          "description": "Open-keyed map of adapter id to AdapterCell. Adding an adapter changes no existing entry.",
+          "additionalProperties": {
+            "$ref": "#/$defs/AdapterCell"
+          }
+        }
+      }
+    },
+    "Recognition": {
+      "type": "string",
+      "description": "What the underlying parser does when it encounters this feature.",
+      "enum": [
+        "parsed",
+        "normalised",
+        "unrecognised",
+        "aborts",
+        "unknown"
+      ]
+    },
+    "AatFidelity": {
+      "type": "string",
+      "description": "What the adapter's AAT JSON output retains of this feature.",
+      "enum": [
+        "preserved",
+        "lossy",
+        "dropped",
+        "synthesised",
+        "not_applicable",
+        "unknown"
+      ]
+    },
+    "ParserCell": {
+      "type": "object",
+      "required": [
+        "recognition"
+      ],
+      "properties": {
+        "recognition": {
+          "$ref": "#/$defs/Recognition"
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Optional permalink to a line of the upstream parser source at a pinned commit."
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AdapterCell": {
+      "type": "object",
+      "required": [
+        "aat_fidelity"
+      ],
+      "properties": {
+        "aat_fidelity": {
+          "$ref": "#/$defs/AatFidelity"
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Optional <file>:<line> pointer in the adapter source or a fixture path."
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

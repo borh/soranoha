@@ -2,19 +2,16 @@
 //!
 //! Two complementary properties on the owned-AST → HTML path:
 //!
-//! 1. **Totality**: [`html::render_to_string`] must not panic on any
-//!    input the lexer accepts (which is "any UTF-8 string" — the
-//!    pipeline emits diagnostics rather than failing). The render
-//!    layer is the last unfallible step before output; a panic here
-//!    is a denial-of-service surface for any caller that hands user
-//!    input to the renderer.
+//! 1. **Totality**: [`render_html`] must not panic on any input the
+//!    lexer accepts (which is "any UTF-8 string" — the pipeline emits
+//!    diagnostics rather than failing). The render layer is the last
+//!    infallible step before output; a panic here lets any input crash
+//!    a caller that passes user input to the renderer.
 //!
-//! 2. **Structural soundness**: every `<p>` is matched by a `</p>`,
-//!    every `<aozora-container>` is matched by a `</aozora-container>`.
-//!    A renderer regression that emits an unbalanced tag corrupts
-//!    every downstream HTML consumer; the proptest is the decisive
-//!    way to catch a stray phase-state branch that drops a closing
-//!    tag.
+//! 2. **Structural soundness**: every `<p>` is matched by a `</p>`.
+//!    An unbalanced tag makes the HTML malformed for every downstream
+//!    consumer; the proptest detects a renderer state branch that drops
+//!    a closing tag.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::render_html;
@@ -31,9 +28,8 @@ fn assert_render_is_balanced(source: &str) {
     let out = lex(source);
     let html = render_html(&out);
 
-    // Paragraph balance — `<p` rather than `<p>` to also catch
-    // attribute-bearing variants that the renderer might one day
-    // introduce. End tag is unambiguous.
+    // Paragraph balance — `<p` rather than `<p>`, so an open tag with
+    // attributes is also counted. The end tag is unambiguous.
     let p_open = count_substr(&html, "<p");
     let p_close = count_substr(&html, "</p>");
     assert_eq!(
@@ -41,10 +37,6 @@ fn assert_render_is_balanced(source: &str) {
         "paragraph tags unbalanced for source {source:?}\nopen={p_open} close={p_close}\n---\n{html}"
     );
 }
-
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
 
 #[test]
 fn empty_input_renders_without_panic() {
@@ -75,7 +67,7 @@ fn paired_container_renders_balanced() {
 proptest! {
     #![proptest_config(default_config())]
 
-    /// Render is total over the workhorse Aozora-fragment generator —
+    /// Render is total over the Aozora-fragment generator —
     /// no panic, balanced paragraph tags.
     #[test]
     fn aozora_fragment_renders_balanced(s in aozora_fragment(120)) {
@@ -101,7 +93,7 @@ proptest! {
     /// payload generator emits already-dangerous source; the renderer
     /// must not pass them through verbatim.
     #[test]
-    fn xss_payload_does_not_leak_script_tag(s in xss_payload()) {
+    fn xss_payload_renders_no_unescaped_script_tag(s in xss_payload()) {
         let out = lex(&s);
         let html = render_html(&out);
         prop_assert!(

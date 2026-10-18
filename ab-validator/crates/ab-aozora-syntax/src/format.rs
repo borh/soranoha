@@ -8,10 +8,10 @@
 //!
 //! This module separates the two axes:
 //!
-//! - [`Format`] names the **attribute** once, scope-independent: the source
+//! - [`Format`] identifies the attribute once, scope-independent: the source
 //!   of the canonical keyword and the attribute-identity tag.
-//! - [`ForwardAttr`], [`LineFormat`], [`RegionFormat`] each enumerate **only
-//!   the attributes legal at that scope**, so an illegal pair is unrepresentable.
+//! - [`ForwardAttr`], [`LineFormat`], [`RegionFormat`] each enumerate only
+//!   the attributes legal at that scope, so an illegal pair is unrepresentable.
 //!   Every scope sum projects back via `fn format() -> Format`.
 //! - [`RegionClose`] is the close-marker discriminant; the open
 //!   [`RegionFormat`] payload stays authoritative (see [`RegionClose::of`]).
@@ -21,12 +21,8 @@
 
 use core::num::{NonZeroI8, NonZeroU8};
 
-use crate::ast::{PartialLayoutId, StrId};
-use crate::{BoutenKind, BoutenPosition, HeadingKind, HeadingStyle};
-
-// ----------------------------------------------------------------------
-// Scalar parameters: NonZero so placeholders are unconstructable
-// ----------------------------------------------------------------------
+use crate::ast::{FormattingInstruction, PartialLayoutId, StrId};
+use crate::{BoutenKind, BoutenPosition, DecorationPosition, HeadingKind, HeadingStyle};
 
 /// Signed relative font-size shift.
 ///
@@ -56,6 +52,8 @@ impl FontShift {
 pub enum QualitativeFontSize {
     /// 小さい活字: smaller type, with no supplied degree.
     Smaller,
+    /// 大きい活字: larger type, with no supplied degree.
+    Larger,
     /// やや小さく: slightly smaller type.
     SlightlySmaller,
     /// ひとまわり大きい: larger type with the supplied qualitative comparison.
@@ -66,30 +64,30 @@ impl QualitativeFontSize {
     /// Whether the supplied comparison enlarges the surrounding type.
     #[must_use]
     pub const fn larger(self) -> bool {
-        matches!(self, Self::HitomawariLarger)
+        matches!(self, Self::Larger | Self::HitomawariLarger)
     }
 
     /// The source's degree qualifier; no variant denotes a numbered stage.
     #[must_use]
     pub const fn qualifier(self) -> Option<&'static str> {
         match self {
-            Self::Smaller => None,
+            Self::Smaller | Self::Larger => None,
             Self::SlightlySmaller => Some("やや"),
             Self::HitomawariLarger => Some("ひとまわり"),
         }
     }
 }
 
-/// An **absolute** font size keyword (`特大文字` / `大文字` / `中文字` /
+/// An absolute font size keyword (`特大文字` / `大文字` / `中文字` /
 /// `小文字`), as distinct from the relative `N段階…文字` shift carried by
 /// [`FontShift`].
 ///
-/// The 青空文庫 corpus attests this scale in works that name a fixed size
+/// The 青空文庫 corpus attests this scale in works that state a fixed size
 /// rather than a step count (e.g. 暗黒公使's 特大 > 大 > 中 > 本文 > 小
 /// headline scheme, and the forward `「X」は小文字`). The variants are ordered
-/// largest-to-smallest; `Medium` is one step *below* the surrounding body, so
-/// it has no representable [`FontShift`] (`NonZero`), which is why this is its
-/// own type rather than a magnitude.
+/// largest-to-smallest; `Medium` is one step below the surrounding body, so
+/// it has no representable [`FontShift`] (`NonZero`), and the scale is a
+/// separate type rather than a magnitude.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
@@ -144,9 +142,9 @@ pub enum EnclosureKind {
 /// (`「X」はアクサン（´）付き` / `…ウムラウト（¨）付き`), specifying which
 /// precomposed accented glyph the single quoted Latin letter maps to.
 ///
-/// The mark *word* (アクサン) does not distinguish acute from grave; the
-/// bracketed *symbol* does (´ = U+00B4 vs ｀ = U+FF40); ウムラウト（¨） (¨ =
-/// U+00A8) names the umlaut. Composition reuses the `〔…〕` accent digraph table
+/// The mark word (アクサン) does not distinguish acute from grave; the
+/// bracketed symbol does (´ = U+00B4 vs ｀ = U+FF40); ウムラウト（¨） (¨ =
+/// U+00A8) denotes the umlaut. Composition reuses the `〔…〕` accent digraph table
 /// via [`crate::accent::compose_accent`], the single authority for the
 /// "Latin letter plus diacritic yields a precomposed glyph" mapping;
 /// [`Format::AccentDot`] is the sibling combining-dot facility.
@@ -187,9 +185,9 @@ pub struct Kumi {
 }
 
 /// Secondary line-layout clause of an indent block (`、N字詰め` / `、L行W字組みで`).
-// Exhaustive by design: serialize / render must handle every
-// arm explicitly so a future layout is compiler-flagged at every site rather
-// than silently dropped by a `_` fallback.
+// Not `#[non_exhaustive]`: serialize and render match every arm explicitly,
+// so a new layout variant is a compile error at each site instead of falling
+// into a `_` arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IndentLayout {
@@ -203,13 +201,13 @@ pub enum IndentLayout {
 
 /// Semantic purpose explicitly supplied for an indented source scope.
 ///
-/// A purpose is what the source *calls* the scope, and it is independent of the
+/// A purpose is what the source calls the scope, and it is independent of the
 /// geometry, direction and frame clauses that may sit beside it in the same
-/// marker. The variants stay as far apart as the source spellings do: `表組み`
-/// says the lines are a table, `図表` says the scope is an exhibit without
-/// saying whether it is a diagram or a table, and folding the second onto the
-/// first would assert a table the source never named. `引用文` and `手紙文` are
-/// kept apart for the same reason.
+/// marker. Each source spelling has its own variant: `表組み` designates the
+/// lines as a table, `図表` designates the scope as an exhibit without stating
+/// whether it is a diagram or a table, and folding the second onto the first
+/// would assert a table the source does not state. `引用文` and `手紙文` are
+/// separate variants for the same reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlockPurpose {
@@ -228,7 +226,7 @@ pub enum BlockPurpose {
     Quotation,
     /// `手紙文`: the source designates the enclosed lines as a letter. A letter
     /// is a document the text reproduces rather than a passage it quotes, and
-    /// the source names which of the two it means, so the two stay apart.
+    /// the source states which of the two it means, so they are separate variants.
     Letter,
 }
 
@@ -324,9 +322,9 @@ pub struct HorizontalPresentation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RelativePlacement {
-    /// A horizontal, right-aligned block starts below the named character.
+    /// A horizontal, right-aligned block starts below the quoted character.
     BelowText {
-        /// Exact source quotation naming the anchor.
+        /// Exact source quotation identifying the anchor.
         reference: StrId,
         /// Fullwidth-character distance supplied from the anchor's lower edge.
         offset_chars: u8,
@@ -348,6 +346,8 @@ pub struct PartialLayout {
     pub body: StrId,
     /// Individual unmatched or conflicting clauses in sanitized-source coordinates.
     pub clauses: Vec<crate::Span>,
+    /// Independently interpreted non-layout instructions supplied on the same marker.
+    pub instructions: Vec<FormattingInstruction>,
 }
 
 /// A supplied column scope with independent presentation and retained source clauses.
@@ -358,6 +358,9 @@ pub struct ColumnBlock {
     pub column_rule: bool,
     /// Number of columns supplied by the source.
     pub count: ColumnCount,
+    /// One-based column that the block holds alone (`上段`, `下段`); absent when
+    /// the block holds every column.
+    pub part: Option<NonZeroU8>,
     /// Co-applied presentation, independent of column count.
     pub styles: BlockStyles,
     /// Source clauses retained outside the column geometry.
@@ -366,12 +369,12 @@ pub struct ColumnBlock {
 
 /// The block-only payload of a table region.
 ///
-/// A standalone `ここから表…` opener can name an enclosure or a writing
-/// direction alongside the role, the way a compound indentation marker's
-/// clauses do. Each lands on its own axis here, so a bare `ここから表` and a
-/// `ここから表罫囲み` differ only in what the source said. Nothing in either is
-/// derived from the enclosed lines: no cell, row, column or rule is read out of
-/// them.
+/// A standalone `ここから表…` opener can supply an enclosure or a writing
+/// direction alongside the role, as a compound indentation marker's clauses
+/// do. Each is stored in its own field here, so a bare `ここから表` and a
+/// `ここから表罫囲み` differ only in the clauses the source supplies. Nothing in
+/// either is derived from the enclosed lines: no cell, row, column or rule is
+/// read from them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TableBlock {
@@ -381,10 +384,21 @@ pub struct TableBlock {
     pub partial: Option<PartialLayoutId>,
 }
 
+/// An exception clause that indents the block's first line apart from the block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FirstLineIndent {
+    /// Full-width characters the block's first line is indented by.
+    pub amount: u8,
+    /// Exact source quotation of the first line's first character: one
+    /// character, a gaiji reference, or `歌記号`.
+    pub quoted: StrId,
+}
+
 /// The block-only payload of an indent region.
 ///
 /// `wrap` / `layout` / `styles` live here rather than on the single-line
-/// `Indent` so the block-only clauses cannot leak into the line scope.
+/// `Indent` so the block-only clauses cannot be represented at the line scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IndentBlock {
@@ -398,6 +412,8 @@ pub struct IndentBlock {
     pub amount: u8,
     /// Hanging-indent continuation width: `Some(M)` for `折り返して M字下げ`.
     pub wrap: Option<u8>,
+    /// Indent of the block's first line, from `ただし冒頭の{X}のみは{N}字下げ`.
+    pub first_line: Option<FirstLineIndent>,
     /// Centre the supplied block between the physical left and right page edges.
     pub page_horizontal_center: bool,
     /// Supplied text alignment within the block's lines.
@@ -406,8 +422,8 @@ pub struct IndentBlock {
     pub end_offset: Option<u8>,
     /// The source states that a supplied table has no rules (`罫無し`).
     ///
-    /// An explicit absence, not an unstated one: `false` means the source said
-    /// nothing about rules, and `true` means it said there are none. This is a
+    /// An explicit absence, not an unstated one: `false` means the source states
+    /// nothing about rules, and `true` means it states there are none. This is a
     /// statement about the table's own ruling and is independent of
     /// [`BlockStyles::frame`], which is the enclosure drawn around the scope.
     pub table_rules_absent: bool,
@@ -417,10 +433,6 @@ pub struct IndentBlock {
     /// `小さい活字`); see [`BlockStyles`].
     pub styles: BlockStyles,
 }
-
-// ----------------------------------------------------------------------
-// Format: the attribute identity (scope-independent)
-// ----------------------------------------------------------------------
 
 /// The typographic attribute, independent of the scope it applies at.
 ///
@@ -434,12 +446,14 @@ pub struct IndentBlock {
 pub enum Format {
     /// 太字 (bold).
     Bold,
-    /// ゴシック体 (gothic / sans-serif). A distinct typeface family, **not** a
+    /// ゴシック体 (gothic / sans-serif). A distinct typeface family, not a
     /// weight of 太字: the corpus uses ゴシック体 and 太字 in disjoint works and
     /// print sets them differently, so the parser keeps them separate.
     Gothic,
     /// 教科書体: the supplied textbook typeface designation.
     Textbook,
+    /// 手書き文字: lettering the source states is handwritten.
+    Handwritten,
     /// 斜体 (italic).
     Italic,
     /// 傍点 / 傍線 (emphasis dots / sidelines).
@@ -449,6 +463,8 @@ pub enum Format {
     Framed(EnclosureKind),
     /// Horizontal writing with its supplied line alignment.
     Horizontal(HorizontalPresentation),
+    /// Explicit vertical writing within another composition mode.
+    Vertical,
     /// Source-relative placement, without absolute page coordinates.
     RelativePlacement(RelativePlacement),
     /// N段階大きな / 小さな文字 (relative font size).
@@ -465,6 +481,11 @@ pub enum Format {
     SubScript,
     /// 下付き: lowered baseline without a supplied smaller size.
     Lowered,
+    /// Raised baseline without an implied smaller size; an angle is retained when supplied.
+    Raised {
+        /// Approximate upward angle in degrees from `N度位右上がり`.
+        degrees: Option<NonZeroU8>,
+    },
     /// 指数: supplied mathematical exponent role, without a base association.
     Exponent,
     /// 行右 / 行左小書き (small side-script).
@@ -476,7 +497,7 @@ pub enum Format {
     /// ドット付き (dotted-letter composition, `mは上ドット付き` → ṁ).
     AccentDot,
     /// アクサン / ウムラウト (forward accent mark, `「e」はアクサン（´）付き` → é).
-    /// The [`AccentMark`] rides the scope sum ([`ForwardAttr::Accent`]); the
+    /// The [`AccentMark`] is carried by the scope sum ([`ForwardAttr::Accent`]); the
     /// attribute identity discards it, like [`Self::AccentDot`].
     Accent,
     /// 字下げ (indent).
@@ -515,10 +536,12 @@ impl Format {
             Self::Bold => "bold",
             Self::Gothic => "gothic",
             Self::Textbook => "textbook",
+            Self::Handwritten => "handwritten",
             Self::Italic => "italic",
             Self::Bouten(_) => "bouten",
             Self::Framed(_) => "framed",
             Self::Horizontal(_) => "horizontal",
+            Self::Vertical => "vertical",
             Self::RelativePlacement(_) => "relative-placement",
             Self::FontSize(_) => "fontSize",
             Self::QualitativeFontSize(_) => "qualitativeFontSize",
@@ -527,6 +550,7 @@ impl Format {
             Self::SuperScript => "superScript",
             Self::SubScript => "subScript",
             Self::Lowered => "lowered",
+            Self::Raised { .. } => "raised",
             Self::Exponent => "exponent",
             Self::SmallScript(_) => "smallScript",
             Self::CombineUpright => "combineUpright",
@@ -547,10 +571,6 @@ impl Format {
     }
 }
 
-// ----------------------------------------------------------------------
-// Forward scope: `「X」は…` reference-attached emphasis
-// ----------------------------------------------------------------------
-
 /// The attributes legal at the forward-reference scope (`「X」は太字` etc.).
 ///
 /// The content-carrying leaf that pairs an attribute with its target run is
@@ -564,6 +584,8 @@ pub enum ForwardAttr {
     Bold,
     /// ゴシック体: gothic typeface (distinct from 太字, see [`Format::Gothic`]).
     Gothic,
+    /// 手書き文字: lettering the source states is handwritten.
+    Handwritten,
     /// 斜体.
     Italic,
     /// 上付き小文字.
@@ -572,6 +594,11 @@ pub enum ForwardAttr {
     SubScript,
     /// 下付き: lowered baseline without a supplied smaller size.
     Lowered,
+    /// Raised baseline without an implied smaller size; an angle is retained when supplied.
+    Raised {
+        /// Approximate upward angle in degrees from `N度位右上がり`.
+        degrees: Option<NonZeroU8>,
+    },
     /// 指数: supplied mathematical exponent role, without a base association.
     Exponent,
     /// 行右 / 行左小書き.
@@ -580,10 +607,14 @@ pub enum ForwardAttr {
     Framed(EnclosureKind),
     /// 横組み.
     Horizontal,
+    /// 縦組み.
+    Vertical,
     /// キャプション.
     Caption,
     /// N段階大きな / 小さな文字.
     FontSize(FontShift),
+    /// A relative size whose source supplies a qualitative degree rather than stages.
+    QualitativeFontSize(QualitativeFontSize),
     /// 特大 / 大 / 中 / 小文字: absolute font size (`「X」は小文字`).
     FontSizeAbsolute(AbsoluteSize),
     /// 傍点 / 傍線. `position` records a `左に` left-side modifier.
@@ -591,7 +622,7 @@ pub enum ForwardAttr {
         /// The 傍点 / 傍線 mark.
         kind: BoutenKind,
         /// `Left` for the `左に` modifier, else `Right`.
-        position: BoutenPosition,
+        position: DecorationPosition,
     },
     /// 縦中横.
     CombineUpright,
@@ -600,12 +631,12 @@ pub enum ForwardAttr {
     Fraction,
     /// ドット付き. Composes a combining dot onto an addressed Latin letter
     /// in the reclaimed run (`Sam` + `mは上ドット付き` → `Saṁ`). The selector
-    /// grammar lives in the raw directive body, interned on the owned leaf's
+    /// grammar is read from the raw directive body, interned on the owned leaf's
     /// `annotation_body` (this attribute stays a `Copy` unit, arena-free).
     AccentDot,
     /// アクサン / ウムラウト: map a single quoted Latin letter to its precomposed
     /// accented glyph (`「e」はアクサン（´）付き` → é, `「o」はウムラウト（¨）付き` → ö).
-    /// The letter rides on the owned leaf's `target`; only the [`AccentMark`] is
+    /// The letter is stored in the owned leaf's `target`; only the [`AccentMark`] is
     /// carried here (no interned body, unlike [`Self::AccentDot`]). Serialized
     /// separately (the suffix carries the bracketed mark symbol, not a bare
     /// keyword), so [`Self::keyword`] falls through to its 太字 default.
@@ -631,28 +662,28 @@ pub enum ForwardAttr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ForwardOrigin {
-    /// The classifier pulled the literal out of the immediately-preceding
+    /// The classifier removed the literal from the immediately-preceding
     /// source (`青空［＃「青空」に傍点］`): the surrounding plain run was truncated,
-    /// so the decorated run is the *sole* visible copy and the serializer
+    /// so the decorated run is the only visible copy and the serializer
     /// re-emits the literal before the bracket.
     Reclaimed,
     /// The annotation retains a reference operand without owning principal
     /// text. Its target may be established elsewhere or remain unresolved; the
     /// serializer emits the bracket alone.
     Referenced,
-    /// The styled-literal half of a **non-adjacent** forward-reference split
+    /// The styled-literal half of a non-adjacent forward-reference split
     /// pair (`太字の［＃「太字」は太字］`). The classifier located the target as an
-    /// *interior* occurrence of the current plain run (present, but not
-    /// byte-adjacent to the bracket) and pulled that occurrence out of the
-    /// surrounding plain run into this decoration leaf, so it renders **once**,
-    /// styled. The directive bracket stays a separate
+    /// interior occurrence of the current plain run (present, but not
+    /// byte-adjacent to the bracket) and moved that occurrence from the
+    /// surrounding plain run into this decoration leaf, so it renders once,
+    /// styled. The directive bracket is a separate
     /// [`Referenced`](Self::Referenced) node (renders nothing, serializes the
     /// `［＃…］` alone). This is the provenance dual of `Referenced`: the
-    /// renderer styles the target (**not** a no-op), and the serializer emits
-    /// the literal **alone** (no bracket, because the bracket is the separate
-    /// `Referenced` node's job (unlike [`Reclaimed`](Self::Reclaimed), which
-    /// re-emits literal *and* bracket from one node). Cannot duplicate the rendered text:
-    /// the literal was removed from the plain run, so exactly one copy exists.
+    /// renderer styles the target, and the serializer emits the literal alone,
+    /// without the bracket, which the separate `Referenced` node emits.
+    /// [`Reclaimed`](Self::Reclaimed) instead re-emits literal and bracket from
+    /// one node. The rendered text is not duplicated: the literal was removed
+    /// from the plain run, so exactly one copy exists.
     /// Produced only by the interior-referent resolver path, never via
     /// [`from_consume`](Self::from_consume).
     Detached,
@@ -660,8 +691,8 @@ pub enum ForwardOrigin {
 
 impl ForwardOrigin {
     /// Derive the provenance from the classifier's consume window:
-    /// [`Reclaimed`](Self::Reclaimed) iff `consume_start` was pulled back
-    /// before the directive's `［` at `bracket_start`, otherwise
+    /// [`Reclaimed`](Self::Reclaimed) iff `consume_start` precedes the
+    /// directive's `［` at `bracket_start`, otherwise
     /// [`Referenced`](Self::Referenced).
     #[must_use]
     pub const fn from_consume(consume_start: u32, bracket_start: u32) -> Self {
@@ -680,16 +711,20 @@ impl ForwardAttr {
         match self {
             Self::Bold => Format::Bold,
             Self::Gothic => Format::Gothic,
+            Self::Handwritten => Format::Handwritten,
             Self::Italic => Format::Italic,
             Self::SuperScript => Format::SuperScript,
             Self::SubScript => Format::SubScript,
             Self::Lowered => Format::Lowered,
+            Self::Raised { degrees } => Format::Raised { degrees },
             Self::Exponent => Format::Exponent,
             Self::SmallScript(p) => Format::SmallScript(p),
             Self::Framed(k) => Format::Framed(k),
             Self::Horizontal => Format::Horizontal(HorizontalPresentation { align: None }),
+            Self::Vertical => Format::Vertical,
             Self::Caption => Format::Caption,
             Self::FontSize(f) => Format::FontSize(f),
+            Self::QualitativeFontSize(f) => Format::QualitativeFontSize(f),
             Self::FontSizeAbsolute(s) => Format::FontSizeAbsolute(s),
             Self::Bouten { kind, .. } => Format::Bouten(kind),
             Self::CombineUpright => Format::CombineUpright,
@@ -710,10 +745,13 @@ impl ForwardAttr {
     pub const fn keyword(self) -> &'static str {
         match self {
             Self::Gothic => "ゴシック体",
+            Self::Handwritten => "手書き文字",
             Self::Italic => "斜体",
             Self::SuperScript => "上付き小文字",
             Self::SubScript => "下付き小文字",
             Self::Lowered => "下付き",
+            Self::Raised { degrees: None } => "上部に出ている",
+            Self::Raised { degrees: Some(_) } => "右上がり",
             Self::Exponent => "指数",
             Self::SmallScript(BoutenPosition::Right) => "行右小書き",
             Self::SmallScript(BoutenPosition::Left) => "行左小書き",
@@ -721,29 +759,31 @@ impl ForwardAttr {
             Self::Framed(EnclosureKind::Unspecified) => "枠囲み",
             Self::Framed(EnclosureKind::DashedRule) => "破線枠囲み",
             // 「□」囲み: the source keyword embeds the quoted glyph, so serialize
-            // reconstructs it in a dedicated arm; this bare base word only feeds
-            // the keyword round-trip table.
+            // reconstructs it in a dedicated arm; only the keyword round-trip
+            // table reads this bare base word.
             Self::Framed(EnclosureKind::Box) => "囲み",
-            // These three carry no embedded glyph, so the keyword *is* the whole
+            // These three carry no embedded glyph, so the keyword is the whole
             // `は…` suffix and serialize round-trips through the default path.
             Self::Framed(EnclosureKind::Circle) => "○付き文字",
             Self::Framed(EnclosureKind::CircleDotted) => "点線丸囲み",
             Self::Framed(EnclosureKind::DoubleRule) => "二重罫囲み",
             Self::Horizontal => "横組み",
+            Self::Vertical => "縦組み",
             Self::Caption => "キャプション",
             Self::CombineUpright => "縦中横",
             Self::Fraction => "分数",
             Self::FontSizeAbsolute(s) => s.keyword(),
+            Self::QualitativeFontSize(QualitativeFontSize::Smaller) => "小さい文字",
+            Self::QualitativeFontSize(QualitativeFontSize::SlightlySmaller) => "小さめの文字",
+            Self::QualitativeFontSize(QualitativeFontSize::HitomawariLarger) => {
+                "本文よりひとまわり大きい"
+            }
             Self::Bouten { kind, .. } => kind.keyword(),
-            // Bold, FontSize, and any future weight default to 太字.
+            // Bold, FontSize, and any variant without its own arm return 太字.
             _ => "太字",
         }
     }
 }
-
-// ----------------------------------------------------------------------
-// Line scope: single-line layout directives
-// ----------------------------------------------------------------------
 
 /// The attributes legal at the single-line scope (`［＃地付き］` etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -752,7 +792,7 @@ impl ForwardAttr {
 pub enum LineFormat {
     /// `［＃天から N字下げ］`: indent the line by `amount` full-width chars.
     ///
-    /// `end_offset` carries the *both-margin* compound
+    /// `end_offset` carries the both-margin compound
     /// (`［＃N字下げ、地よりM字上げで］`): a single line set with both a head
     /// indent (`amount`) and a foot-edge lift of `M` full-width chars.
     /// `Some(M)` has the same foot-edge semantics as an
@@ -783,6 +823,16 @@ pub enum LineFormat {
         /// `true` for `ページの左右中央` (page centre), `false` for `中央揃え`.
         page: bool,
     },
+    /// A supplied vertical position on the page for the text up to the next
+    /// page break (`ページの天地中央`, `横組みで、ページの上部、左右中央に`).
+    PagePlacement {
+        /// Position between the page head and foot.
+        vertical: PageVerticalPlacement,
+        /// The text is also centred between the page's left and right edges.
+        horizontal_center: bool,
+        /// The text is set horizontally.
+        horizontal: bool,
+    },
     /// `［＃罫囲み］`: enclose the single line it sits on ([`EnclosureKind`]).
     Framed(EnclosureKind),
     /// `［＃この行はゴシック体］`: set the single line it sits on in gothic
@@ -800,6 +850,16 @@ pub enum LineFormat {
     },
 }
 
+/// Position between the page head and foot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PageVerticalPlacement {
+    /// `ページの上部`.
+    Top,
+    /// `天地中央`.
+    Center,
+}
+
 impl LineFormat {
     /// Project to the scope-independent [`Format`] attribute.
     #[must_use]
@@ -807,17 +867,13 @@ impl LineFormat {
         match self {
             Self::Indent { .. } => Format::Indent,
             Self::AlignEnd { .. } => Format::AlignEnd,
-            Self::Center { .. } => Format::Center,
+            Self::Center { .. } | Self::PagePlacement { .. } => Format::Center,
             Self::Framed(k) => Format::Framed(k),
             Self::Gothic => Format::Gothic,
             Self::FontSizeAbsolute { size, .. } => Format::FontSizeAbsolute(size),
         }
     }
 }
-
-// ----------------------------------------------------------------------
-// Region scope: paired range / block containers
-// ----------------------------------------------------------------------
 
 /// Supplied caption scope forms; figure explanations retain their below-figure placement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -842,6 +898,8 @@ pub enum CaptionScope {
 pub enum RegionFormat {
     /// Explicitly scoped 教科書体, without a selected font asset.
     Textbook,
+    /// Explicitly scoped 手書き文字.
+    Handwritten,
     /// 太字 range / block. `padded` = block-level (`<div>`, `\n\n` padded);
     /// `!padded` = inline bare range (`<b>`).
     Bold {
@@ -872,10 +930,10 @@ pub enum RegionFormat {
     },
     /// 傍点 / 傍線 range (`［＃傍点］ … ［＃傍点終わり］`, `［＃左に傍線］ …`).
     Bouten {
-        /// The 傍点 / 傍線 mark; its 点/線 family drives the mismatch check.
+        /// The 傍点 / 傍線 mark; the mismatch check compares its 点/線 family.
         kind: BoutenKind,
         /// `Left` for the `左に` modifier, else `Right`.
-        position: BoutenPosition,
+        position: DecorationPosition,
     },
     /// 行右 / 行左小書き range.
     SmallScript(BoutenPosition),
@@ -916,6 +974,7 @@ impl RegionFormat {
     pub const fn format(self) -> Format {
         match self {
             Self::Textbook => Format::Textbook,
+            Self::Handwritten => Format::Handwritten,
             Self::Bold { .. } => Format::Bold,
             Self::Gothic { .. } => Format::Gothic,
             Self::Italic { .. } => Format::Italic,
@@ -942,8 +1001,8 @@ impl RegionFormat {
     /// Stable camelCase wire tag: the machine-contract counterpart used by the
     /// `container_pairs` driver endpoint. Scope-specific (`boutenRange`,
     /// `combineUprightRange`), distinct from the attribute-level
-    /// [`Format::as_json_tag`]; exhaustive so a new variant cannot fall through
-    /// to a silent `"unknown"`.
+    /// [`Format::as_json_tag`]; exhaustive, so a new variant cannot fall through
+    /// to an `"unknown"` tag.
     #[must_use]
     pub const fn as_json_tag(self) -> &'static str {
         match self {
@@ -956,6 +1015,7 @@ impl RegionFormat {
             Self::Bold { .. } => "bold",
             Self::Gothic { .. } => "gothic",
             Self::Textbook => "textbook",
+            Self::Handwritten => "handwritten",
             Self::Italic { .. } => "italic",
             Self::Heading { .. } => "heading",
             Self::Columns(_) => "columns",
@@ -985,6 +1045,7 @@ impl RegionFormat {
             Self::Bold { .. } => "bold",
             Self::Gothic { .. } => "gothic",
             Self::Textbook => "textbook",
+            Self::Handwritten => "handwritten",
             Self::Italic { .. } => "italic",
             Self::Heading { .. } => "heading",
             Self::Columns(_) => "columns",
@@ -1000,7 +1061,7 @@ impl RegionFormat {
         }
     }
 
-    /// Whether this region renders *inline* (within the current paragraph)
+    /// Whether this region renders inline (within the current paragraph)
     /// rather than as a block wrapper.
     ///
     /// The 傍点 / 傍線 range, the bare-range 太字 / 斜体 / キャプション forms
@@ -1020,7 +1081,7 @@ impl RegionFormat {
         )
     }
 
-    /// Whether this region's content is *phrasing* (rendered directly inside
+    /// Whether this region's content is phrasing (rendered directly inside
     /// the block element rather than wrapped in `<p>` paragraphs).
     ///
     /// Only [`Self::Heading`] is phrasing: a heading element holds its title
@@ -1031,16 +1092,17 @@ impl RegionFormat {
     }
 
     /// Every variant, one representative instance per data-carrying variant;
-    /// the payload is irrelevant to the discriminant-only tag projections. Lets
-    /// the wire-tag exhaustiveness test and the codegen enumerate the family
-    /// list without a hand-maintained parallel.
-    pub const ALL: [Self; 21] = [
+    /// the payload is irrelevant to the discriminant-only tag projections. The
+    /// wire-tag exhaustiveness test and the codegen enumerate the family list
+    /// from it instead of a hand-maintained copy.
+    pub const ALL: [Self; 22] = [
         Self::Indent(IndentBlock {
             purpose: None,
             partial: None,
             column_count: None,
             amount: 0,
             wrap: None,
+            first_line: None,
             page_horizontal_center: false,
             align: None,
             end_offset: None,
@@ -1049,13 +1111,14 @@ impl RegionFormat {
             styles: BlockStyles::EMPTY,
         }),
         Self::Textbook,
+        Self::Handwritten,
         Self::Warichu,
         Self::Framed(EnclosureKind::Rule),
         Self::AlignEnd { offset: 0 },
         Self::LineWidth(LineWidth(NonZeroU8::MIN)),
         Self::Bouten {
             kind: BoutenKind::Goma,
-            position: BoutenPosition::Right,
+            position: DecorationPosition::Right,
         },
         Self::Bold { padded: false },
         Self::Gothic { padded: false },
@@ -1067,6 +1130,7 @@ impl RegionFormat {
         },
         Self::Columns(ColumnBlock {
             column_rule: false,
+            part: None,
             count: ColumnCount(NonZeroU8::MIN),
             styles: BlockStyles::EMPTY,
             partial: None,
@@ -1086,42 +1150,42 @@ impl RegionFormat {
     ];
 }
 
-// ----------------------------------------------------------------------
-// Region close: self-sufficient; carries the close marker's own data
-// ----------------------------------------------------------------------
-
 /// The close marker of a paired region.
 ///
 /// Carries exactly what the close marker (and HTML close tag) reproduce from
-/// the **close** source text, never a placeholder. A close can appear without
+/// the close source text, never a placeholder. A close can appear without
 /// a matching open (a stray `［＃…終わり］`) and a mismatched close keeps its
-/// own family (`［＃傍線終わり］` closing a `［＃傍点］`), so the close must be
-/// self-sufficient; it is *not* reconstructed from the open. `Option` /
-/// `NonZero` / `bool` make the former `width: 0` / `steps: ±1` / `lines: 0`
-/// placeholder states unrepresentable, which was Pillar 1's actual goal.
+/// own family (`［＃傍線終わり］` closing a `［＃傍点］`), so the close carries its
+/// own data and is not reconstructed from the open. `Option` / `NonZero` /
+/// `bool` fields make placeholder states such as `width: 0`, `steps: ±1` or
+/// `lines: 0` unrepresentable.
 ///
-/// Because closing markers omit the indent, line-width, column, align-end,
-/// and font-size payloads, this enum has a substantially smaller memory footprint
-/// than [`RegionFormat`], justifying a distinct type.
+/// Closing markers omit the indent, line-width, column, align-end, and
+/// font-size payloads, so this enum is substantially smaller in memory than
+/// [`RegionFormat`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum RegionClose {
     /// Close the explicitly supplied textbook typeface scope.
     Textbook,
+    /// Close the explicitly supplied handwritten lettering scope.
+    Handwritten,
     /// `字下げ終わり`, or the `字下げ、{W}字組み終わり` compound (the close
     /// carries `W`, so the marker round-trips byte-exact).
     Indent {
-        /// Semantic purpose explicitly named by the closing marker.
+        /// Semantic purpose explicitly supplied by the closing marker.
         purpose: Option<BlockPurpose>,
         /// Explicit indentation magnitude on the closing marker.
         amount: Option<u8>,
         /// The `W` of a `字組み終わり` compound; `None` for the generic
         /// `字下げ終わり` (plain / 字詰め / 折り返して / 中央 indents).
         kumi_width: Option<LineWidth>,
-        /// Presentation explicitly named by the closer; omitted axes do not
+        /// Presentation explicitly supplied by the closer; omitted axes do not
         /// constrain the opening marker.
         styles: BlockStyles,
+        /// Independently interpreted clauses supplied on the same closing marker.
+        partial: Option<PartialLayoutId>,
     },
     /// `割り注終わり`.
     Warichu,
@@ -1132,13 +1196,13 @@ pub enum RegionClose {
     /// `字詰め終わり`.
     LineWidth,
     /// `傍点終わり` / `傍線終わり` / `波線終わり` …: the close's own mark and
-    /// `左に` side. The 点/線 family (`kind.is_line()`) drives the
-    /// `mismatched_bouten_container` diagnostic.
+    /// `左に` side. The `mismatched_bouten_container` diagnostic compares the
+    /// 点/線 family (`kind.is_line()`).
     Bouten {
         /// The close marker's own 傍点 / 傍線 mark.
         kind: BoutenKind,
         /// `Left` for the close's `左に` modifier, else `Right`.
-        position: BoutenPosition,
+        position: DecorationPosition,
     },
     /// `太字終わり` (`!padded`) / `ここで太字終わり` (`padded`).
     Bold {
@@ -1169,7 +1233,7 @@ pub enum RegionClose {
     },
     /// `段組終わり`, optionally restating the supplied column count.
     Columns(Option<ColumnCount>),
-    /// `表終わり`, carrying whatever the close spells alongside the role.
+    /// `表終わり`, carrying the presentation clauses the close supplies alongside the role.
     Table(BlockStyles),
     /// A supplied translation of banknote lettering.
     BanknoteTranslation,
@@ -1204,6 +1268,7 @@ impl RegionClose {
                 purpose: block.purpose,
                 amount: None,
                 styles: BlockStyles::EMPTY,
+                partial: None,
                 kumi_width: match block.layout {
                     IndentLayout::Kumi(kumi) => Some(LineWidth(kumi.width)),
                     IndentLayout::LineWidth(_) | IndentLayout::None => None,
@@ -1217,6 +1282,7 @@ impl RegionClose {
             RegionFormat::Bold { padded } => Self::Bold { padded },
             RegionFormat::Gothic { padded } => Self::Gothic { padded },
             RegionFormat::Textbook => Self::Textbook,
+            RegionFormat::Handwritten => Self::Handwritten,
             RegionFormat::Italic { padded } => Self::Italic { padded },
             RegionFormat::Heading {
                 level,
@@ -1245,8 +1311,8 @@ impl RegionClose {
     }
 
     /// Stable lowercase kebab family tag for human-facing diagnostics (mirrors
-    /// [`RegionFormat::kind_str`] so an open/close mismatch names both sides
-    /// consistently).
+    /// [`RegionFormat::kind_str`] so an open/close mismatch diagnostic reports
+    /// both sides with the same tags).
     #[must_use]
     pub const fn kind_str(self) -> &'static str {
         match self {
@@ -1259,6 +1325,7 @@ impl RegionClose {
             Self::Bold { .. } => "bold",
             Self::Gothic { .. } => "gothic",
             Self::Textbook => "textbook",
+            Self::Handwritten => "handwritten",
             Self::Italic { .. } => "italic",
             Self::Heading { .. } => "heading",
             Self::Columns(_) => "columns",
@@ -1301,8 +1368,8 @@ mod tests {
     use super::*;
     use crate::ast::{Illustration, MarginNote, Node, NodeRef};
 
-    /// Formatting stays `Copy`; size limits protect actual node and registry
-    /// entries, rather than smaller payloads sharing their enum storage.
+    /// Formatting types are `Copy`; the size limits apply to the node and
+    /// registry entries themselves, not to the smaller payloads in their enums.
     #[test]
     fn formatting_preserves_copy_and_node_size_budgets() {
         const fn assert_copy<T: Copy>() {}
@@ -1327,7 +1394,7 @@ mod tests {
         assert_eq!(
             RegionFormat::Bouten {
                 kind: BoutenKind::Goma,
-                position: BoutenPosition::Right,
+                position: DecorationPosition::Right,
             }
             .as_json_tag(),
             "boutenRange"
@@ -1359,19 +1426,19 @@ mod tests {
         }
     }
 
-    /// The 傍点/傍線 kind + position survive the open → close projection (so a
+    /// The 傍点/傍線 kind + position are retained by the open → close projection (so a
     /// mismatched close keeps its own family for round-trip and diagnostics).
     #[test]
     fn region_close_preserves_bouten_kind() {
         let line = RegionFormat::Bouten {
             kind: BoutenKind::UnderLine,
-            position: BoutenPosition::Left,
+            position: DecorationPosition::Left,
         };
         assert_eq!(
             RegionClose::of(line),
             RegionClose::Bouten {
                 kind: BoutenKind::UnderLine,
-                position: BoutenPosition::Left,
+                position: DecorationPosition::Left,
             }
         );
     }
@@ -1385,6 +1452,7 @@ mod tests {
             column_count: None,
             amount: 2,
             wrap: None,
+            first_line: None,
             page_horizontal_center: false,
             align: None,
             end_offset: None,
@@ -1402,6 +1470,7 @@ mod tests {
                 amount: None,
                 kumi_width: Some(LineWidth(NonZeroU8::new(20).unwrap())),
                 styles: BlockStyles::EMPTY,
+                partial: None,
             }
         );
         let plain = RegionFormat::Indent(IndentBlock {
@@ -1410,6 +1479,7 @@ mod tests {
             column_count: None,
             amount: 2,
             wrap: None,
+            first_line: None,
             page_horizontal_center: false,
             align: None,
             end_offset: None,
@@ -1423,7 +1493,8 @@ mod tests {
                 purpose: None,
                 amount: None,
                 kumi_width: None,
-                styles: BlockStyles::EMPTY
+                styles: BlockStyles::EMPTY,
+                partial: None,
             }
         );
     }

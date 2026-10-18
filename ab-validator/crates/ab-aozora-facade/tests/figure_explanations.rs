@@ -1,4 +1,5 @@
-//! Figure explanations retain source scope and placement without figure identity.
+//! A figure explanation records its source scope and placement and is not linked
+//! to a figure.
 
 use ab_aozora_facade::Document;
 

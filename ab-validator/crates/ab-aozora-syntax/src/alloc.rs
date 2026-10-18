@@ -14,30 +14,31 @@
 //!   empty-segments form (an empty [`SegRange`](super::ast::SegRange)).
 //! - `content_segments` collapses an all-`Text` input into a single
 //!   concatenated `Plain` (the concatenation is re-interned).
-//! - Single-target builders produce a length-1 [`ContentRange`]; the
-//!   non-empty contract is upheld with an `expect` message (a classifier bug,
-//!   never reachable for well-formed emit sites).
+//! - Single-target builders produce a length-1 [`ContentRange`] and assert the
+//!   non-empty contract; a failed assertion indicates a classifier bug and
+//!   does not occur for well-formed emit sites.
 //! - `make_gaiji` interns the mencode tail whenever it is present, so the
-//!   classification and the retained `Unresolved` id stay in sync.
+//!   classification reads the same interned string that the `Unresolved` arm
+//!   retains.
 //!
-//! ## Status
+//! ## Callers
 //!
-//! This is the **sole** AST builder: the lex pipeline's `classify` stage drives
-//! it directly.
+//! [`Allocator`] is the only AST builder; the lex pipeline's `classify` stage
+//! calls it directly.
 
 use ab_aozora_encoding::gaiji::GaijiCanonical;
 
 use crate::format::{ForwardAttr, ForwardOrigin, LineFormat};
 use crate::{
-    BoutenKind, BoutenPosition, Container, DirectiveKind, HeadingKind, HeadingStyle,
+    BoutenKind, Container, DecorationPosition, DirectiveKind, HeadingKind, HeadingStyle,
     MarginNoteKind, MarginNotePosition, MarkAnchor, RubySide, SectionKind,
 };
 
 use super::ast::{
     AngleQuote, Content, ContentRange, Directive, ForwardAttrs, ForwardFormat, Gaiji,
     GaijiCanonicalOwned, Heading, HeadingHint, Illustration, IllustrationId, Kunten, KuntenKind,
-    MarginNote, Node, NodeStore, NonEmptySpan, Ruby, Segment, TranscribedNote, TranscribedNotes,
-    Warichu,
+    MarginNote, MarginNotePair, MarginNotePairId, Node, NodeStore, NonEmptySpan, Ruby, Segment,
+    TranscribedNote, TranscribedNotes, Warichu,
 };
 
 /// `true` for the canonical empty-content form (an empty segment run).
@@ -48,7 +49,7 @@ fn is_empty_content(c: Content) -> bool {
 /// Builder for [`Node`] and its payload types.
 ///
 /// Owns the [`NodeStore`] every produced handle resolves against; call
-/// [`Self::into_store`] at the end of a parse to hand it to the lex output.
+/// [`Self::into_store`] at the end of a parse to move it into the lex output.
 #[derive(Debug, Default)]
 pub struct Allocator {
     store: NodeStore,
@@ -59,15 +60,38 @@ pub struct Allocator {
     reason = "every builder takes &(mut) self even when it is a pure wrapper, so call sites have a uniform shape."
 )]
 impl Allocator {
+    /// Retain the marker spelling and instruction without resolving body targets.
+    pub fn formatting_instruction(
+        &mut self,
+        raw: &str,
+        instruction: super::ast::FormattingInstruction,
+    ) -> Directive {
+        let id = self.store.push_formatting_instruction(instruction);
+        self.make_directive(raw, DirectiveKind::FormattingInstruction(id))
+    }
+
     /// Retain original source and individual non-layout clauses of one instruction.
     pub fn partial_layout(
         &mut self,
         body: &str,
         clauses: Vec<crate::Span>,
     ) -> super::ast::PartialLayoutId {
+        self.partial_layout_with_instructions(body, clauses, Vec::new())
+    }
+
+    /// Retain unresolved clauses and independently interpreted instructions on a layout marker.
+    pub fn partial_layout_with_instructions(
+        &mut self,
+        body: &str,
+        clauses: Vec<crate::Span>,
+        instructions: Vec<super::ast::FormattingInstruction>,
+    ) -> super::ast::PartialLayoutId {
         let body = self.store.intern(body);
-        self.store
-            .push_partial_layout(crate::PartialLayout { body, clauses })
+        self.store.push_partial_layout(crate::PartialLayout {
+            body,
+            clauses,
+            instructions,
+        })
     }
     /// Retain locally established relations without copying transcribed note text.
     ///
@@ -89,6 +113,11 @@ impl Allocator {
             notes,
             apparatus_lines,
         }))
+    }
+
+    /// Retain the boundaries of a resolved paired margin note.
+    pub fn margin_note_pair(&mut self, pair: MarginNotePair) -> MarginNotePairId {
+        self.store.push_margin_note_pair(pair)
     }
 
     /// Fill source provenance while constructing an illustration.
@@ -121,16 +150,20 @@ impl Allocator {
         }
     }
 
+    /// Retain the quoted first character of a block's first line with its indent.
+    pub fn first_line_indent(&mut self, quoted: &str, amount: u8) -> crate::FirstLineIndent {
+        crate::FirstLineIndent {
+            amount,
+            quoted: self.store.intern(quoted),
+        }
+    }
+
     /// Finish allocation and return the owning [`NodeStore`] so the caller can
     /// move it into the lex output and inspect its interner dedup counters.
     #[must_use]
     pub fn into_store(self) -> NodeStore {
         self.store
     }
-
-    // ---------------------------------------------------------------------
-    // Content / segment builders
-    // ---------------------------------------------------------------------
 
     /// Build a plain-text body content. Empty input canonicalises to the
     /// empty-segments form.
@@ -150,9 +183,8 @@ impl Allocator {
             return Content::Segments(self.store.push_segments(&[]));
         }
         if segs.iter().all(|s| matches!(s, Segment::Text(_))) {
-            // Resolve each text run, concatenate, and re-intern the all-`Text`
-            // collapse. Pre-size the buffer from the resolved lengths to avoid
-            // reallocation.
+            // The buffer is sized from the resolved lengths so that the
+            // concatenation does not reallocate.
             let total: usize = segs
                 .iter()
                 .map(|s| match s {
@@ -176,10 +208,21 @@ impl Allocator {
         Segment::Text(self.store.intern(s))
     }
 
-    /// `Segment::Gaiji(g)`: wraps a payload built via [`Self::make_gaiji`].
+    /// A nested gaiji with exact target and marker coordinates.
     #[must_use]
-    pub fn seg_gaiji(&self, g: Gaiji) -> Segment {
-        Segment::Gaiji(g)
+    pub fn seg_gaiji(
+        &self,
+        value: Gaiji,
+        target_span: crate::Span,
+        marker_span: crate::Span,
+        placement: crate::GaijiMarkerPlacement,
+    ) -> Segment {
+        Segment::Gaiji {
+            value,
+            target_span,
+            marker_span,
+            placement,
+        }
     }
 
     /// Retain an annotation payload with its sanitized source extent.
@@ -188,16 +231,13 @@ impl Allocator {
         Segment::Directive { value, source_span }
     }
 
-    // ---------------------------------------------------------------------
-    // Payload builders (used by both Segment and Node constructors)
-    // ---------------------------------------------------------------------
-
     /// Build a [`Gaiji`] payload. `mencode` is classified into its
     /// [`GaijiCanonicalOwned`] form; the verbatim tail is interned for the
     /// `Unresolved` arm. The resolved glyph is derived on demand.
     pub fn make_gaiji(
         &mut self,
         description: &str,
+        quoted: bool,
         mencode: Option<&str>,
         standalone: bool,
     ) -> Gaiji {
@@ -206,8 +246,8 @@ impl Allocator {
             Some(m) => {
                 // Intern the tail, then classify the byte-identical interned
                 // string. Only the `Unresolved` arm keeps the id; the
-                // structured arms discard it just like
-                // `GaijiCanonical::from_mencode`.
+                // structured arms discard it, as
+                // `GaijiCanonical::from_mencode` does.
                 let id = self.store.intern(m);
                 match GaijiCanonical::from_mencode(Some(self.store.resolve_str(id))) {
                     GaijiCanonical::MenKuTen(mkt) => GaijiCanonicalOwned::MenKuTen(mkt),
@@ -221,9 +261,50 @@ impl Allocator {
         };
         Gaiji {
             hint,
+            quoted,
             canonical,
             standalone,
+            replaced: None,
+            declaration_span: None,
         }
+    }
+
+    /// Associate a gaiji with source text that its following declaration
+    /// replaces in visible output.
+    #[must_use]
+    pub fn gaiji_replacing(&mut self, mut gaiji: Gaiji, replaced: Content) -> Node {
+        gaiji = self.gaiji_payload_replacing(gaiji, replaced);
+        Node::Gaiji(gaiji)
+    }
+
+    /// Associate a gaiji payload with source text replaced in visible output.
+    #[must_use]
+    pub fn gaiji_payload_replacing(&mut self, mut gaiji: Gaiji, replaced: Content) -> Gaiji {
+        gaiji.replaced = Some(self.push_nonempty(
+            replaced,
+            "a retrospective gaiji requires a non-empty replaced target",
+        ));
+        gaiji
+    }
+
+    /// Associate an earlier placeholder with its later standalone declaration.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the declaration span is empty.
+    #[must_use]
+    pub fn gaiji_payload_declared_at(
+        &mut self,
+        mut gaiji: Gaiji,
+        replaced: Content,
+        declaration_span: crate::Span,
+    ) -> Gaiji {
+        gaiji = self.gaiji_payload_replacing(gaiji, replaced);
+        gaiji.declaration_span = Some(
+            NonEmptySpan::new(declaration_span)
+                .expect("a detached gaiji declaration has a non-empty span"),
+        );
+        gaiji
     }
 
     /// Build a [`Directive`] payload.
@@ -240,19 +321,22 @@ impl Allocator {
         Directive {
             raw: self.store.intern(raw),
             kind,
+            pair_payload: None,
         }
     }
 
-    /// Push a `NonEmpty<Content>` field as a length-1 [`ContentRange`],
-    /// upholding the non-empty contract.
+    /// Push a `NonEmpty<Content>` field as a length-1 [`ContentRange`];
+    /// panics with `msg` if `c` is empty.
     fn push_nonempty(&mut self, c: Content, msg: &'static str) -> ContentRange {
         assert!(!is_empty_content(c), "{msg}");
         self.store.push_contents(&[c])
     }
 
-    // ---------------------------------------------------------------------
-    // Node variant constructors (one per Node variant)
-    // ---------------------------------------------------------------------
+    /// Store one non-empty content value as a node field.
+    #[must_use]
+    pub fn content_range(&mut self, content: Content) -> ContentRange {
+        self.push_nonempty(content, "a node content range must be non-empty")
+    }
 
     /// `Node::Ruby(Ruby { base, reading, side: Right })`.
     ///
@@ -319,6 +403,7 @@ impl Allocator {
             anchor: None,
             note_span: note_span
                 .map(|span| NonEmptySpan::new(span).expect("annotation source extent is nonempty")),
+            pair: None,
             target_span: None,
             origin: ForwardOrigin::Reclaimed,
             base,
@@ -328,11 +413,11 @@ impl Allocator {
 
     /// Retain a mark the source placed at the junction of two adjacent runs.
     ///
-    /// The two runs stay separate base entries because the source names them
-    /// separately and the junction is where they meet. Concatenating them here
-    /// would print the same characters but would no longer say where between
-    /// them the mark sits, and the anchor is one byte in existing padding
-    /// whereas an offset beside it would grow every `Node` in every document.
+    /// The two runs remain separate base entries because the source gives them
+    /// separately and the mark sits at their junction; a concatenated base
+    /// would print the same characters but lose the mark's position.
+    /// [`MarkAnchor::Between`] occupies one byte of existing padding, whereas
+    /// a stored offset would enlarge every `Node` in every document.
     ///
     /// # Panics
     ///
@@ -356,6 +441,7 @@ impl Allocator {
             note_span: Some(
                 NonEmptySpan::new(note_span).expect("mark keyword source extent is nonempty"),
             ),
+            pair: None,
             target_span: None,
             origin: ForwardOrigin::Reclaimed,
             base,
@@ -376,7 +462,7 @@ impl Allocator {
         &mut self,
         kind: BoutenKind,
         target: Content,
-        position: BoutenPosition,
+        position: DecorationPosition,
         origin: ForwardOrigin,
     ) -> Node {
         self.forward_format(ForwardAttr::Bouten { kind, position }, target, origin)
@@ -508,6 +594,12 @@ impl Allocator {
         Node::SectionBreak(k)
     }
 
+    /// A typed break that also controls the placement of following content.
+    #[must_use]
+    pub const fn qualified_break(&self, break_: crate::QualifiedBreak) -> Node {
+        Node::QualifiedBreak(break_)
+    }
+
     /// `Node::BodyEnd`.
     #[must_use]
     pub fn body_end(&self) -> Node {
@@ -535,7 +627,7 @@ impl Allocator {
         Node::Heading(Heading { kind, style, text })
     }
 
-    /// A heading annotation naming an existing source target.
+    /// A heading annotation that refers to an existing source target.
     ///
     /// # Panics
     ///
@@ -712,7 +804,7 @@ mod tests {
         let n = a.bouten(
             BoutenKind::Goma,
             target,
-            BoutenPosition::Right,
+            DecorationPosition::Right,
             ForwardOrigin::Referenced,
         );
         let Node::Format(b) = n else {
@@ -722,7 +814,7 @@ mod tests {
             b.attrs.single().unwrap(),
             ForwardAttr::Bouten {
                 kind: BoutenKind::Goma,
-                position: BoutenPosition::Right,
+                position: DecorationPosition::Right,
             }
         );
         assert_eq!(plain(&a, b.target), Some("青空"));
@@ -769,7 +861,7 @@ mod tests {
     #[test]
     fn gaiji_full_metadata() {
         let mut a = Allocator::new();
-        let g = a.make_gaiji("木＋吶のつくり", Some("第3水準1-85-54"), false);
+        let g = a.make_gaiji("木＋吶のつくり", true, Some("第3水準1-85-54"), false);
         let Node::Gaiji(gn) = a.gaiji(g) else {
             panic!("expected Gaiji");
         };
@@ -788,7 +880,7 @@ mod tests {
     #[test]
     fn gaiji_no_mencode_is_unresolved_none() {
         let mut a = Allocator::new();
-        let g = a.make_gaiji("desc", None, true);
+        let g = a.make_gaiji("desc", true, None, true);
         let Node::Gaiji(gn) = a.gaiji(g) else {
             panic!("expected Gaiji");
         };
@@ -802,7 +894,7 @@ mod tests {
     #[test]
     fn gaiji_unresolved_keeps_mencode_tail() {
         let mut a = Allocator::new();
-        let g = a.make_gaiji("謎", Some("未知の注記"), false);
+        let g = a.make_gaiji("謎", true, Some("未知の注記"), false);
         let Node::Gaiji(gn) = a.gaiji(g) else {
             panic!("expected Gaiji");
         };
@@ -960,7 +1052,6 @@ mod tests {
         let mut a = Allocator::new();
         let s1 = a.seg_text("青");
         let s2 = a.seg_text("空");
-        // All-Text input collapses to a single concatenated Plain.
         let Content::Plain(id) = a.content_segments(&[s1, s2]) else {
             panic!("all-text content_segments must collapse to Plain");
         };

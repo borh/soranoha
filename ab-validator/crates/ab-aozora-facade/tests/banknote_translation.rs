@@ -1,4 +1,5 @@
-//! Supplied translation boundaries own content independently of an omitted image.
+//! Supplied banknote-translation markers enclose their content as a container
+//! when the source omits the banknote image.
 use ab_aozora_facade::Document;
 
 #[test]

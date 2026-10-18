@@ -44,7 +44,7 @@ use aozora_ffi::{
 use libfuzzer_sys::fuzz_target;
 
 /// PUA sentinel codepoints the renderer must consume: none may
-/// survive into HTML emitted through the C ABI.
+/// remain in HTML emitted through the C ABI.
 const PUA_SENTINELS: [char; 4] = ['\u{E001}', '\u{E002}', '\u{E003}', '\u{E004}'];
 
 /// Empty `(ptr, len, cap)` triple to hand to an out-param accessor.

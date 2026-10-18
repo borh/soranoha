@@ -7,6 +7,10 @@ fn kunten_category_controls_rendering_and_roundtrips() {
         ("漢［＃レ］", "<sub class=\"aozora-kaeriten\">レ</sub>"),
         ("漢［＃（レ）］", "<sup class=\"aozora-okurigana\">レ</sup>"),
         ("給［＃（弖）］", "<sup class=\"aozora-okurigana\">弖</sup>"),
+        (
+            "等［＃（我云々）］",
+            "<sup class=\"aozora-okurigana\">我云々</sup>",
+        ),
         ("所［＃一レ］", "<sub class=\"aozora-kaeriten\">一レ</sub>"),
     ] {
         let document = Document::new(source);

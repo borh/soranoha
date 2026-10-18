@@ -1,7 +1,7 @@
 # kunten-source-excerpt.notes.md
 
 Companion notes for `kunten-source-excerpt.txt`. This pair of fixture files
-is a **regression fixture for a known schema gap**: it proves that real
+is a regression fixture for a known schema gap: it proves that real
 Aozora corpus works emit kunten (訓点) notation that AAT v1 has no node kind
 to represent.
 
@@ -22,7 +22,8 @@ requires kunten. It was selected by scanning all 1,227 card directories in
 the local Aozora snapshot (cards/*/files/*_ruby_*.zip and *_txt_*.zip) for
 the Aozora 返り点 / 送り仮名 marker forms documented at
 `annotation/kunten.html`. Work `4644`
-is the richest hit: it emits *every* marker sub-variety (see below).
+has the most marker forms of the works found: it contains every marker
+sub-variety (see below).
 
 ## Kunten markers present in the excerpt
 
@@ -50,7 +51,7 @@ Excerpt A (the notation header) also documents the `［＃…］：返り点` fo
 | `［＃（ス）］`  | 送り仮名 「す」 inflection                                  |
 | `［＃（レント）］` | 送り仮名 / conjugation ending 「れんと」 (incl. re-read) |
 
-Across the full source file `hoo_kansho07.txt` the work also emits
+Across the full source file `hoo_kansho07.txt` the work also contains
 `［＃（ツ）］`, `［＃（フ）］`, `［＃（ヒ）］`, `［＃（レ）］`, `［＃三］`,
 `［＃天／地／人］`-style markers: the complete set of 24 documented at the
 manual page. The excerpt captures a representative, dense subset; the full
@@ -61,7 +62,7 @@ needed.
 
 AAT v1 has no kunten node kind. The feature-index tests use this excerpt to
 check recognition of compact reading-order and kana markers independently of
-adapter representation. AAT v2 defines kunten in `data/aat-schema.json`.
+adapter representation. AAT v2 defines kunten in `schemas/outputs/aat-schema.json`.
 
 ## How to reproduce the excerpt
 

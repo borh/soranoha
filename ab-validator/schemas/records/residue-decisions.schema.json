@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abc.local/schemas/residue-decisions-v1.json",
+  "type": "object",
+  "required": ["decisions_version"],
+  "additionalProperties": false,
+  "properties": {
+    "decisions_version": { "const": 1 },
+    "decision": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Decision" }
+    }
+  },
+  "$defs": {
+    "Decision": {
+      "type": "object",
+      "required": ["row", "form", "reason", "evidence", "reviewer", "reviewed_at", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "row": { "type": "string", "minLength": 1 },
+        "form": { "type": "string", "minLength": 1 },
+        "locators": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": ["work_id", "indexed_path", "byte_start", "raw"],
+            "additionalProperties": false,
+            "properties": {
+              "work_id": { "type": "string", "minLength": 1 },
+              "indexed_path": { "type": "string", "minLength": 1 },
+              "byte_start": { "type": "integer", "minimum": 0 },
+              "raw": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "reason": {
+          "enum": [
+            "ambiguous-target",
+            "source-conflict",
+            "malformed-boundary",
+            "insufficient-source-authority"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "reviewed_at": { "type": "string", "format": "date" },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

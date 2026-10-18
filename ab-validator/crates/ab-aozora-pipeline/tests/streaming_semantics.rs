@@ -2,59 +2,52 @@
 //! [`ab_aozora_pipeline::lexer`] streaming building blocks (`tokenize` / `pair` /
 //! `classify`).
 //!
-//! These tests pin the *behaviour* of the
-//! streaming pipeline that earlier unit tests treated as
-//! implementation detail:
+//! These tests pin the observable behaviour of the streaming pipeline:
 //!
-//! * Iterators may be dropped at any point with no side-effect leakage
-//!   (no panics, accumulated diagnostics still readable).
-//! * Iteration is *lazy*: `.next()` does not silently drain its
-//!   upstream past the byte position it actually emits.
+//! * Iterators may be dropped at any point without a panic, and
+//!   accumulated diagnostics remain readable.
+//! * Iteration is lazy: `.next()` does not consume its upstream beyond
+//!   the byte position of the event it emits.
 //! * `.take(N)` and `.collect().into_iter().take(N)` agree.
 //! * EOF-time `Unclosed` synthesis is observable on the public stream.
 //! * The type-state [`Pipeline`] composition is byte-for-byte
-//!   equivalent to the one-shot [`lex`] front door.
+//!   equivalent to the one-shot [`lex`] entry point.
 //! * Diagnostics observed at intermediate states still surface in the
 //!   final [`LexOutput::diagnostics`].
 //!
-//! Each block below stays *semantic*: never inspect private fields
-//! (Pipeline is intentionally opaque past the public surface), only
-//! the behaviour visible to a real downstream caller.
+//! The tests inspect only behaviour visible to a downstream caller;
+//! `Pipeline` exposes no fields beyond its public surface.
 
 use ab_aozora_pipeline::lexer::{PairEvent, PairKind, classify, pair, tokenize};
 use ab_aozora_pipeline::{Pipeline, lex};
 use ab_aozora_spec::{Diagnostic, Sentinel};
 use ab_aozora_syntax::alloc::Allocator;
-// =====================================================================
 // 1. Drop / early-termination
-// =====================================================================
 
 /// Construct a `PairStream`, take a couple of events via `next()`, then
 /// drop the stream. Must not panic and `take_diagnostics` (called on a
 /// fresh stream over the same input) must be callable without panic.
 #[test]
 fn pair_stream_drop_partway_does_not_panic_and_diagnostics_remain_readable() {
-    // 3 simple bracket pairs produce 9 events (Open, Solo(Hash), Text,
-    // Close) ×3 minus the missing Solo(Hash) bodies; here we don't
-    // care about the exact shape, only that early drop is clean.
+    // The test asserts only that an early drop does not panic, not the
+    // event sequence.
     let src = "[X][Y][Z]";
     let mut stream = pair(tokenize(src));
     let _e0 = stream.next();
     let _e1 = stream.next();
-    // Drop the stream by letting it leave scope:
     drop(stream);
 
     // A second, independent stream over the same source must still
     // behave exactly like the first would have.
     let mut stream2 = pair(tokenize(src));
     while stream2.next().is_some() {}
-    // Drainable; should not panic regardless of exact diagnostic count.
+    // `take_diagnostics` must not panic, whatever the diagnostic count.
     let _diags = stream2.take_diagnostics();
 }
 
 /// Same shape for `ClassifyStream`. Drop midway, then run an
-/// independent one over the same input to make sure no global state
-/// (e.g. the forward-target index) was left in a corrupt state.
+/// independent one over the same input and check that no global state
+/// (for example the forward-target index) was corrupted.
 #[test]
 fn classify_stream_drop_partway_does_not_corrupt_global_state() {
     let src = "abc｜D《e》fgh";
@@ -78,20 +71,18 @@ fn classify_stream_drop_partway_does_not_corrupt_global_state() {
     );
 }
 
-// =====================================================================
 // 2. Lazy iteration semantics
-// =====================================================================
 
-/// `PairStream` events are emitted *roughly* in lock-step with the
-/// underlying source position. Full laziness is hard to assert without
-/// a custom counting wrapper because `tokenize` is itself lazy and
-/// `pair` may peek; we instead pin a behavioural proxy: the byte
-/// position of the Nth emitted event grows in proportion to N.
+/// `PairStream` emits events approximately in step with the underlying
+/// source position. A direct laziness check would need a counting
+/// wrapper, because `tokenize` is itself lazy and `pair` may peek; the
+/// test checks instead that the byte position of the Nth emitted event
+/// grows in proportion to N.
 ///
-/// Concretely: take the first 10 events from a long input and check
-/// the maximum source byte position observed stays well below the
-/// full input length; proves the stream did not silently drain its
-/// upstream all the way to EOF on the first `next()`.
+/// The test takes the first 10 events from a long input and checks that
+/// the maximum source byte position observed is far below the input
+/// length, which shows that the stream did not consume its upstream to
+/// EOF on the first `next()`.
 #[test]
 fn pair_stream_take_n_does_not_exhaust_underlying_source() {
     // Aozora full-width brackets are 3 bytes each, hash 3 bytes.
@@ -104,9 +95,9 @@ fn pair_stream_take_n_does_not_exhaust_underlying_source() {
     let first_10: Vec<PairEvent> = (0..10).filter_map(|_| stream.next()).collect();
     assert_eq!(first_10.len(), 10, "events: {first_10:?}");
     // The first 10 events cover roughly the first 2-3 groups (2.5 ×
-    // 12 bytes ≈ 30 bytes). We pin a generous ceiling (1/8 of the
-    // full input) to accommodate minor variations in event packing
-    // while still catching an unexpected drain of the full input stream.
+    // 12 bytes ≈ 30 bytes). The ceiling of 1/8 of the input length
+    // allows for variation in event packing and still detects a drain
+    // of the whole input.
     let max_end: u32 = first_10
         .iter()
         .filter_map(|e| e.span().map(|s| s.end))
@@ -119,14 +110,12 @@ fn pair_stream_take_n_does_not_exhaust_underlying_source() {
     );
 }
 
-// =====================================================================
 // 3. .take(N) equivalence
-// =====================================================================
 
-/// `pair(tokenize(s)).take(N).collect()` MUST equal
+/// `pair(tokenize(s)).take(N).collect()` must equal
 /// `pair(tokenize(s)).collect().into_iter().take(N).collect()` for
-/// several inputs and several N. Guards against per-iteration side
-/// effects diverging from index-based access.
+/// several inputs and several N. Detects per-iteration side effects
+/// that make streamed results differ from index-based access.
 #[test]
 fn pair_stream_take_n_matches_collect_then_take() {
     let inputs: &[&str] = &[
@@ -153,9 +142,7 @@ fn pair_stream_take_n_matches_collect_then_take() {
     }
 }
 
-// =====================================================================
 // 4. EOF Unclosed isolation
-// =====================================================================
 
 /// One unclosed bracket → exactly one trailing `PairEvent::Unclosed`
 /// of `PairKind::Bracket` and exactly one corresponding diagnostic.
@@ -202,9 +189,7 @@ fn pair_stream_emits_one_unclosed_event_for_one_unclosed_bracket() {
     );
 }
 
-// =====================================================================
 // 5. Pipeline state-transition smoke tests
-// =====================================================================
 
 /// For several non-trivial inputs the explicit chain
 /// `Pipeline::new(s).sanitize().tokenize().pair().build()`
@@ -261,14 +246,12 @@ fn pipeline_chain_matches_lex_into_arena_for_corpus_shapes() {
     }
 }
 
-// =====================================================================
-// 6. Diagnostic survives intermediate inspection
-// =====================================================================
+// 6. Diagnostics persist through intermediate inspection
 
 /// A sanitize-stage diagnostic visible at the [`Sanitized`] state must
 /// also appear in the final [`LexOutput::diagnostics`] after
 /// `.build()`. This pins the contract that intermediate inspection
-/// does NOT consume diagnostics.
+/// does not consume diagnostics.
 #[test]
 fn pipeline_phase0_diagnostic_observed_at_sanitized_also_present_after_build() {
     let src = "abc〔cafe'〕def";

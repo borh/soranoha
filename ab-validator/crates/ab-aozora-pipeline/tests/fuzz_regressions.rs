@@ -9,7 +9,7 @@ use std::str;
 use ab_aozora_pipeline::lex;
 #[test]
 fn lex_into_arena_regressions_replay_cleanly() {
-    replay_each("lex", |src| {
+    replay_each("lex_into_arena", |src| {
         let out = lex(src);
         for diag in &out.diagnostics {
             let span = diag.span();
@@ -21,27 +21,25 @@ fn lex_into_arena_regressions_replay_cleanly() {
     });
 }
 
-/// Walk every artifact under `tests/fuzz_regressions/<target>/` and
-/// hand the decoded UTF-8 source to `assert_one`. Panics from the
-/// closure are caught and re-raised with the artifact path prefix so
-/// a failure points straight at the file on disk.
+/// Pass the decoded UTF-8 source of every artifact under
+/// `tests/fuzz_regressions/<target>/` to `assert_one`. A panic from the
+/// closure is caught and re-raised with the artifact path as prefix.
+/// Panics when the directory is missing or holds no artifact.
 fn replay_each(target: &str, assert_one: impl Fn(&str)) {
     let dir = regression_dir(target);
     let artifacts = collect_artifacts(&dir);
-    if artifacts.is_empty() {
-        // Empty regression set is the steady-state of a healthy
-        // target. The test stays green so we can tell missing
-        // tests/fuzz_regressions/ apart from "no crashes recorded".
-        return;
-    }
+    assert!(
+        !artifacts.is_empty(),
+        "no regression artifacts under {}",
+        dir.display(),
+    );
     for path in artifacts {
         let path_display = path.display();
         let bytes = fs::read(&path)
             .unwrap_or_else(|e| panic!("failed to read regression artifact {path_display}: {e}"));
         let Ok(src) = str::from_utf8(&bytes) else {
-            // The fuzzer accepts raw bytes; the lex target
-            // skips invalid UTF-8 with `return`, so the corresponding
-            // regression-test arm is the same skip.
+            // The fuzzer supplies raw bytes and the lex target returns
+            // early on invalid UTF-8; the replay skips the same inputs.
             continue;
         };
         let label = path.display().to_string();
@@ -69,9 +67,8 @@ fn regression_dir(target: &str) -> PathBuf {
 }
 
 fn collect_artifacts(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
+    let entries = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read regression directory {}: {e}", dir.display()));
     let mut out: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())

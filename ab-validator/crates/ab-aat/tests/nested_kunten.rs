@@ -101,3 +101,31 @@ fn explicit_base_contains_native_annotations_until_reading() {
         );
     }
 }
+
+#[test]
+fn okurigana_decoration_is_a_style_node_inside_the_kunten() {
+    for (source, decorated) in [
+        ("財［＃（之天［＃「之天」に白丸傍点］）］備", Some("之天")),
+        ("財［＃（之天［＃「天」に傍線］）］備", Some("天")),
+        ("財［＃（之天［＃「之」に白丸傍点］）］備", None),
+        ("財［＃（之天［＃「之天」は太字］）］備", None),
+    ] {
+        let aat: Value =
+            serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+        let node = &aat["blocks"][0]["content"][1];
+        let Some(decorated) = decorated else {
+            assert_eq!(node["kind"], "raw", "{source}: {node}");
+            continue;
+        };
+        assert_eq!(node["kind"], "kunten", "{source}: {node}");
+        assert_eq!(node["text"], "之天", "{node}");
+        let styles: Vec<_> = node["annotation_content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|child| child["kind"] == "style")
+            .collect();
+        assert_eq!(styles.len(), 1, "{node}");
+        assert_eq!(styles[0]["content"][0]["value"], decorated, "{node}");
+    }
+}

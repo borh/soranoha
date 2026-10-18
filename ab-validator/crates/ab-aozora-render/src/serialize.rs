@@ -8,12 +8,13 @@
 //! [`SegRange`](ab_aozora_syntax::ast::SegRange) against the [`NodeStore`].
 //!
 //! The container-marker spelling (`emit_container_open` / `emit_container_close`)
-//! is **reused** from [`crate::spelling::source`] — those emitters read only
-//! `Copy` `RegionFormat` / `RegionClose` discriminants, so there is a single
-//! byte-spelling authority. Only the AST-reading emitters live here.
+//! comes from [`crate::spelling::source`]; those emitters read only `Copy`
+//! `RegionFormat` / `RegionClose` discriminants, so the byte spelling is
+//! defined in one place. This module contains only the emitters that read the
+//! AST.
 //!
-//! It runs a decorative-rule isolate post-pass so `serialize ∘ parse` is
-//! a round-trip fixed point.
+//! The serializer runs a decorative-rule isolate post-pass so that
+//! `serialize ∘ parse` is a round-trip fixed point.
 
 use ab_aozora_spec::NormalizedOffset;
 use core::fmt::{self, Write};
@@ -38,19 +39,20 @@ use ab_aozora_syntax::degraded::degraded_directive;
 use ab_aozora_syntax::format::ForwardOrigin;
 use ab_aozora_syntax::lint::canonical_directive;
 use ab_aozora_syntax::{
-    AccentMark, BoutenPosition, DirectiveKind, EnclosureKind, ForwardAttr, RubySide,
+    AccentMark, DecorationPosition, DirectiveKind, EnclosureKind, FollowingPlacement, ForwardAttr,
+    GaijiMarkerPlacement, QualifiedBreak, QualifiedBreakKind, RubySide,
 };
 
-/// Which notation-hygiene catalogue tiers a serialize / render pass consults
-/// when it meets a `DirectiveKind::Unknown` near-miss.
+/// Which notation-hygiene catalogue tiers a serialize / render pass applies
+/// to a `DirectiveKind::Unknown` near-miss.
 ///
-/// The default (`Off`) is the byte-identical, non-judgemental path: an Unknown
-/// directive round-trips its raw bytes verbatim (serialize) / renders as an
-/// inert `<span class="aozora-directive" hidden>` (render), so output never
-/// depends on the catalogue.
+/// The default (`Off`) is byte-identical and applies no catalogue judgement:
+/// an Unknown directive round-trips its raw bytes verbatim (serialize) /
+/// renders as an inert `<span class="aozora-directive" hidden>` (render), so
+/// output does not depend on the catalogue.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DirectiveNormalization {
-    /// Preserves verbatim byte-identical output without alterations.
+    /// Writes every directive's raw bytes verbatim.
     #[default]
     Off,
     /// Tier1 only. Rewrites verified zero-false-positive near-misses (per
@@ -58,38 +60,38 @@ pub enum DirectiveNormalization {
     /// and `render --normalize`.
     Canonical,
     /// Tier1 and Tier2. Also reduces lossy or judgment-based degraded forms
-    /// (per [`degraded_directive`]) that Tier1 refuses. This variant is constructed
-    /// only by the opt-in renderer ([`crate::render_html_normalized`] via `render --degraded`),
-    /// never by persistent-write paths, ensuring Tier2 reductions affect only
-    /// `--degraded` render output rather than modifying source.
+    /// (per [`degraded_directive`]) that Tier1 does not rewrite. Only the opt-in
+    /// renderer ([`crate::render_html_normalized`] via `render --degraded`)
+    /// constructs this variant, and no persistent-write path does, so Tier2
+    /// reductions affect only `--degraded` render output and never rewrite source.
     Degraded,
 }
 
 /// Options controlling how the AST is re-emitted to Aozora source.
 ///
-/// The default (`directives: Off`) preserves the contract that every
-/// directive round-trips its `raw` bytes verbatim, including
-/// `DirectiveKind::Unknown` near-misses flagged by notation-hygiene lints.
-/// Opting in (`aozora fmt --fix` = `Canonical`) lets the serializer
-/// rewrite those flagged near-misses to their canonical spelling via the single
-/// [`canonical_directive`] authority.
+/// With the default (`directives: Off`), every directive round-trips its
+/// `raw` bytes verbatim, including `DirectiveKind::Unknown` near-misses
+/// flagged by notation-hygiene lints. With `Canonical` (`aozora fmt --fix`),
+/// the serializer rewrites those flagged near-misses to their canonical
+/// spelling through [`canonical_directive`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SerializeOptions {
-    /// Which notation-hygiene tiers to consult for `DirectiveKind::Unknown`
-    /// near-misses. `Degraded` is reserved for the opt-in renderer.
+    /// Which notation-hygiene tiers to apply to `DirectiveKind::Unknown`
+    /// near-misses. Only the opt-in renderer passes `Degraded`.
     pub directives: DirectiveNormalization,
 }
 
 /// Serialize an [`LexOutput`] back to Aozora source text.
 ///
 /// `serialize ∘ parse` reaches a fixed point after one pass. The
-/// mandatory decorative-rule isolate post-pass (`has_long_rule_line` fast-path
-/// then `isolate_decorative_rules`) normalizes decorative rule lines so a
-/// second pass re-parses and re-serializes to identical bytes.
+/// decorative-rule isolate post-pass, which runs on every call
+/// (`has_long_rule_line` pre-check, then `isolate_decorative_rules`),
+/// normalizes decorative rule lines so a second pass re-parses and
+/// re-serializes to identical bytes.
 ///
 /// # Panics
 ///
-/// Does not panic in normal use: `String` cannot fail as a [`Write`] sink.
+/// Does not panic: writing to a `String` through [`Write`] cannot fail.
 #[must_use]
 pub fn serialize(out: &LexOutput) -> String {
     serialize_with(out, SerializeOptions::default())
@@ -106,7 +108,7 @@ pub fn serialize(out: &LexOutput) -> String {
 ///
 /// # Panics
 ///
-/// Does not panic in normal use: `String` cannot fail as a [`Write`] sink.
+/// Does not panic: writing to a `String` through [`Write`] cannot fail.
 #[must_use]
 pub fn serialize_with(out: &LexOutput, opts: SerializeOptions) -> String {
     let mut s = String::with_capacity(out.normalized.len().saturating_mul(2));
@@ -127,8 +129,8 @@ pub fn serialize_with(out: &LexOutput, opts: SerializeOptions) -> String {
 ///
 /// # Panics
 ///
-/// Panics if the normalized text exceeds `u32::MAX` bytes — inherited from the
-/// lexer's `Span` width contract; in practice unreachable.
+/// Panics if the normalized text exceeds `u32::MAX` bytes, the width of the
+/// lexer's `Span` offsets; the sanitize stage caps input below that length.
 pub fn serialize_into<W: Write>(out: &LexOutput, writer: &mut W) -> fmt::Result {
     serialize_into_with(out, writer, SerializeOptions::default())
 }
@@ -142,8 +144,8 @@ pub fn serialize_into<W: Write>(out: &LexOutput, writer: &mut W) -> fmt::Result 
 ///
 /// # Panics
 ///
-/// Panics if the normalized text exceeds `u32::MAX` bytes — inherited from the
-/// lexer's `Span` width contract; in practice unreachable.
+/// Panics if the normalized text exceeds `u32::MAX` bytes, the width of the
+/// lexer's `Span` offsets; the sanitize stage caps input below that length.
 pub fn serialize_into_with<W: Write>(
     out: &LexOutput,
     writer: &mut W,
@@ -182,7 +184,8 @@ fn source_boundary_emissions(out: &LexOutput) -> BTreeMap<NormalizedOffset, &str
 }
 
 /// [`WalkSink`] that re-emits Aozora source text from the AST,
-/// threading the [`NodeStore`] (the resolve authority) into every AST emitter.
+/// passing the [`NodeStore`], which resolves interned payloads, to every AST
+/// emitter.
 struct SerializeSink<'a, W: Write> {
     source_boundaries: BTreeMap<NormalizedOffset, &'a str>,
     store: &'a NodeStore,
@@ -190,12 +193,12 @@ struct SerializeSink<'a, W: Write> {
     /// Which notation-hygiene tiers to apply to `DirectiveKind::Unknown`
     /// near-misses (`Off` = verbatim; `Canonical` = Tier1; `Degraded` = Tier1+Tier2).
     directives: DirectiveNormalization,
-    /// Newlines read from the normalized text and not yet written, held back so
-    /// the next block marker can reclaim the blank line the normalizer put in
-    /// front of it. See [`Self::unpad`].
+    /// Newlines read from the normalized text and not yet written, held so
+    /// the next block marker can remove the blank line the normalizer inserted
+    /// before it. See [`Self::unpad`].
     held_newlines: usize,
     /// Newlines still to be dropped from the front of the next plain run: the
-    /// blank line the normalizer put after a block marker.
+    /// blank line the normalizer inserted after a block marker.
     drop_newlines: usize,
 }
 
@@ -207,7 +210,7 @@ impl<W: Write> SerializeSink<'_, W> {
         Ok(())
     }
 
-    /// Take the normalizer's blank-line padding back off around one marker.
+    /// Remove the normalizer's blank-line padding around one marker.
     ///
     /// `lex` writes `\n\n` on each side of a block sentinel so that the
     /// line-oriented recognizers have a boundary to work with, whether or not
@@ -215,9 +218,9 @@ impl<W: Write> SerializeSink<'_, W> {
     /// makes `serialize` insert blank lines the author never wrote, and on
     /// input whose brackets do not balance it makes it insert *parse-relevant*
     /// ones: the pair stage expires an open bracket at a newline, so a bracket
-    /// the first parse still held is gone by the time the next parse reaches
-    /// the `］` that closed it, and a directive that was at top level ends up
-    /// buried in a body.
+    /// that the first parse kept open has expired when the next parse reaches
+    /// the closing `］`, and a directive that was at top level is parsed
+    /// inside a body.
     fn unpad(&mut self, padded: bool) {
         if padded {
             self.held_newlines = self.held_newlines.saturating_sub(2);
@@ -237,10 +240,10 @@ impl<W: Write> SerializeSink<'_, W> {
                 emit_container_open(open, self.store, self.out)
             }
             (SentinelKind::BlockClose, NodeRef::BlockClose(close)) => {
-                emit_container_close(close, self.out)
+                emit_container_close(close, self.store, self.out)
             }
-            // Sentinel hit without a corresponding registry entry, or a
-            // kind/variant mismatch — best-effort skip.
+            // A sentinel without a corresponding registry entry, or a
+            // kind/variant mismatch, emits nothing.
             _ => Ok(()),
         }
     }
@@ -261,8 +264,8 @@ impl<W: Write> WalkSink for SerializeSink<'_, W> {
             }
         }
         let body = text.trim_end_matches('\n');
-        // A run that is only newlines joins the held count whole, so padding
-        // written either side of an empty run still cancels exactly.
+        // A run that is only newlines adds all of them to the held count, so
+        // padding on both sides of an empty run cancels exactly.
         if body.is_empty() {
             self.held_newlines += text.len();
             return Ok(());
@@ -324,13 +327,14 @@ fn emit_aozora<W: Write>(
         Node::BodyEnd => out.write_str("［＃本文終わり］"),
         Node::ForcedBreak => out.write_str("［＃改行］"),
         Node::SectionBreak(kind) => emit_section_break(kind, out),
+        Node::QualifiedBreak(break_) => emit_qualified_break(break_, out),
         Node::Line(lf) => emit_line(lf, out),
         Node::Illustration(id) => emit_sashie(&store.resolve_illustration(id), store, out),
         Node::HeadingHint(h) => emit_heading_hint(h, store, out),
         Node::Heading(h) => emit_aozora_heading(&h, store, out),
         // Variants not covered inline: Container is routed through the
-        // open/close sentinel path; Warichu lands here as a diagnostic
-        // placeholder.
+        // open/close sentinel path; Warichu reaches this arm and is written as
+        // a diagnostic placeholder.
         _ => {
             out.write_str("<!-- unsupported-aozora: ")?;
             out.write_str(node.xml_node_name())?;
@@ -339,10 +343,31 @@ fn emit_aozora<W: Write>(
     }
 }
 
-// ----------------------------------------------------------------------
-// Content resolve layer — resolve and emit a `Content` / `ContentRange`,
-// either verbatim or as plain text (gaiji written as its hint).
-// ----------------------------------------------------------------------
+fn emit_qualified_break<W: Write>(break_: QualifiedBreak, out: &mut W) -> fmt::Result {
+    if let Some(number) = break_.column_number {
+        return write!(out, "［＃{number}段目］");
+    }
+    let keyword = match break_.kind {
+        QualifiedBreakKind::Page => "改ページ",
+        QualifiedBreakKind::Kaicho => "改丁",
+        QualifiedBreakKind::Column => "改段",
+        QualifiedBreakKind::Kaimihiraki => "改見開き",
+    };
+    write!(out, "［＃{keyword}")?;
+    if break_.destination_right {
+        out.write_str("右")?;
+    }
+    if let Some(placement) = break_.following_placement {
+        match placement {
+            FollowingPlacement::HorizontalCenter => out.write_str("、ページの左右中央に")?,
+            FollowingPlacement::Left => out.write_str("、左寄せで")?,
+        }
+    }
+    if let Some(indent) = break_.following_indent {
+        write!(out, "、{indent}字下げで")?;
+    }
+    out.write_str("］")
+}
 
 /// Emit a single [`Content`] verbatim (plain text, or each segment's
 /// text / gaiji / directive).
@@ -351,22 +376,28 @@ fn emit_content_one<W: Write>(c: Content, store: &NodeStore, out: &mut W) -> fmt
         Content::Plain(id) => out.write_str(store.resolve_str(id)),
         Content::Segments(range) => {
             for seg in store.resolve_seg_range(range) {
-                match *seg {
-                    Segment::Text(id) => out.write_str(store.resolve_str(id))?,
-                    Segment::Gaiji(g) => emit_gaiji(&g, store, out)?,
-                    Segment::Directive { value, .. } => {
-                        out.write_str(store.resolve_str(value.raw))?;
-                    }
-                    Segment::Format { value, .. } => emit_format(&value, store, out)?,
-                    Segment::Kunten { value, .. } => emit_kunten(value, store, out)?,
-                    Segment::IterationMark { value, .. } => out.write_str(value.source())?,
-                    // `Segment` is `#[non_exhaustive]`; forward-compat skip.
-                    _ => {}
-                }
+                emit_segment(*seg, store, out)?;
             }
             Ok(())
         }
-        // `Content` is `#[non_exhaustive]`; forward-compat skip.
+        // `Content` is `#[non_exhaustive]`; a variant added later emits
+        // nothing.
+        _ => Ok(()),
+    }
+}
+
+fn emit_segment<W: Write>(segment: Segment, store: &NodeStore, out: &mut W) -> fmt::Result {
+    match segment {
+        Segment::Text(id) => out.write_str(store.resolve_str(id)),
+        Segment::Gaiji { value, .. } => emit_gaiji(&value, store, out),
+        Segment::Directive { value, .. } => out.write_str(store.resolve_str(value.raw)),
+        Segment::Format { value, .. } => emit_format(&value, store, out),
+        Segment::Kunten { value, .. } => emit_kunten(value, store, out),
+        Segment::IterationMark { value, .. } => out.write_str(value.source()),
+        Segment::Illustration { value, .. } => {
+            emit_sashie(&store.resolve_illustration(value), store, out)
+        }
+        Segment::MarginNote { value, .. } => emit_side_note(&value, store, out),
         _ => Ok(()),
     }
 }
@@ -397,20 +428,26 @@ pub(crate) fn emit_content_as_plain_one<W: Write>(
             for seg in store.resolve_seg_range(range) {
                 match *seg {
                     Segment::Text(id) => out.write_str(store.resolve_str(id))?,
-                    Segment::Gaiji(g) => out.write_str(store.resolve_str(g.hint))?,
+                    Segment::Gaiji { value, .. } => out.write_str(store.resolve_str(value.hint))?,
                     Segment::Directive { value, .. } => {
                         out.write_str(store.resolve_str(value.raw))?;
                     }
                     Segment::Format { value, .. } => emit_format(&value, store, out)?,
                     Segment::Kunten { value, .. } => emit_kunten(value, store, out)?,
                     Segment::IterationMark { value, .. } => out.write_str(value.source())?,
-                    // `Segment` is `#[non_exhaustive]`; forward-compat skip.
+                    Segment::Illustration { value, .. } => {
+                        emit_sashie(&store.resolve_illustration(value), store, out)?;
+                    }
+                    Segment::MarginNote { value, .. } => emit_side_note(&value, store, out)?,
+                    // `Segment` is `#[non_exhaustive]`; a variant added later
+                    // emits nothing.
                     _ => {}
                 }
             }
             Ok(())
         }
-        // `Content` is `#[non_exhaustive]`; forward-compat skip.
+        // `Content` is `#[non_exhaustive]`; a variant added later emits
+        // nothing.
         _ => Ok(()),
     }
 }
@@ -427,10 +464,6 @@ fn emit_content_as_plain_range<W: Write>(
     Ok(())
 }
 
-// ----------------------------------------------------------------------
-// Per-variant AST emitters.
-// ----------------------------------------------------------------------
-
 /// Serialize a ruby node: a left-side ruby to its
 /// `base［＃「base」の左に「reading」のルビ］` form; a right-side ruby to
 /// `｜base《reading》`, retaining an explicit boundary for every base.
@@ -443,17 +476,84 @@ fn emit_ruby<W: Write>(r: &Ruby, store: &NodeStore, out: &mut W) -> fmt::Result 
         emit_content_range(r.reading, store, out)?;
         return out.write_str("」のルビ］");
     }
-    out.write_char('｜')?;
+    if !content_range_has_detached_gaiji(r.base, store) {
+        out.write_char('｜')?;
+    }
     emit_content_range(r.base, store, out)?;
     out.write_char('《')?;
-    emit_content_range(r.reading, store, out)?;
+    emit_ruby_reading(r.reading, store, out)?;
     out.write_char('》')?;
+    emit_postposed_reading_markers(r.reading, store, out)
+}
+
+fn content_range_has_detached_gaiji(range: ContentRange, store: &NodeStore) -> bool {
+    store.resolve_content_range(range).iter().any(|content| {
+        let Content::Segments(segments) = content else {
+            return false;
+        };
+        store.resolve_seg_range(*segments).iter().any(|segment| {
+            matches!(
+                segment,
+                Segment::Gaiji {
+                    placement: GaijiMarkerPlacement::Detached,
+                    ..
+                }
+            )
+        })
+    })
+}
+
+fn emit_ruby_reading<W: Write>(range: ContentRange, store: &NodeStore, out: &mut W) -> fmt::Result {
+    for content in store.resolve_content_range(range) {
+        match *content {
+            Content::Segments(segments) => {
+                for segment in store.resolve_seg_range(segments) {
+                    match *segment {
+                        Segment::Gaiji {
+                            value,
+                            placement: GaijiMarkerPlacement::AfterRuby,
+                            ..
+                        } => {
+                            if let Some(replaced) = value.replaced {
+                                emit_content_range(replaced, store, out)?;
+                            }
+                        }
+                        other => emit_segment(other, store, out)?,
+                    }
+                }
+            }
+            other => emit_content_one(other, store, out)?,
+        }
+    }
+    Ok(())
+}
+
+fn emit_postposed_reading_markers<W: Write>(
+    range: ContentRange,
+    store: &NodeStore,
+    out: &mut W,
+) -> fmt::Result {
+    for content in store.resolve_content_range(range) {
+        let Content::Segments(segments) = *content else {
+            continue;
+        };
+        for segment in store.resolve_seg_range(segments) {
+            if let Segment::Gaiji {
+                value,
+                placement: GaijiMarkerPlacement::AfterRuby,
+                ..
+            } = *segment
+            {
+                emit_gaiji_marker(&value, store, out)?;
+            }
+        }
+    }
     Ok(())
 }
 
 /// Serialize a forward-format node to its `［＃…］` bracket form. A `Reclaimed`
 /// origin first re-emits the target literal; a bouten attribute uses the
-/// `…に<keyword>` (or `の左に`) shape; a font-size attribute spells its
+/// `…に<keyword>` (or `の左に`) shape; a font-size attribute writes its
 /// `N段階大きな/小さな文字` magnitude; every other attribute uses
 /// `［＃「target」は<keyword>］`.
 fn emit_format<W: Write>(f: &ForwardFormat, store: &NodeStore, out: &mut W) -> fmt::Result {
@@ -462,7 +562,7 @@ fn emit_format<W: Write>(f: &ForwardFormat, store: &NodeStore, out: &mut W) -> f
     }
     // A `Detached` decoration is the styled-literal half of a
     // non-adjacent forward split: it serializes as the bare literal above,
-    // because the `［＃…］` directive is a *separate* `Referenced` node that
+    // because the `［＃…］` directive is a separate `Referenced` node that
     // emits the bracket itself. Return before the bracket-emitting block.
     if matches!(f.origin, ForwardOrigin::Detached) {
         return Ok(());
@@ -487,9 +587,15 @@ fn emit_format<W: Write>(f: &ForwardFormat, store: &NodeStore, out: &mut W) -> f
     if let ForwardAttr::Bouten { kind, position } = attr {
         out.write_str("［＃")?;
         emit_bouten_targets(store.resolve_content_range(f.target), store, out)?;
+        if position == DecorationPosition::Below {
+            return out.write_str("に下線］");
+        }
+        if position == DecorationPosition::Above {
+            return out.write_str("は上線（￣）付き］");
+        }
         match position {
-            BoutenPosition::Left => out.write_str("の左に")?,
-            BoutenPosition::Both => out.write_str("の両側に")?,
+            DecorationPosition::Left => out.write_str("の左に")?,
+            DecorationPosition::Both => out.write_str("の両側に")?,
             _ => out.write_char('に')?,
         }
         out.write_str(kind.keyword())?;
@@ -602,17 +708,27 @@ fn emit_bouten_targets<W: Write>(run: &[Content], store: &NodeStore, out: &mut W
 /// `※` unless `standalone`), appending the mencode tail when the canonical
 /// form carries one.
 fn emit_gaiji<W: Write>(g: &Gaiji, store: &NodeStore, out: &mut W) -> fmt::Result {
+    if let Some(replaced) = g.replaced {
+        emit_content_range(replaced, store, out)?;
+    }
+    if g.declaration_span.is_some() {
+        return Ok(());
+    }
+    emit_gaiji_marker(g, store, out)
+}
+
+fn emit_gaiji_marker<W: Write>(g: &Gaiji, store: &NodeStore, out: &mut W) -> fmt::Result {
     if !g.standalone {
         out.write_char('※')?;
     }
     out.write_str("［＃")?;
     let hint = store.resolve_str(g.hint);
-    if hint.contains(['「', '」']) {
-        out.write_str(hint)?;
-    } else {
+    if g.quoted {
         out.write_char('「')?;
         out.write_str(hint)?;
         out.write_char('」')?;
+    } else {
+        out.write_str(hint)?;
     }
     if gaiji_has_mencode(g.canonical) {
         out.write_char('、')?;
@@ -621,12 +737,12 @@ fn emit_gaiji<W: Write>(g: &Gaiji, store: &NodeStore, out: &mut W) -> fmt::Resul
     out.write_char('］')
 }
 
-/// Owned mirror of `GaijiCanonical::has_mencode`.
+/// `GaijiCanonical::has_mencode` for the owned payload.
 const fn gaiji_has_mencode(c: GaijiCanonicalOwned) -> bool {
     !matches!(c, GaijiCanonicalOwned::Unresolved { mencode: None })
 }
 
-/// Owned mirror of `GaijiCanonical::write_mencode` — resolves the
+/// `GaijiCanonical::write_mencode` for the owned payload; resolves the
 /// `Unresolved` tail's [`StrId`](ab_aozora_syntax::ast::StrId) against `store`.
 fn write_gaiji_mencode<W: Write>(
     c: GaijiCanonicalOwned,
@@ -663,9 +779,9 @@ fn emit_kunten<W: Write>(k: Kunten, store: &NodeStore, out: &mut W) -> fmt::Resu
 /// ([`canonical_directive`]) is tried first; at the `Degraded` level a Tier1
 /// miss then tries the lossy / judgment Tier2 reductions ([`degraded_directive`]).
 /// The rewrite is idempotent: the resolved body parses to a recognized
-/// (non-`Unknown`) node, so a second pass never re-enters this branch. Tier2 is
-/// reached only from the ephemeral `Degraded` render buffer, never from a
-/// persistent-write path — so a Tier2 reduction never rewrites source.
+/// (non-`Unknown`) node, so a second pass never re-enters this branch. Only
+/// the temporary `Degraded` render buffer reaches Tier2, and no
+/// persistent-write path does, so a Tier2 reduction does not rewrite source.
 fn emit_annotation<W: Write>(
     a: Directive,
     store: &NodeStore,
@@ -703,12 +819,15 @@ fn emit_angle_quote<W: Write>(d: AngleQuote, store: &NodeStore, out: &mut W) -> 
 /// Serialize a margin note to its `base［＃「base」…］` form, using the kind's
 /// connector / suffix affixes around the note text.
 fn emit_side_note<W: Write>(s: &MarginNote, store: &NodeStore, out: &mut W) -> fmt::Result {
+    if let Some(pair) = s.pair {
+        return out.write_str(store.resolve_str(store.resolve_margin_note_pair(pair).close_raw));
+    }
     if s.origin != ForwardOrigin::Referenced {
         emit_content_range(s.base, store, out)?;
     }
     out.write_str("［＃「")?;
     if s.anchor == Some(ab_aozora_syntax::MarkAnchor::Between) {
-        // The base holds the two runs the source named, in that order, so the
+        // The base holds the two runs the source quoted, in that order, so the
         // marker round-trips as the pair it was written as.
         let [left, right] = store.resolve_content_range(s.base) else {
             return Err(fmt::Error);
@@ -722,6 +841,13 @@ fn emit_side_note<W: Write>(s: &MarginNote, store: &NodeStore, out: &mut W) -> f
         return out.write_char('］');
     }
     emit_content_range(s.base, store, out)?;
+    if s.kind == ab_aozora_syntax::MarginNoteKind::CriticalNote
+        && s.position == Some(ab_aozora_syntax::MarginNotePosition::Margin)
+    {
+        out.write_str("」に欄外に校注、「")?;
+        emit_content_range(s.note, store, out)?;
+        return out.write_str("」］");
+    }
     if matches!(
         s.kind,
         ab_aozora_syntax::MarginNoteKind::CrossReference
@@ -736,6 +862,7 @@ fn emit_side_note<W: Write>(s: &MarginNote, store: &NodeStore, out: &mut W) -> f
     out.write_str(match s.position {
         Some(ab_aozora_syntax::MarginNotePosition::Left) => "」の左に「",
         Some(ab_aozora_syntax::MarginNotePosition::Right) => "」の右に「",
+        Some(ab_aozora_syntax::MarginNotePosition::Margin) => "」の欄外に「",
         None => "」に「",
     })?;
     emit_content_range(s.note, store, out)?;
@@ -805,8 +932,8 @@ mod tests {
     use crate::serialize::serialize;
 
     /// `serialize ∘ parse` reaches a fixed point after one pass — the
-    /// canonical round-trip contract (end-to-end byte-identity is pinned by the
-    /// conformance golden).
+    /// canonical round-trip contract (the conformance golden tests end-to-end
+    /// byte identity).
     fn assert_parity(src: &str) {
         let first = serialize(&ab_aozora_pipeline::lex(src));
         let second = serialize(&ab_aozora_pipeline::lex(&first));

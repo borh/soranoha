@@ -1,14 +1,13 @@
-//! Pin the cross-driver JSON format. Every driver (`aozora-ffi`,
+//! Tests of the JSON format shared by the drivers. Every driver (`aozora-ffi`,
 //! `aozora-wasm`, `aozora-py`) calls into [`ab_aozora_facade::json`] for JSON
-//! projection; these tests fix that projection's byte-shape so future
-//! drift is caught before drivers diverge.
+//! projection; these tests fix the byte shape of that projection.
 
 #![cfg(feature = "json")]
 
 use ab_aozora_facade::{Document, json};
 
-/// The empty parse must serialise as the canonical empty envelope —
-/// regardless of which projection function is called.
+/// Every projection function serialises an empty parse as the canonical empty
+/// envelope.
 #[test]
 fn empty_parse_serialises_to_canonical_envelope() {
     let doc = Document::new("plain");
@@ -19,7 +18,8 @@ fn empty_parse_serialises_to_canonical_envelope() {
     assert_eq!(json::pairs(&tree), canonical);
 }
 
-/// Scoped TCY changes container pairs without changing diagnostics or ruby pairs.
+/// Each envelope has its own schema version; the container-pairs version
+/// differs from the diagnostics, nodes and pairs versions.
 #[test]
 fn envelope_versions_change_independently() {
     assert_eq!(json::CONTAINER_PAIRS_SCHEMA_VERSION, 7);
@@ -28,7 +28,6 @@ fn envelope_versions_change_independently() {
     assert_eq!(json::PAIRS_SCHEMA_VERSION, 3);
 }
 
-/// Severity / source axes are present and correctly classified.
 #[test]
 fn diagnostic_json_has_severity_and_source_axes() {
     let doc = Document::new("a［＃unclosed");
@@ -52,7 +51,6 @@ fn diagnostic_json_has_severity_and_source_axes() {
     );
 }
 
-/// Ruby span shape (nodes channel), byte-pinned.
 #[test]
 fn ruby_node_byte_shape() {
     let doc = Document::new("｜青梅《おうめ》");
@@ -63,7 +61,6 @@ fn ruby_node_byte_shape() {
     assert!(json.contains(r#""span":{"start":"#));
 }
 
-/// Ruby pair shape (pairs channel), byte-pinned.
 #[test]
 fn ruby_pair_byte_shape() {
     let doc = Document::new("｜青梅《おうめ》");
@@ -75,7 +72,6 @@ fn ruby_pair_byte_shape() {
     assert!(json.contains(r#""close":{"start":"#));
 }
 
-/// JSON parses round-trip through `serde_json` — proves valid output.
 #[test]
 fn all_three_channels_emit_valid_json() {
     let doc = Document::new("｜青梅《おうめ》abc\u{E001}def");

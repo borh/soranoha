@@ -2,22 +2,20 @@
 //! [`naive_scan_offsets`] reference, projected through the whole
 //! `lex` pipeline.
 //!
-//! The differential proptests inside `lexer::trigger_scan` already prove
-//! that the production `scan_offsets` agrees byte-for-byte with
-//! [`naive_scan_offsets`] on raw source bytes. That covers a *single layer*
-//! (the scanner) and says nothing about how the tokenize stage's output
-//! flows through pair / classify on into the lexer's normalized
-//! buffer.
+//! The differential proptests inside `lexer::trigger_scan` check that the
+//! production `scan_offsets` agrees byte for byte with
+//! [`naive_scan_offsets`] on raw source bytes. They cover the scanner
+//! alone, not the tokenize stage's output after pair / classify in the
+//! lexer's normalized buffer.
 //!
-//! The properties here close the gap by reasoning about the *whole*
-//! pipeline:
+//! The properties here cover the whole pipeline:
 //!
 //! 1. **Scanner totality on lex output.** [`naive_scan_offsets`] applied to
 //!    the lexer's normalized buffer must not panic and must return
 //!    offsets that are valid UTF-8 char boundaries inside that buffer.
 //!    The normalized buffer carries PUA sentinels and may differ in
 //!    length from the source; a regression that left dangling bytes
-//!    or invalidated boundaries would surface here.
+//!    or invalidated boundaries fails this property.
 //!
 //! 2. **Tokenize-stage monotonicity.** The Aozora pipeline can only *consume*
 //!    triggers (replacing them with PUA sentinels); it never adds
@@ -25,13 +23,13 @@
 //!    buffer is at most the count in the *source* (modulo the sanitize
 //!    stage's rewrites: BOM strip, CRLF→LF, accent decomposition).
 //!    A regression that emitted a trigger in the normalized output
-//!    where none existed in source would shift this delta.
+//!    where none existed in source changes this difference.
 //!
 //! Both properties are stated as inequalities rather than equalities
 //! because the sanitize stage can drop bytes (BOM, CR) and rewrite sequences
-//! (`〔NFC〕` → combining), making a strict equality check prone to false
-//! positives. The inequality properties remain decisive: any regression
-//! that adds triggers during normalization fails under test shrinking.
+//! (`〔NFC〕` → combining), so an equality check would report false
+//! failures. A regression that adds triggers during normalization fails the
+//! inequality, and proptest shrinks it to a minimal input.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_pipeline::lexer::trigger_scan::naive_scan_offsets;
@@ -59,9 +57,9 @@ fn assert_offsets_are_char_boundaries(label: &str, text: &str, offsets: &[u32]) 
 }
 
 fn assert_scan_invariants(source: &str) {
-    // (1a) Scanner totality on raw source. This also pins that the
-    // reference walker is panic-free over the full generator surface, a
-    // separate assurance from the in-module differential property.
+    // (1a) Scanner totality on raw source. This also checks that the
+    // reference walker does not panic on any generated input,
+    // independently of the in-module differential property.
     let source_offsets = naive_scan_offsets(source);
     assert_offsets_are_char_boundaries("source", source, &source_offsets);
 
@@ -71,14 +69,12 @@ fn assert_scan_invariants(source: &str) {
     let norm_offsets = naive_scan_offsets(&out.normalized);
     assert_offsets_are_char_boundaries("normalized", &out.normalized, &norm_offsets);
 
-    // (2) tokenize-stage monotonicity: the pipeline consumes (or passes
-    // through) triggers but never invents new ones. The sanitize-stage
-    // layer can rewrite sequences in ways that *add*
-    // characters from the lexer's reserved trigger set in principle;
-    // accent decomposition expands `〔NFC〕` into combining sequences
-    // that are not themselves triggers, so this concern is theoretical
-    // but the property catches any future sanitize / tokenize change
-    // that accidentally synthesises trigger glyphs.
+    // (2) tokenize-stage monotonicity: the pipeline consumes or passes
+    // through triggers and adds none. A sanitize-stage rewrite could in
+    // principle add characters from the lexer's reserved trigger set;
+    // accent decomposition expands `〔NFC〕` into combining sequences that
+    // are not triggers. The property fails if a sanitize or tokenize
+    // change emits trigger glyphs.
     let source_triggers = scan_count(source);
     let normalized_triggers = norm_offsets.len();
     assert!(
@@ -89,9 +85,7 @@ fn assert_scan_invariants(source: &str) {
     );
 }
 
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
+// Fixed regression inputs.
 
 #[test]
 fn empty_input_satisfies_invariants() {
@@ -130,16 +124,16 @@ fn literal_pua_keeps_scan_invariants() {
 proptest! {
     #![proptest_config(default_config())]
 
-    /// Workhorse: the SIMD scan / tokenize-stage monotonicity duality must
-    /// hold over every Aozora-shaped fragment.
+    /// The SIMD scan and tokenize-stage monotonicity properties must hold
+    /// over every Aozora-shaped fragment.
     #[test]
     fn aozora_fragment_scan_invariants_hold(s in aozora_fragment(120)) {
         assert_scan_invariants(&s);
     }
 
-    /// Pathological: runs of unbalanced trigger glyphs (the case that
-    /// most stresses tokenize → pair → classify trigger-consumption
-    /// accounting).
+    /// Pathological: runs of unbalanced trigger glyphs, the input class
+    /// that exercises tokenize → pair → classify trigger-consumption
+    /// accounting most heavily.
     #[test]
     fn pathological_input_scan_invariants_hold(s in pathological_aozora(120)) {
         assert_scan_invariants(&s);

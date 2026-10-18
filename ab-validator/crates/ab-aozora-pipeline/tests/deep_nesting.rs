@@ -1,28 +1,25 @@
 //! Deep-nesting stress for the streaming pair + classify pipeline.
 //!
-//! Two things to pin:
+//! The tests pin two properties:
 //!
-//! 1. The Frame body buffer (a `SmallVec<[PairEvent; 16]>`) handles
-//!    nesting that exceeds the inline capacity by spilling to the heap
-//!    transparently: the registry shape at 16, 64 and 256 levels of
-//!    nesting must stay structurally consistent.
+//! 1. The Frame body buffer (a `SmallVec<[PairEvent; 16]>`) spills to the
+//!    heap when nesting exceeds the inline capacity, and the registry
+//!    shape at 16, 64 and 256 levels of nesting stays the same.
 //! 2. The streaming classifier's recognition is iterative, not
 //!    recursive (see `ClassifyStream::iter` + the `inner_stack` in
-//!    `Frame`). 256 nested annotations must therefore not blow the
+//!    `Frame`). 256 nested annotations must therefore not overflow the
 //!    test-thread stack.
 //!
-//! The shape we use throughout: nested annotation bodies of the form
+//! Every test uses nested annotation bodies of the form
 //!
 //!   `[#[#[#...]]]`
 //!
 //! Each `[#...]` is a `PairOpen(Bracket) + Solo(Hash) + body +
 //! PairClose(Bracket)`; the whole thing is unrecognised by the classify stage
 //! (no keyword matches), so it folds into a single `Directive { kind:
-//! Unknown }` for the OUTERMOST bracket. The innermost-out annotation
-//! is what we care about for the iterative-classify smoke; the
-//! registry shape of `1 inline entry + 0 leaves + 0 containers`
-//! stays the same regardless of nesting depth, which the test
-//! asserts directly.
+//! Unknown }` for the outermost bracket. The registry shape of
+//! `1 inline entry + 0 leaves + 0 containers` is independent of nesting
+//! depth, and the tests assert it.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_spec::Sentinel;
@@ -77,12 +74,10 @@ fn nested_annotations_64_levels_spill_to_heap_unchanged() {
     assert!(out.diagnostics.is_empty());
 }
 
-/// 256 levels: well past any plausible real-corpus nesting, included
-/// to verify the recognition loop is iterative (the classifier walks
-/// `frame.inner_stack` rather than recursing into nested helpers).
-/// A recursive helper at this depth would blow Rust's default 2 MiB
-/// thread stack; this test therefore doubles as an iterative-classify
-/// smoke.
+/// 256 levels, beyond real-corpus nesting: verifies that the recognition
+/// loop is iterative (the classifier walks `frame.inner_stack` and does
+/// not recurse into nested helpers). A recursive helper at this depth
+/// would overflow Rust's default 2 MiB thread stack.
 #[test]
 fn nested_annotations_256_levels_do_not_overflow_stack() {
     let src = nested_annotation(256);
@@ -118,7 +113,7 @@ fn nested_annotations_asymmetric_bodies_classify_consistently() {
     assert!(a.diagnostics.is_empty(), "got {:?}", a.diagnostics);
 }
 
-/// One more asymmetric shape: alternate `［＃X］` solo annotations
+/// Asymmetric shape: alternate `［＃X］` solo annotations
 /// followed by a deeply-nested chain. Two top-level brackets ⇒ two
 /// inline entries.
 #[test]

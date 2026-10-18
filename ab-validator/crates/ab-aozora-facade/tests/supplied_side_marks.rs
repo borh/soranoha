@@ -1,4 +1,5 @@
-//! Source-positioned marks retain their literal spelling without a reading claim.
+//! Source-positioned marks keep their literal spelling and do not parse as ruby
+//! readings.
 use ab_aozora_facade::Document;
 
 #[test]

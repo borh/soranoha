@@ -58,6 +58,21 @@ fn generic_warichu_owns_its_exact_native_scope() {
 }
 
 #[test]
+fn warichu_inside_an_explanation_note_converts_as_note_content() {
+    let ir = convert(
+        "元［＃著者所蔵の「研幾小録」の欄外には、「召誥　其惟王位在徳元［＃ここから割り注］孔傳其惟王居位在徳之首［＃ここで割り注終わり］」といふ著者の書き込みがある。］後。",
+    );
+    let nodes = ir["nodes"].as_array().unwrap();
+    let note = nodes.iter().find(|n| n["type"] == "editor-note").unwrap();
+    assert_eq!(note["annotation_children"][1]["type"], "warichu");
+    assert_eq!(
+        note["annotation_children"][1]["text"],
+        "孔傳其惟王居位在徳之首"
+    );
+    assert_eq!(ir["interpretation_problems"], serde_json::json!([]));
+}
+
+#[test]
 fn multiline_roles_preserve_two_source_paragraphs() {
     for (open, close, role) in [
         (

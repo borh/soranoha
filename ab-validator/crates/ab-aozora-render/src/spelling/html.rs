@@ -1,12 +1,11 @@
 //! Block-level HTML render state + text escaper.
 //!
-//! The shared, AST-free machinery the owned HTML renderer
-//! ([`crate::html`]) drives: the two-state paragraph machine
-//! ([`RenderState`]) that emits `<p>` / `<br />` / container brackets from the
-//! walk's sentinel + newline events, and the bulk-copy [`escape_text_chunk`]
-//! pass over plain runs. Container open/close tags route through the
-//! lifetime-free [`render_container`], so the byte spelling stays
-//! single-source.
+//! The AST-free functions that the owned HTML renderer ([`crate::html`])
+//! calls: the two-state paragraph machine ([`RenderState`]) that emits `<p>` /
+//! `<br />` / container brackets from the walk's sentinel + newline events,
+//! and the bulk-copy [`escape_text_chunk`] pass over plain runs. Container
+//! open/close tags are written by the lifetime-free [`render_container`], so
+//! the byte spelling is defined in one place.
 
 use core::fmt::{self, Write};
 
@@ -29,26 +28,25 @@ pub(crate) struct RenderState {
     /// Inside a phrasing-content container (a heading): its `<hN>` is the inline
     /// context, so [`Self::ensure_in_paragraph`] suppresses `<p>`.
     in_heading: bool,
-    /// In-flight container opens. The close marker reads the matched open
-    /// [`RegionFormat`] (open-authoritative).
+    /// Open containers not yet closed. The close marker reads the matched open
+    /// [`RegionFormat`]; the open marker determines the close tag.
     open_stack: Vec<RegionFormat>,
     /// Inline containers (`kind.is_inline()`) closed at a paragraph boundary,
-    /// awaiting reopen in the next paragraph. An inline container is phrasing
-    /// content, so a still-open one must not straddle `</p>`; but popping it off
-    /// `open_stack` would desync a later `［＃…終わり］` close marker. So
-    /// [`Self::close_paragraph`] closes it top-down and records it here, and
-    /// [`Self::ensure_in_paragraph`] reopens it (re-pushing onto `open_stack`) in
-    /// the next paragraph — keeping the stack consistent so the eventual close
-    /// still pairs. A never-closed inline container renders balanced in each
+    /// to be reopened in the next paragraph. An inline container is phrasing
+    /// content, so an open one must not straddle `</p>`; but removing it from
+    /// `open_stack` would leave a later `［＃…終わり］` close marker without its
+    /// open. [`Self::close_paragraph`] therefore closes it top-down and records
+    /// it here, and [`Self::ensure_in_paragraph`] reopens it (pushing it onto
+    /// `open_stack` again) in the next paragraph, so the later close pairs with
+    /// it. An inline container that is never closed renders balanced in each
     /// paragraph to EOF.
     reopen_after_para: Vec<RegionFormat>,
     /// Count of open inline-warichu spans (`［＃割り注］`) awaiting their close
     /// (`［＃割り注終わり］`). A warichu span is phrasing content, so it must
-    /// never straddle a `</p>` or `</div>`: [`Self::close_paragraph`] drains any
-    /// still-open span before closing the paragraph, and [`Self::close_warichu`]
-    /// absorbs a stray close with no matching open. Sources that mismatch the
-    /// block- and inline-warichu forms  rely on this to
-    /// stay balanced.
+    /// never straddle a `</p>` or `</div>`: [`Self::close_paragraph`] closes any
+    /// open span before closing the paragraph, and [`Self::close_warichu`]
+    /// ignores a close with no matching open. Output for sources that mix the
+    /// block and inline warichu forms is balanced through this counter.
     warichu_depth: u32,
 }
 
@@ -114,9 +112,9 @@ impl RenderState {
             // Reopen any inline containers `close_paragraph` closed at the last
             // paragraph boundary. `pop()` yields them in reverse of the
             // top-down push order, i.e. outermost-first, restoring the original
-            // nesting; re-pushing onto `open_stack` keeps the eventual close
-            // paired. This runs only for real paragraphs — the `in_heading`
-            // early return above skips it.
+            // nesting; pushing them onto `open_stack` again pairs them with
+            // their later close. This runs only for paragraphs, not headings:
+            // the `in_heading` early return above skips it.
             while let Some(kind) = self.reopen_after_para.pop() {
                 render_container(Container { kind }, true, out)?;
                 self.open_stack.push(kind);
@@ -127,17 +125,17 @@ impl RenderState {
 
     pub(crate) fn close_paragraph<W: Write>(&mut self, out: &mut W) -> fmt::Result {
         // A warichu span is phrasing content that must close before the
-        // enclosing paragraph, Case 2): drain any still-open span here,
-        // the single choke-point every block-leaf / container / finish path
-        // routes through (via `before_block_emit` and `drain_open_containers`).
+        // enclosing paragraph (the inline-open / block-close mismatch): close
+        // any open span here. Every block-leaf / container / finish path calls
+        // this function (via `before_block_emit` and `drain_open_containers`).
         self.drain_open_warichu(out)?;
         if self.in_paragraph {
-            // An inline container is phrasing content and sits at the TOP of
+            // An inline container is phrasing content and is at the top of
             // `open_stack` (any block container is below it), so it must not
             // straddle `</p>` either. Close each open inline container
-            // top-down here and remember it, so `ensure_in_paragraph` can reopen
-            // it in the next paragraph — re-pushing onto `open_stack` keeps a
-            // later close marker paired.
+            // top-down here and record it in `reopen_after_para`, so
+            // `ensure_in_paragraph` reopens it in the next paragraph and pushes
+            // it onto `open_stack` again for a later close marker.
             while let Some(&kind) = self.open_stack.last() {
                 if !kind.is_inline() {
                     break;
@@ -162,7 +160,7 @@ impl RenderState {
         self.pending_block_separator = true;
     }
 
-    /// Emit a container's opening tag, honouring its content model. An inline
+    /// Emit a container's opening tag according to its content model. An inline
     /// container stays in the current paragraph; a phrasing-content container (a
     /// heading) flushes the paragraph and holds its content inline under the
     /// `<hN>` (`in_heading`); every other block container flushes and brackets
@@ -188,24 +186,23 @@ impl RenderState {
         Ok(())
     }
 
-    /// Emit a container's closing tag — the mirror of [`Self::open_container`],
-    /// reconstructed from the matched open [`RegionFormat`] popped off the stack
-    /// (open-authoritative). A degraded empty stack best-effort skips.
+    /// Emit a container's closing tag, the counterpart of
+    /// [`Self::open_container`], derived from the matched open [`RegionFormat`]
+    /// popped off the stack. With an empty stack, nothing is emitted.
     pub(crate) fn close_container<W: Write>(
         &mut self,
         closing_inline: bool,
         out: &mut W,
     ) -> fmt::Result {
-        // An inline close marker (`［＃太字終わり］` etc.) that lands in the gap
-        // between a paragraph boundary and the next text cancels a pending
-        // reopen instead of no-oping. `close_paragraph` already drained
-        // the paragraph's inline containers into `reopen_after_para`, so the
-        // stack is empty (or holds only the enclosing block) and a plain
-        // `open_stack.pop()` would silently lose the close — and the next
-        // paragraph would then wrongly re-apply the emphasis. The front entry
-        // is the innermost (closed first), matching the inner-first close
-        // order; a *block* close (`closing_inline == false`) still pops its
-        // region off the stack as usual, so block markup is unaffected.
+        // An inline close marker (`［＃太字終わり］` etc.) in the gap between a
+        // paragraph boundary and the next text cancels a pending reopen.
+        // `close_paragraph` has moved the paragraph's inline containers into
+        // `reopen_after_para`, so the stack is empty (or holds only the
+        // enclosing block); `open_stack.pop()` would discard the close without
+        // output, and the next paragraph would reapply the emphasis. The front
+        // entry is the innermost (closed first), matching the inner-first close
+        // order; a block close (`closing_inline == false`) pops its region off
+        // the stack, so block markup is unaffected.
         if closing_inline && !self.reopen_after_para.is_empty() {
             self.reopen_after_para.remove(0);
             return Ok(());
@@ -230,12 +227,13 @@ impl RenderState {
 
     /// Close every container left open at end-of-input. A source may open a
     /// region (`［＃ここから字下げ］`) without a matching close; the AST and
-    /// `to_source` preserve that imbalance verbatim, but `to_html` must still
-    /// emit valid, balanced markup — the unclosed region renders as extending
-    /// to the end of the document. Mirrors the per-marker [`Self::close_container`].
+    /// `to_source` preserve that imbalance verbatim, but `to_html` must emit
+    /// valid, balanced markup, so the unclosed region extends to the end of the
+    /// document. Each close goes through [`Self::close_container`].
     pub(crate) fn drain_open_containers<W: Write>(&mut self, out: &mut W) -> fmt::Result {
         while !self.open_stack.is_empty() {
-            // EOF drain: no close marker, so pop the stack open-authoritatively.
+            // At EOF there is no close marker; the popped open determines the
+            // close tag.
             self.close_container(false, out)?;
         }
         Ok(())
@@ -244,7 +242,8 @@ impl RenderState {
     /// Open an inline-warichu span (`［＃割り注］`), emitting its
     /// `<span class="aozora-warichu">` and recording the open so its close is
     /// balanced. The byte spelling matches the per-node fallback in
-    /// [`crate::render_node`], so well-formed warichu output is unchanged.
+    /// [`crate::render_node`], so both paths emit identical well-formed
+    /// warichu output.
     pub(crate) fn open_warichu<W: Write>(&mut self, out: &mut W) -> fmt::Result {
         out.write_str(r#"<span class="aozora-warichu">"#)?;
         self.warichu_depth += 1;
@@ -252,9 +251,8 @@ impl RenderState {
     }
 
     /// Close one inline-warichu span (`［＃割り注終わり］`). A close with no
-    /// matching open — a source that mismatches the block- and inline-warichu
-    /// forms, Case 1) — is absorbed as a no-op rather than emitting a stray
-    /// `</span>`.
+    /// matching open (the block-open / inline-close mismatch) emits nothing, so
+    /// no unmatched `</span>` is written.
     pub(crate) fn close_warichu<W: Write>(&mut self, out: &mut W) -> fmt::Result {
         if self.warichu_depth > 0 {
             out.write_str("</span>")?;
@@ -264,9 +262,9 @@ impl RenderState {
     }
 
     /// Close every warichu span left open when the paragraph / document ends —
-    /// an inline `［＃割り注］` with no matching inline close, Case 2). The
-    /// span renders as extending to the paragraph boundary, mirroring
-    /// [`Self::drain_open_containers`] for unclosed regions.
+    /// an inline `［＃割り注］` with no matching inline close (the inline-open /
+    /// block-close mismatch). The span extends to the paragraph boundary, as
+    /// [`Self::drain_open_containers`] does for unclosed regions.
     pub(crate) fn drain_open_warichu<W: Write>(&mut self, out: &mut W) -> fmt::Result {
         while self.warichu_depth > 0 {
             out.write_str("</span>")?;
@@ -281,10 +279,9 @@ impl RenderState {
 ///
 /// The five HTML-unsafe ASCII characters (`< > & " '`) are rare in
 /// Japanese-text-heavy corpora — most chunks contain none. Two `memchr` passes
-/// (`memchr3` for `< > &` then `memchr` for `"`) fast-skip those clean chunks at
-/// memory-bandwidth speed; only when at least one needle hits do we fall through
-/// to a byte loop that merges the candidate positions and emits the escapes in
-/// document order.
+/// (`memchr3` for `< > &` then `memchr` for `"`) copy a chunk without those
+/// characters unchanged; only when a pass finds a match does a byte loop merge
+/// the candidate positions and emit the escapes in document order.
 pub(crate) fn escape_text_chunk<W: Write>(chunk: &str, out: &mut W) -> fmt::Result {
     let bytes = chunk.as_bytes();
 
@@ -340,8 +337,6 @@ pub(crate) fn escape_text_chunk<W: Write>(chunk: &str, out: &mut W) -> fmt::Resu
     out.write_str(&chunk[cursor..])
 }
 
-// ── HTML container / heading / line tag byte-spelling (formerly render_node.rs) ──
-
 pub(crate) fn render_container<W: Write>(
     c: Container,
     entering: bool,
@@ -370,6 +365,7 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
             column_count,
             amount,
             wrap,
+            first_line,
             page_horizontal_center,
             align,
             end_offset,
@@ -400,8 +396,8 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
                 }
                 None => {}
             }
-            // The source states the table has no rules; nothing draws them, so
-            // the class exists to keep the assertion visible in the markup.
+            // The source states the table has no rules; no style draws them,
+            // and the class records that statement in the markup.
             if table_rules_absent {
                 writer.write_str(" aozora-table-rules-none")?;
             }
@@ -421,7 +417,7 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
                 None => {}
             }
             // secondary line-layout: 字組み grid gets its own class,
-            // 字詰め reuses the standalone line-width class (same semantics).
+            // 字詰め uses the standalone line-width class (same semantics).
             match layout {
                 IndentLayout::Kumi(_) => {
                     writer.write_str(" aozora-container-line-kumi")?;
@@ -432,9 +428,9 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
                 IndentLayout::None => {}
             }
             // co-applied decorative styles — flat classes on the same
-            // `<div>` (close stays a single `</div>`), reusing each
+            // `<div>` (close stays a single `</div>`), using each
             // attribute's standalone-container class so one stylesheet rule
-            // serves both forms. Canonical order = gothic, horizontal, frame,
+            // applies to both forms. Canonical order = gothic, horizontal, frame,
             // font (matches `BlockStyles::iter_formats` / the serializer).
             render_block_style_classes(styles, writer)?;
             write!(writer, r#"" data-amount="{amount}""#)?;
@@ -446,6 +442,9 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
             }
             if let Some(w) = wrap {
                 write!(writer, r#" data-wrap="{w}""#)?;
+            }
+            if let Some(first_line) = first_line {
+                write!(writer, r#" data-first-line="{}""#, first_line.amount)?;
             }
             if let Some(offset) = end_offset {
                 write!(
@@ -493,8 +492,8 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
         }
         RegionFormat::Bouten { kind, position } => {
             // Range-form 傍点 / 傍線: an inline `<em>` matching the
-            // forward-reference bouten markup so a stylesheet picks the
-            // same per-variant treatment.
+            // forward-reference bouten markup so a stylesheet applies the
+            // same per-variant style.
             write!(
                 writer,
                 r#"<em class="aozora-bouten aozora-bouten-{kind} aozora-bouten-{pos}">"#,
@@ -518,6 +517,7 @@ fn render_container_open<W: Write>(kind: RegionFormat, writer: &mut W) -> fmt::R
             writer.write_str(r#"<div class="aozora-container aozora-container-futoji">"#)
         }
         RegionFormat::Textbook => writer.write_str(r#"<div class="aozora-container" data-typeface="教科書体">"#),
+        RegionFormat::Handwritten => writer.write_str(r#"<div class="aozora-container" data-typeface="手書き文字">"#),
         RegionFormat::Gothic { padded: true } => {
             writer.write_str(r#"<div class="aozora-container aozora-container-goshikku">"#)
         }
@@ -686,8 +686,8 @@ pub(crate) fn render_line<W: Write>(lf: LineFormat, writer: &mut W) -> fmt::Resu
             writer,
             r#"<span class="aozora-indent aozora-indent-{amount}" data-amount="{amount}"></span>"#,
         ),
-        // Both-margin compound: the head-indent classes plus the existing
-        // align-end classes for the foot-edge lift (reused, not new tokens).
+        // Both-margin compound: the head-indent classes plus the align-end
+        // classes for the foot-edge lift (no additional class tokens).
         LineFormat::Indent {
             amount,
             end_offset: Some(offset),
@@ -716,11 +716,9 @@ pub(crate) fn render_line<W: Write>(lf: LineFormat, writer: &mut W) -> fmt::Resu
             }
             write!(writer, r#"" data-offset="{offset}"></span>"#)
         }
-        LineFormat::Center { .. } => writer.write_str(r#"<span class="aozora-center"></span>"#),
-        // 罫囲み (line) routes through the paired 罫囲み container in practice,
-        // so this hook is classifier-unreachable (corpus render-correctness
-        // I-C confirms 0 occurrences across 17,889 works); emit the *declared*
-        // inline-keigakomi class so the output stays valid if ever reached.
+        LineFormat::Center { .. } | LineFormat::PagePlacement { .. } => {
+            writer.write_str(r#"<span class="aozora-center"></span>"#)
+        }
         LineFormat::Framed(_) => {
             writer.write_str(r#"<span class="aozora-keigakomi-inline"></span>"#)
         }
@@ -737,14 +735,15 @@ pub(crate) fn render_line<W: Write>(lf: LineFormat, writer: &mut W) -> fmt::Resu
                 write!(writer, r#"<span class="aozora-line-{slug}"></span>"#)
             }
         }
-        // `LineFormat` is `#[non_exhaustive]`; forward-compat skip.
+        // `LineFormat` is `#[non_exhaustive]`; a variant added later emits
+        // nothing.
         _ => Ok(()),
     }
 }
 
 /// Minimal HTML5 text escape — five structural ASCII characters.
-/// Apostrophe uses the hex form `&#x27;`; the contract is pinned by
-/// the integration tests in this crate.
+/// Apostrophe uses the hex form `&#x27;`; the integration tests in this
+/// crate check this output.
 pub(crate) fn escape_text<W: Write>(text: &str, writer: &mut W) -> fmt::Result {
     let mut cursor = 0;
     for (pos, m) in text.match_indices(HTML_UNSAFE_CHARS) {
@@ -784,9 +783,8 @@ mod tests {
         assert_eq!(render("Hello."), "<p>Hello.</p>\n");
     }
 
-    /// A well-formed inline warichu pair emits the same balanced span it always
-    /// did — a byte-identity guard that the `RenderState`-owned depth machinery
-    ///) does not perturb the correct case.
+    /// A well-formed inline warichu pair emits one balanced span; the
+    /// `RenderState` depth counter does not change the well-formed output.
     #[test]
     fn warichu_wellformed_inline_pair_is_byte_identical() {
         let html = render("前［＃割り注］上等／下等［＃割り注終わり］後");
@@ -800,11 +798,11 @@ mod tests {
         );
     }
 
-    /// block-warichu 1: a block-form warichu open (`［＃ここから割り注］`) paired with an
-    /// inline-form close (`［＃割り注終わり］`) must not leak a stray `</span>` — the
-    /// unmatched inline close is absorbed as a no-op.
+    /// A block-form warichu open (`［＃ここから割り注］`) paired with an
+    /// inline-form close (`［＃割り注終わり］`) emits no unmatched `</span>`; the
+    /// unmatched inline close emits nothing.
     #[test]
-    fn warichu_block_open_inline_close_absorbs_stray_close() {
+    fn warichu_block_open_inline_close_emits_no_unmatched_close() {
         let html = render("［＃ここから割り注］\n上等\n［＃割り注終わり］");
         assert_eq!(
             html.matches("<span").count(),
@@ -815,13 +813,13 @@ mod tests {
             !html.contains("</span>"),
             "no warichu span was opened, so no </span> should appear: {html}",
         );
-        // The block warichu container is still balanced.
+        // The block warichu container is balanced.
         assert_eq!(html.matches("<div").count(), html.matches("</div>").count());
     }
 
-    /// block-warichu 2: an inline-form warichu open (`［＃割り注］`) paired with a
-    /// block-form close (`［＃ここで割り注終わり］`) must have its span drained before
-    /// the paragraph closes — the open `<span>` never straddles `</p>`.
+    /// An inline-form warichu open (`［＃割り注］`) paired with a block-form close
+    /// (`［＃ここで割り注終わり］`) has its span closed before the paragraph
+    /// closes; the open `<span>` never straddles `</p>`.
     #[test]
     fn warichu_inline_open_block_close_drains_span() {
         let html = render("前［＃割り注］上等［＃ここで割り注終わり］後");
@@ -834,7 +832,7 @@ mod tests {
             html.contains(r#"<span class="aozora-warichu">"#),
             "the inline warichu span must still open: {html}",
         );
-        // The drained close lands before the paragraph boundary, not after it.
+        // The forced close precedes the paragraph boundary.
         assert!(
             html.contains("</span></p>"),
             "the span must close before the </p>, not straddle it: {html}",
@@ -891,10 +889,9 @@ mod tests {
 
     #[test]
     fn inline_container_stays_inside_paragraph() {
-        // Byte-identity regression guard: a well-formed inline container
-        // opens AND closes within its paragraph, so the paragraph-boundary
-        // reopen machinery is a no-op — the top of `open_stack` is never inline
-        // at `close_paragraph`. Output must be exactly as before the fix.
+        // A well-formed inline container opens and closes within its
+        // paragraph, so the paragraph-boundary reopen path does nothing — the
+        // top of `open_stack` is never inline at `close_paragraph`.
         let html = render("前［＃太字］中［＃太字終わり］後");
         assert_eq!(
             html, "<p>前<b class=\"aozora-futoji\">中</b>後</p>\n",
@@ -918,7 +915,7 @@ mod tests {
         true
     }
 
-    ///: an inline 太字 container the source never closes must not leave an
+    /// An inline 太字 container the source never closes must not leave an
     /// open `<b>` straddling `</p>` across a paragraph break. The container is
     /// closed before `</p>` and reopened in the next paragraph, so bold is
     /// globally balanced and balanced at the `</p>` boundary.
@@ -944,7 +941,7 @@ mod tests {
         );
     }
 
-    ///: an unclosed inline 太字 that reaches EOF renders balanced, with each
+    /// An unclosed inline 太字 that reaches EOF renders balanced, with each
     /// trailing paragraph bold and no bold straddling any `</p>`.
     #[test]
     fn unclosed_bold_reaching_eof_is_balanced_each_paragraph() {
@@ -969,12 +966,12 @@ mod tests {
         );
     }
 
-    ///: a 太字 opened before a paragraph break and closed with
-    /// `［＃太字終わり］` in a later paragraph must still pair — the reopened
-    /// container stays on `open_stack`, so the close marker finds its match and
-    /// text after the close is no longer bold.
+    /// A 太字 opened before a paragraph break and closed with `［＃太字終わり］`
+    /// in a later paragraph pairs with its open: the reopened container is on
+    /// `open_stack`, so the close marker matches it and text after the close is
+    /// plain.
     #[test]
-    fn bold_close_marker_after_paragraph_break_still_pairs() {
+    fn bold_close_marker_after_paragraph_break_pairs() {
         let html = render("前［＃太字］中\n\n後［＃太字終わり］尾");
         assert_eq!(
             html.matches("<b").count(),
@@ -995,11 +992,10 @@ mod tests {
         );
     }
 
-    ///: an inline close marker landing in the *gap* between a paragraph
-    /// break and the next text (no intervening text) ends the emphasis — it
-    /// must cancel the pending reopen, not silently no-op and then wrongly
-    /// re-apply the emphasis to the following paragraph. Regression guard for
-    /// the reopen-cancel path.
+    /// An inline close marker in the gap between a paragraph break and the
+    /// next text (no intervening text) ends the emphasis: it cancels the
+    /// pending reopen, so the following paragraph is not emphasized. Covers the
+    /// reopen-cancel path.
     #[test]
     fn bold_close_in_paragraph_gap_ends_emphasis() {
         // Single: the close cancels the pending reopen, so 後 is plain.
@@ -1103,10 +1099,10 @@ mod tests {
 
     #[test]
     fn referenced_contiguous_forward_styles_referent_once() {
-        // the non-adjacent referent 青空 is now styled in place (a
-        // `Detached` decoration spliced into the plain run), while the bracket
-        // stays `Referenced` and renders nothing. 青空 still appears exactly
-        // once — the styling is added, the no-double-render invariant holds.
+        // The non-adjacent referent 青空 is styled in place (a `Detached`
+        // decoration spliced into the plain run), while the bracket stays
+        // `Referenced` and renders nothing. 青空 appears exactly once, so the
+        // no-double-render invariant holds.
         let html = render("青空の下を歩く［＃「青空」に傍点］");
         assert_eq!(
             html,
@@ -1118,12 +1114,12 @@ mod tests {
 
     #[test]
     fn referenced_ruby_base_forward_styles_base_once() {
-        // the forward target 我 is a ruby base, so it cannot be pulled into
-        // a plain forward leaf; the lowering pass instead decorates the ruby's
-        // base (render-only `base_emphasis`). The bracket stays `Referenced` and
-        // renders nothing, so 我 appears exactly once — now styled inside the
+        // The forward target 我 is a ruby base, so it cannot become a plain
+        // forward leaf; the lowering pass decorates the ruby's base instead
+        // (render-only `base_emphasis`). The bracket stays `Referenced` and
+        // renders nothing, so 我 appears exactly once — styled inside the
         // `<ruby>`, before the `<rt>` — and the no-double-render invariant
-        // still holds.
+        // holds.
         let html = render("我《われ》の名は［＃「我」に傍点］");
         assert_eq!(
             html,
@@ -1134,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn reclaimed_adjacent_forward_still_renders_emphasis() {
+    fn reclaimed_adjacent_forward_renders_emphasis() {
         let html = render("青空［＃「青空」に傍点］を見上げる。");
         assert_eq!(
             html,

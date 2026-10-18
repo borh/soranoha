@@ -5,7 +5,7 @@ use ab_aozora_facade::Document;
 use serde_json::Value;
 
 #[test]
-fn supplied_column_rule_survives_source_serialization_and_aat() {
+fn supplied_column_rule_is_retained_through_source_serialization_and_aat() {
     let source = "［＃ここから２段組み、段間に罫］\n甲［＃改段］乙\n［＃ここで段組み終わり］";
     let aat: Value =
         serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();

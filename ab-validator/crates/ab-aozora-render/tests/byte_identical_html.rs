@@ -1,29 +1,20 @@
-//! Pin the byte-identical contract between the streaming HTML
-//! renderer (`html::render_into` → `escape_text_chunk`) and the
-//! per-node renderer (`render_node::render` → `escape_text`).
-//!
-//! These two paths historically diverged on apostrophe escaping
-//! (`&#39;` vs `&#x27;`), and the doc comments on
-//! `render_node::escape_text` and `serialize::serialize_into`
-//! explicitly reference these test files as the contract pin. The
-//! contract is: for any plain-text input (no Aozora markup), both
-//! renderers MUST produce byte-identical HTML.
+//! Tests of the byte-identical contract between the streaming HTML
+//! renderer (`html::render_html_into` → `escape_text_chunk`) and the
+//! per-node renderer (`render_node::render` → `escape_text`): for any
+//! plain-text input (no Aozora markup), both renderers must produce
+//! byte-identical HTML, including the apostrophe form `&#x27;`. The doc
+//! comment on `spelling::html::escape_text` refers to these tests.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::render_html;
 use proptest::prelude::*;
 
-/// Render plain text via the streaming `html::render_to_string`
-/// entry point. The generic crate-level test "wraps in <p>" is
-/// canonicalised so we can compare against the per-node form
-/// after wrapping.
+/// Lex `text` and render the result with `render_html`.
 fn render_streaming(text: &str) -> String {
     let out = lex(text);
     render_html(&out)
 }
 
-/// All five HTML-unsafe ASCII characters in a single literal so
-/// the apostrophe shape is exercised explicitly.
 #[test]
 fn apostrophe_uses_hex_form_not_decimal() {
     let html = render_streaming("a'b");
@@ -33,6 +24,8 @@ fn apostrophe_uses_hex_form_not_decimal() {
     );
 }
 
+/// All five HTML-unsafe ASCII characters in one literal, so the apostrophe
+/// entity is checked beside the other four.
 #[test]
 fn five_unsafe_chars_canonical_entities() {
     let html = render_streaming("<>&\"'");
@@ -61,7 +54,7 @@ fn ascii_url_inside_text_escapes_ampersand() {
 
 #[test]
 fn fullwidth_quote_codepoints_unescaped() {
-    // U+FF1C / U+FF1E / U+201C / U+201D etc. are NOT in the HTML5
+    // U+FF1C / U+FF1E / U+201C / U+201D etc. are not in the HTML5
     // 5-char unsafe set; they must round-trip verbatim.
     let html = render_streaming("「＜文章＞」");
     assert!(html.contains("「＜文章＞」"), "got: {html}");
@@ -90,8 +83,8 @@ proptest! {
     })]
 
     /// Every output of the streaming renderer must be valid UTF-8
-    /// and must NEVER contain the decimal `&#39;` form anywhere.
-    /// (The hex form `&#x27;` is the canonical pinned shape.)
+    /// and must not contain the decimal `&#39;` form; the hex form
+    /// `&#x27;` is the canonical form.
     #[test]
     fn streaming_render_never_emits_decimal_apostrophe(
         s in "[a-zA-Z0-9'<>&\" \u{3042}-\u{3093}]{0,80}",
@@ -104,9 +97,9 @@ proptest! {
         );
     }
 
-    /// Round-trip invariant: if the input contained no HTML-unsafe
-    /// chars, the output must contain the input verbatim. This pins
-    /// "the renderer never gratuitously escapes safe characters."
+    /// Round-trip invariant: if the input contains no HTML-unsafe
+    /// chars, the output must contain the input verbatim, because the
+    /// renderer does not escape safe characters.
     #[test]
     fn safe_chars_pass_through_unmodified(
         s in "[a-zA-Z0-9 \u{3042}-\u{3093}\u{4E00}-\u{4E20}]{1,40}",

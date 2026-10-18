@@ -268,8 +268,8 @@ fn prepare_dictionary_path(analyzer_id: &str, path: &Path) -> Result<PathBuf, An
     Ok(output_path)
 }
 
-// Interned key names shared across tokens: cloning an Arc<str> is a refcount
-// bump, while `&'static str -> Arc<str>` allocates per token.
+// Interned key names shared across tokens: cloning an Arc<str> increments a
+// reference count, while `&'static str -> Arc<str>` allocates per token.
 static SUDACHI_POS_KEY_ARCS: std::sync::LazyLock<[ab_morph_diff::FeatureKey; 6]> =
     std::sync::LazyLock::new(|| {
         [
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn chunking_prefers_sentence_boundaries_under_limit() {
+    fn chunking_splits_at_sentence_boundaries_under_limit() {
         let chunks = sudachi_chunks("吾輩は猫である。名前はまだ無い。", 10_000);
 
         assert_eq!(chunks.len(), 2);

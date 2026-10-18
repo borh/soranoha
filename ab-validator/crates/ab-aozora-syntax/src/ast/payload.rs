@@ -19,7 +19,8 @@ use crate::{
 
 use super::intern::StrId;
 use super::store::{
-    ContentRange, ForwardAttrs, IllustrationId, NodeStore, SegRange, TranscribedNotesId,
+    ContentRange, ForwardAttrs, IllustrationId, MarginNotePairId, NodeStore, SegRange,
+    TranscribedNotesId,
 };
 
 /// Body content that may carry nested Aozora constructs. Two-tier: a single
@@ -46,8 +47,19 @@ pub enum Segment {
         /// Original notation extent in sanitized UTF-8 bytes.
         source_span: crate::Span,
     },
-    /// Nested 外字 reference.
-    Gaiji(Gaiji),
+    /// Nested 外字 reference with its semantic target and source marker.
+    Gaiji {
+        /// Resolved glyph declaration.
+        value: Gaiji,
+        /// Source text represented by the gaiji. For an ordinary inline
+        /// reference this is the marker itself; for a retrospective
+        /// declaration it is the replaced character.
+        target_span: crate::Span,
+        /// Exact `※［＃…］` or `［＃…］` declaration extent.
+        marker_span: crate::Span,
+        /// Where the marker occurs relative to the containing content.
+        placement: GaijiMarkerPlacement,
+    },
     /// Nested generic annotation.
     Directive {
         /// Native interpretation of the annotation.
@@ -69,6 +81,31 @@ pub enum Segment {
         /// Annotation extent in sanitized UTF-8 source bytes.
         source_span: crate::Span,
     },
+    /// Illustration within a ruby base.
+    Illustration {
+        /// Illustration payload.
+        value: IllustrationId,
+        /// Annotation extent in sanitized UTF-8 source bytes.
+        source_span: crate::Span,
+    },
+    /// Target-associated note within a ruby base.
+    MarginNote {
+        /// Note over its reclaimed target.
+        value: MarginNote,
+        /// Target and annotation extent in sanitized UTF-8 source bytes.
+        source_span: crate::Span,
+    },
+}
+
+/// Source placement of a gaiji marker nested in rich content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GaijiMarkerPlacement {
+    /// The marker occurs at the gaiji segment's position in the content.
+    Inline,
+    /// The marker follows the closing delimiter of the containing ruby.
+    AfterRuby,
+    /// The declaration occurs later as a separate source-only directive.
+    Detached,
 }
 
 /// Aozora's two spellings for the whole double-height kana repeat mark.
@@ -114,9 +151,9 @@ impl IterationMark {
 
 impl GaijiCanonicalOwned {
     /// Reconstruct the [`GaijiCanonical`], resolving the `Unresolved` mencode
-    /// `StrId` against `store`. The single bridge to the `aozora-encoding`
-    /// canonical authority (`resolve` / `write_mencode`), kept private so the
-    /// owned API surface stays owned.
+    /// `StrId` against `store`. This private function is the only conversion
+    /// to the `aozora-encoding` canonical type (`resolve` / `write_mencode`);
+    /// the public API exposes only owned types.
     ///
     /// # Panics
     ///
@@ -139,8 +176,8 @@ impl GaijiCanonicalOwned {
     }
 
     /// Write the canonical mencode token (without the leading `、`). Owned
-    /// counterpart of [`GaijiCanonical::write_mencode`]; delegates to the single
-    /// encoding authority via the private `to_canonical` bridge.
+    /// counterpart of [`GaijiCanonical::write_mencode`], which it calls through
+    /// the private `to_canonical` conversion.
     ///
     /// # Errors
     ///
@@ -156,8 +193,8 @@ impl GaijiCanonicalOwned {
 
 impl Gaiji {
     /// Resolve to a concrete glyph via the canonical value: rebuilds the
-    /// lifetime-free `GaijiCanonical` against `store` and delegates to the
-    /// single `GaijiCanonical::resolve` authority, passing [`Self::hint`] as
+    /// lifetime-free `GaijiCanonical` against `store` and calls
+    /// `GaijiCanonical::resolve`, passing [`Self::hint`] as
     /// the resolver's description fallback. The `Resolved` result is owned
     /// (no borrow of `store`).
     ///
@@ -185,9 +222,9 @@ pub struct Ruby {
     /// Render-only forward emphasis applied to the base. Set by the
     /// lowering pass when a declined forward directive `［＃「X」に傍点/罫囲み/
     /// 行右小書き/…］` (a [`ForwardOrigin::Referenced`](crate::ForwardOrigin)
-    /// leaf) names this ruby's base as its *unique* preceding referent: the
-    /// classic `｜X《y》…［＃「X」は罫囲み］` where the target is a ruby base and
-    /// so cannot be pulled into a plain forward leaf (bouten-over-ruby is not
+    /// leaf) quotes this ruby's base as its only preceding referent: the
+    /// form `｜X《y》…［＃「X」は罫囲み］`, where the target is a ruby base and
+    /// so cannot be moved into a plain forward leaf (bouten-over-ruby is not
     /// representable). The renderer wraps the base in the attribute's emphasis
     /// element; the directive leaf stays `Referenced` (serializes the bracket
     /// verbatim, renders nothing), so `base_emphasis` is never read by
@@ -220,7 +257,7 @@ impl NonEmptySpan {
     }
 }
 
-/// A note already transcribed separately from its explicitly named principal target.
+/// A note already transcribed separately from its explicitly identified principal target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TranscribedNote {
     /// Exact note payload in sanitized source bytes.
@@ -242,6 +279,15 @@ pub struct TranscribedNotes {
     pub apparatus_lines: Vec<crate::Span>,
 }
 
+/// Opening boundary and original closing spelling of a resolved paired margin note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarginNotePair {
+    /// Opening marker extent in native source coordinates.
+    pub open_span: NonEmptySpan,
+    /// Original closing marker spelling.
+    pub close_raw: StrId,
+}
+
 /// Source-owned note, role label, or glyph-shape assertion on principal content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarginNote {
@@ -249,12 +295,14 @@ pub struct MarginNote {
     pub kind: MarginNoteKind,
     /// Physical side explicitly supplied by the source; bare に supplies none.
     pub position: Option<MarginNotePosition>,
-    /// Where along the base the source located the mark, when it said so.
+    /// Position along the base at which the source places the mark, when stated.
     /// `None` is a mark accompanying the base as a whole, not a default
     /// position.
     pub anchor: Option<MarkAnchor>,
     /// Exact annotation-text extent in native source coordinates, when sourced.
     pub note_span: Option<NonEmptySpan>,
+    /// Boundaries of a paired annotation range; a single-marker note has none.
+    pub pair: Option<MarginNotePairId>,
     /// Exact literal target extent when the native resolver established one.
     pub target_span: Option<NonEmptySpan>,
     /// Whether this node owns the principal target or only references it.
@@ -286,7 +334,7 @@ pub struct ForwardFormat {
 /// carries a `&'src str`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GaijiCanonicalOwned {
-    /// Structured `第N水準P-K-T`. Reused lifetime-free `MenKuTen`.
+    /// Structured `第N水準P-K-T`, using the lifetime-free `MenKuTen` directly.
     MenKuTen(MenKuTen),
     /// Explicit `U+XXXX` codepoint.
     Unicode(char),
@@ -302,10 +350,17 @@ pub enum GaijiCanonicalOwned {
 pub struct Gaiji {
     /// Free-form source description / resolver fallback key.
     pub hint: StrId,
+    /// `true` when the source wrapped `hint` in `「」`, which `hint` omits.
+    pub quoted: bool,
     /// Typed canonical value.
     pub canonical: GaijiCanonicalOwned,
     /// `true` for the no-`※` standalone form.
     pub standalone: bool,
+    /// Source text replaced by this glyph when a standalone declaration
+    /// retrospectively identifies the immediately preceding character.
+    pub replaced: Option<ContentRange>,
+    /// Later standalone declaration that identifies an earlier placeholder.
+    pub declaration_span: Option<NonEmptySpan>,
 }
 
 /// Split annotation (割注).
@@ -367,6 +422,18 @@ pub struct Directive {
     pub raw: StrId,
     /// Classification.
     pub kind: DirectiveKind,
+    /// Structured content given by a paired closing marker. This stays on the
+    /// directive until the pipeline establishes the matching opener.
+    pub pair_payload: Option<DirectivePairPayload>,
+}
+
+/// Content supplied on a paired directive's closing marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectivePairPayload {
+    /// Parsed content, including nested gaiji and annotations.
+    pub content: ContentRange,
+    /// Exact content extent inside the closing marker.
+    pub source_span: NonEmptySpan,
 }
 
 /// Source-supplied annotation category; placement follows this distinction.
@@ -394,7 +461,7 @@ pub struct AngleQuote {
     pub content: ContentRange,
 }
 
-/// A single, no-lifetime AST node. Every scalar payload is held INLINE
+/// A single, no-lifetime AST node. Every scalar payload is held inline
 /// (no `Box`/`Id`); `Copy` scalar-enum variants carry their
 /// value directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -416,6 +483,8 @@ pub enum Node {
     PageBreak,
     /// Section break: `Copy` enum.
     SectionBreak(SectionKind),
+    /// Break with an explicit side or following-content layout instruction.
+    QualifiedBreak(crate::QualifiedBreak),
     /// End of body: unit.
     BodyEnd,
     /// Forced line break: unit.
@@ -457,7 +526,7 @@ impl Node {
             Self::Line(l) => match l {
                 LineFormat::Indent { .. } => NodeKind::Indent,
                 LineFormat::AlignEnd { .. } => NodeKind::AlignEnd,
-                LineFormat::Center { .. } => NodeKind::Center,
+                LineFormat::Center { .. } | LineFormat::PagePlacement { .. } => NodeKind::Center,
                 LineFormat::Framed(_) => NodeKind::Framed,
                 LineFormat::Gothic => NodeKind::LineGothic,
                 LineFormat::FontSizeAbsolute { .. } => NodeKind::LineFontSize,
@@ -465,6 +534,10 @@ impl Node {
             Self::Warichu(_) => NodeKind::Warichu,
             Self::PageBreak => NodeKind::PageBreak,
             Self::SectionBreak(_) => NodeKind::SectionBreak,
+            Self::QualifiedBreak(break_) => match break_.kind {
+                crate::QualifiedBreakKind::Page => NodeKind::PageBreak,
+                _ => NodeKind::SectionBreak,
+            },
             Self::BodyEnd => NodeKind::BodyEnd,
             Self::ForcedBreak => NodeKind::ForcedBreak,
             Self::Heading(_) => NodeKind::Heading,
@@ -478,7 +551,7 @@ impl Node {
         }
     }
 
-    /// Stable XML/element-style node name, feeding the serializer's fallback
+    /// Stable XML/element-style node name, used by the serializer's fallback
     /// placeholder (`<!-- unsupported-aozora: … -->`).
     #[must_use]
     pub const fn xml_node_name(self) -> &'static str {
@@ -493,7 +566,7 @@ impl Node {
             Self::Line(l) => match l {
                 LineFormat::Indent { .. } => "aozora_indent",
                 LineFormat::AlignEnd { .. } => "aozora_align_end",
-                LineFormat::Center { .. } => "aozora_center",
+                LineFormat::Center { .. } | LineFormat::PagePlacement { .. } => "aozora_center",
                 LineFormat::Framed(_) => "aozora_keigakomi",
                 LineFormat::Gothic => "aozora_line_goshikku",
                 LineFormat::FontSizeAbsolute { .. } => "aozora_line_font_size",
@@ -501,6 +574,10 @@ impl Node {
             Self::Warichu(_) => "aozora_warichu",
             Self::PageBreak => "aozora_page_break",
             Self::SectionBreak(_) => "aozora_section_break",
+            Self::QualifiedBreak(break_) => match break_.kind {
+                crate::QualifiedBreakKind::Page => "aozora_page_break",
+                _ => "aozora_section_break",
+            },
             Self::BodyEnd => "aozora_body_end",
             Self::ForcedBreak => "aozora_forced_break",
             Self::Heading(_) => "aozora_heading",
@@ -534,8 +611,8 @@ mod tests {
 
     #[test]
     fn payloads_are_copy() {
-        // Pin the Copy chain: every owned payload must stay Copy. If a future
-        // field breaks Copy, this fails to compile.
+        // Every owned payload must be Copy; a non-Copy field makes this fail
+        // to compile.
         const fn assert_copy<T: Copy>() {}
         assert_copy::<Content>();
         assert_copy::<Segment>();
@@ -555,11 +632,11 @@ mod tests {
 
     #[test]
     fn gaiji_resolve_matches_canonical_authority() {
-        // Build an owned `Gaiji` per canonical arm and confirm the on-demand
-        // glyph resolution is byte-identical to the `aozora-encoding`
-        // `GaijiCanonical::resolve` authority. Uses `GaijiCanonical::from_mencode`
-        // so the canonical values are realistic (structured Unicode / 面区点 /
-        // verbatim / absent) without hand-built `MenKuTen` internals.
+        // Builds an owned `Gaiji` for each canonical arm and checks that its
+        // glyph resolution is byte-identical to `aozora-encoding`'s
+        // `GaijiCanonical::resolve`. `GaijiCanonical::from_mencode` produces the
+        // canonical values (structured Unicode / 面区点 / verbatim / absent)
+        // without hand-built `MenKuTen` internals.
         let mut store = NodeStore::new();
         for (hint, mencode) in [
             ("竜", Some("U+9F8D")),         // → Unicode
@@ -578,8 +655,11 @@ mod tests {
             };
             let owned = Gaiji {
                 hint: hint_id,
+                quoted: true,
                 canonical: owned_canonical,
                 standalone: false,
+                replaced: None,
+                declaration_span: None,
             };
             assert_eq!(
                 owned.resolve(&store),

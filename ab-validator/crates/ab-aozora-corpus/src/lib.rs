@@ -6,27 +6,27 @@
 //!
 //! A [`CorpusSource`] yields a stream of candidate input texts for
 //! property-based sweep tests: each item carries raw bytes plus a
-//! human-readable label used only for diagnostics. Implementations choose
-//! where the bytes come from — an in-memory literal, a vendored fixture
-//! directory, or a filesystem root supplied by the developer via the
+//! human-readable label used only for diagnostics. Each implementation
+//! reads the bytes from one source: an in-memory literal, a vendored
+//! fixture directory, or a filesystem root given by the
 //! `AOZORA_CORPUS_ROOT` environment variable.
 //!
-//! Key design points:
+//! Design constraints:
 //!
 //! - **Metadata-free items.** No titles, no tiers, no SHA256. The sweep
-//!   harness checks invariants (no panic, no leaked markers, well-formed
+//!   harness checks invariants (no panic, no residual markers, well-formed
 //!   output, round-trip stability); none of those depend on *what* the
 //!   input is, only that it is some aozora-format text.
-//! - **No lockfile.** The set of inputs is whatever the caller provides.
-//!   Pinning a specific upstream corpus is explicitly rejected: it would
-//!   mandate a particular content set on every contributor and conflate
-//!   "golden ground-truth" with "stress-test volume".
+//! - **No lockfile.** The caller supplies the set of inputs, and the crate
+//!   pins no upstream corpus, so no contributor is required to hold a
+//!   particular content set and "golden ground-truth" stays separate from
+//!   "stress-test volume".
 //! - **Opt-in via environment.** With `AOZORA_CORPUS_ROOT` unset, sweep tests
-//!   runtime-skip; they never hard-fail on missing corpus.
+//!   skip at runtime; a missing corpus is not a test failure.
 //!
 //! Golden fixtures (exact expected-HTML checks for canonical works like
-//! 罪と罰) live elsewhere (`spec/aozora/fixtures/`) and are not corpus
-//! concerns.
+//! 罪と罰) are in `spec/aozora/fixtures/`, outside the scope of this
+//! crate.
 
 #![forbid(unsafe_code)]
 
@@ -77,8 +77,8 @@ pub struct CorpusItem {
 }
 
 impl CorpusItem {
-    /// Construct an item. `label` is borrowed into an owned [`String`] so
-    /// callers can pass `&str` or `String` transparently.
+    /// Construct an item. `label` is converted into an owned [`String`],
+    /// so callers can pass `&str` or `String`.
     #[must_use]
     pub fn new(label: impl Into<String>, bytes: Vec<u8>) -> Self {
         Self {
@@ -121,9 +121,9 @@ pub trait CorpusSource: Send + Sync {
 /// present. Callers must not assume the corpus contains any specific
 /// work — they may only stream what is found and check invariants. If
 /// the variable is set to a path that exists but is not a directory,
-/// this returns [`None`] rather than propagating a construction error:
-/// "misconfigured" and "absent" are the same signal to the sweep
-/// harness, which should skip in either case.
+/// this returns [`None`] rather than propagating a construction error,
+/// because the sweep harness skips both a misconfigured and an absent
+/// corpus.
 #[must_use]
 pub fn from_env() -> Option<Box<dyn CorpusSource>> {
     from_path(env::var_os(ENV_CORPUS_ROOT)?)

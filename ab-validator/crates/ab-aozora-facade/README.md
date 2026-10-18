@@ -31,4 +31,4 @@ Run checks through the monorepo's Nix flake. See the repository root `AGENTS.md`
 for development commands.
 
 Dual-licensed under [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
-[NOTICE](NOTICE) retains upstream attribution.
+The NOTICE file retains upstream attribution.

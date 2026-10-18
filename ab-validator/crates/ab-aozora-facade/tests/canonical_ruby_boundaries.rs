@@ -1,4 +1,5 @@
-//! Canonical source keeps each ruby base explicit, independent of preceding text.
+//! Canonical source serialization marks each ruby base explicitly, so a reparse
+//! does not depend on the preceding text.
 use ab_aozora_facade::Document;
 
 #[test]

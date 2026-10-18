@@ -46,10 +46,10 @@ fn raw_nodes<'a>(node: &'a Value, found: &mut Vec<&'a Value>) {
 }
 
 /// Work 000662 writes `［愛」` inside an annotation body where it meant `「愛」`.
-/// The stray opener has no partner of its own, so reading it as structure hands
-/// the annotation's `］` to it and the annotation runs to the end of the line,
-/// taking the rest of the poem with it. Those words are reading text, and they
-/// have to survive a defect in the apparatus that annotates them.
+/// The stray opener has no partner of its own, so reading it as structure pairs
+/// the annotation's `］` with it and extends the annotation to the end of the
+/// line, over the rest of the poem. Those words are reading text and must be
+/// retained despite the defect in the apparatus that annotates them.
 #[test]
 fn a_stray_opening_bracket_keeps_the_reading_text_that_follows_it() {
     let source = "　最初の人生を野原に寝て味はつた可愛［＃［愛」に「ママ」の注記］さうなサクラ子\n";
@@ -65,10 +65,10 @@ fn a_stray_opening_bracket_keeps_the_reading_text_that_follows_it() {
 }
 
 /// The marker itself stays uninterpreted, because the source is malformed there
-/// and any reading of it would be invented. What changes is that the parser now
-/// reports an unrecognised directive rather than a stretch of source it could
-/// not account for: it knows where the annotation begins and ends, and only its
-/// body is beyond reading.
+/// and any reading of it would be invented. The parser reports an unrecognised
+/// directive rather than a stretch of source it could not account for: it
+/// locates where the annotation begins and ends, and only its body cannot be
+/// read.
 #[test]
 fn the_malformed_marker_is_reported_as_a_directive_the_parser_cannot_read() {
     let source = "　最初の人生を野原に寝て味はつた可愛［＃［愛」に「ママ」の注記］さうなサクラ子\n";

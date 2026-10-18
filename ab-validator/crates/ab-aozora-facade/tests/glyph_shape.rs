@@ -1,4 +1,5 @@
-//! Glyph-shape instructions qualify existing source scalars without realizing a new glyph.
+//! A glyph-shape instruction qualifies the adjacent source scalar; it does not
+//! substitute a different glyph.
 use ab_aozora_facade::{Document, Node, NodeRef};
 
 #[test]

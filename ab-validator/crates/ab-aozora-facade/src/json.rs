@@ -38,7 +38,7 @@ pub fn diagnostics(diagnostics: &[crate::Diagnostic]) -> String {
 }
 
 /// The structured `Diagnostic` records that back `diagnostics()` —
-/// prefer this to re-parsing the JSON when a caller needs the values
+/// use this instead of re-parsing the JSON when a caller needs the values
 /// directly (e.g. a Wasm binding building JS objects).
 #[must_use]
 pub fn diagnostic_entries(diagnostics: &[crate::Diagnostic]) -> Vec<Diagnostic> {
@@ -58,7 +58,7 @@ pub fn nodes(tree: &Tree<'_>) -> String {
     serialize_envelope(NODES_SCHEMA_VERSION, &node_entries(tree))
 }
 
-/// The structured `Node` records that back `nodes()` — prefer this to
+/// The structured `Node` records that back `nodes()` — use this instead of
 /// re-parsing the JSON when a caller needs the values directly.
 #[must_use]
 pub fn node_entries(tree: &Tree<'_>) -> Vec<Node> {
@@ -76,8 +76,8 @@ pub fn node_entries(tree: &Tree<'_>) -> Vec<Node> {
 /// `{ kind, open: { start, end }, close: { start, end } }`.
 ///
 /// One entry per matched open/close pair; unmatched closes and
-/// unclosed opens are excluded (they have no partner span and would
-/// only confuse editor surfaces). Useful for LSP requests like
+/// unclosed opens are excluded because they have no partner span.
+/// Used for LSP requests like
 /// `textDocument/linkedEditingRange` and
 /// `textDocument/documentHighlight`.
 ///
@@ -89,7 +89,7 @@ pub fn pairs(tree: &Tree<'_>) -> String {
     serialize_envelope(PAIRS_SCHEMA_VERSION, &pair_entries(tree))
 }
 
-/// The structured `Pair` records that back `pairs()` — prefer this to
+/// The structured `Pair` records that back `pairs()` — use this instead of
 /// re-parsing the JSON when a caller needs the values directly.
 #[must_use]
 pub fn pair_entries(tree: &Tree<'_>) -> Vec<Pair> {
@@ -108,16 +108,15 @@ pub fn pair_entries(tree: &Tree<'_>) -> Vec<Pair> {
 ///
 /// Each entry has the shape
 /// `{ kind, open: { offset }, close: { offset } }` where `kind` is
-/// the [`crate::RegionFormat`] discriminant (one of `"indent"` /
-/// `"warichu"` / `"framed"` / `"alignEnd"`) and the offsets are
-/// **normalized-coordinate** byte positions that index the PUA
+/// the container's [`crate::RegionFormat::as_json_tag`] value (for
+/// example `"indent"`, `"bold"` or `"boutenRange"`) and the offsets are
+/// normalized-coordinate byte positions that index the PUA
 /// sentinel positions — not the source span the user wrote.
 ///
-/// Coordinate-system distinction matters: editor surfaces that want
-/// source-coordinate container pairs must translate through
-/// [`Tree::source_nodes`].
+/// Editor features that require source-coordinate container pairs
+/// must translate the offsets through [`Tree::source_nodes`].
 ///
-/// Empty parse → `{"schemaVersion":6,"data":[]}`.
+/// Empty parse → `{"schemaVersion":7,"data":[]}`.
 #[cfg(feature = "json")]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
 #[must_use]
@@ -129,7 +128,7 @@ pub fn container_pairs(tree: &Tree<'_>) -> String {
 }
 
 /// The structured `ContainerPair` records that back
-/// `container_pairs()` — prefer this to re-parsing the JSON when a caller
+/// `container_pairs()` — use this instead of re-parsing the JSON when a caller
 /// needs the values directly.
 #[must_use]
 pub fn container_pair_entries(tree: &Tree<'_>) -> Vec<ContainerPair> {
@@ -163,7 +162,7 @@ pub fn slugs() -> String {
     serialize_envelope(SLUGS_SCHEMA_VERSION, &slug_entries())
 }
 
-/// The structured `Slug` records that back `slugs()` — prefer this to
+/// The structured `Slug` records that back `slugs()` — use this instead of
 /// re-parsing the JSON when a caller needs the catalogue directly.
 #[must_use]
 pub fn slug_entries() -> Vec<Slug> {
@@ -187,9 +186,9 @@ pub fn slug_entries() -> Vec<Slug> {
 /// in source-byte coordinates; `mencode` / `codepoint` / `resolved` are
 /// `null` when absent or unresolved. Walks the source once — `O(source)`.
 ///
-/// Powers inlay-hint UIs (`→GLYPH` after each reference) and batch gaiji
-/// audits. The scan + resolution are the single authority in
-/// [`crate::encoding::gaiji`]; this is only their wire projection.
+/// Used by inlay-hint UIs (`→GLYPH` after each reference) and batch gaiji
+/// audits. The scan and resolution are implemented only in
+/// [`crate::encoding::gaiji`]; this function serialises their result.
 ///
 /// Empty / gaiji-free source → `{"schemaVersion":3,"data":[]}`.
 #[cfg(feature = "json")]
@@ -200,7 +199,7 @@ pub fn gaiji(source: &str) -> String {
 }
 
 /// The structured `GaijiResolution` records that back `gaiji()` —
-/// prefer this to re-parsing the JSON when a caller needs the values
+/// use this instead of re-parsing the JSON when a caller needs the values
 /// directly.
 #[must_use]
 pub fn gaiji_entries(source: &str) -> Vec<GaijiResolution> {
@@ -213,20 +212,19 @@ pub fn gaiji_entries(source: &str) -> Vec<GaijiResolution> {
 /// The structured ruby (furigana) records projected from an [`Tree`]'s nodes.
 ///
 /// Prefer this to re-parsing JSON when a caller needs the values directly
-/// (e.g. the `ab-aat` adapter, which retired its `RUBY_RE` regex
-/// reparse in favor of this typed projection).
+/// (e.g. the `ab-aat` adapter).
 ///
 /// Each entry has the shape `{ span: { start, end }, base, reading, side }`
 /// in source-byte coordinates, where `side` is `"right"` or `"left"`.
 ///
-/// Mirrors [`gaiji_entries`]'s shape: walks [`Tree::source_nodes`], matches
+/// Like [`gaiji_entries`], it walks [`Tree::source_nodes`], matches
 /// the nodes whose payload is [`crate::Node::Ruby`], and resolves the
 /// `base`/`reading` `ContentRange`s against the tree's backing
-/// [`crate::ast::NodeStore`] the same way [`crate::splice`]'s
+/// `NodeStore` the same way `splice`'s
 /// `coupled_target_text` resolves a split-ownership node's target (via
 /// `NodeStore::content_range_as_plain`). An entry is omitted when its base or
-/// reading is not a single plain run (mixed/segmented content) — the caller
-/// falls back to its own raw-node handling for that case, same as an
+/// reading is not a single plain run (mixed/segmented content); the caller
+/// then handles the node through its own raw-node path, as for an
 /// unresolved gaiji reference.
 #[must_use]
 pub fn ruby_entries(tree: &Tree<'_>) -> Vec<RubyEntry> {
@@ -246,9 +244,9 @@ pub fn ruby_entries(tree: &Tree<'_>) -> Vec<RubyEntry> {
                 span: sn.source_span.into(),
                 base,
                 reading,
-                // `RubySide` is `#[non_exhaustive]` upstream — the wildcard
-                // arm covers any future variant by defaulting to "right"
-                // (the same defensive convention as `severity_str`).
+                // `RubySide` is `#[non_exhaustive]` in its defining crate;
+                // the wildcard arm maps any other variant to "right", as
+                // `severity_str` maps one to "error".
                 side: match ruby.side {
                     RubySide::Left => "left",
                     RubySide::Right | _ => "right",
@@ -282,10 +280,6 @@ pub fn gaiji_at(source: &str, byte_offset: usize) -> String {
         )
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Internal: envelope + wire structs
-// ────────────────────────────────────────────────────────────────────
-
 #[cfg(feature = "json")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -293,10 +287,6 @@ struct Envelope<'a, T> {
     schema_version: u32,
     data: &'a [T],
 }
-
-// ────────────────────────────────────────────────────────────────────
-// JSON Schema introspection
-// ────────────────────────────────────────────────────────────────────
 
 /// JSON Schema (draft 2020-12) describing the
 /// [`diagnostics`] envelope output.
@@ -367,14 +357,14 @@ fn envelope_schema(
     item_schema: schemars::Schema,
 ) -> serde_json::Value {
     // `schema_for!(ItemWire)` returns a self-contained document: its
-    // shared sub-types (e.g. `Span`) live under a root `$defs` and
-    // are referenced as `#/$defs/…`. Embedding it verbatim as `items`
-    // would bury that `$defs` under `properties/data/items`, leaving the
-    // `#/$defs/…` refs — which resolve against the *document* root —
-    // dangling, so strict resolvers (quicktype, and any other consumer
-    // of the published schema) reject it. Hoist the item schema's
-    // `$defs` to the envelope root and drop its redundant per-item
-    // `$schema` dialect marker so the refs resolve against the root.
+    // shared sub-types (e.g. `Span`) are under a root `$defs` and
+    // are referenced as `#/$defs/…`. Embedded verbatim as `items`, that
+    // `$defs` would sit under `properties/data/items`, while the
+    // `#/$defs/…` refs resolve against the document root, so strict
+    // resolvers (quicktype, and any other consumer of the published
+    // schema) reject the unresolved refs. The item schema's `$defs` is
+    // therefore moved to the envelope root, and its per-item `$schema`
+    // dialect marker is removed.
     let mut item = item_schema.to_value();
     let defs = item.as_object_mut().and_then(|obj| {
         obj.remove("$schema");
@@ -464,9 +454,9 @@ impl From<&crate::Diagnostic> for Diagnostic {
 }
 
 const fn severity_str(s: Severity) -> &'static str {
-    // `Severity` is `#[non_exhaustive]` upstream — the wildcard arm
-    // covers any future variant by defaulting to "error" so consumers
-    // err on the side of surfacing it until they upgrade.
+    // `Severity` is `#[non_exhaustive]` in its defining crate; the
+    // wildcard arm maps any other variant to "error", so a consumer that
+    // has no arm for the variant still reports it.
     match s {
         Severity::Warning => "warning",
         Severity::Note => "note",
@@ -475,10 +465,9 @@ const fn severity_str(s: Severity) -> &'static str {
 }
 
 const fn source_str(s: DiagnosticSource) -> &'static str {
-    // `DiagnosticSource` is `#[non_exhaustive]` upstream — the
-    // wildcard arm covers any future variant by defaulting to
-    // "internal" so consumers filtering library-bug diagnostics
-    // catch it until they upgrade.
+    // `DiagnosticSource` is `#[non_exhaustive]` in its defining crate;
+    // the wildcard arm maps any other variant to "internal", so a
+    // consumer that filters library-bug diagnostics also filters it.
     match s {
         DiagnosticSource::Source => "source",
         DiagnosticSource::Internal | _ => "internal",
@@ -529,7 +518,7 @@ pub struct Slug {
     accepts_param: bool,
     doc: &'static str,
     // No `skip_serializing_if`: non-paired families emit `partner:null`
-    // (byte-identical to the prior aozora-wasm `slugs_json` shape).
+    // (byte-identical to the aozora-wasm `slugs_json` shape).
     partner: Option<&'static str>,
 }
 
@@ -537,8 +526,8 @@ pub struct Slug {
 ///
 /// Distinct from [`Span`] (whose `u32` fields cover sanitized-source
 /// spans): gaiji offsets are raw `usize` byte positions into the original
-/// source, kept as-is to stay byte-identical to the prior aozora-wasm
-/// projection.
+/// source, kept as `usize` so the output is byte-identical to the
+/// aozora-wasm gaiji projection.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ByteSpan {
@@ -598,8 +587,8 @@ mod tests {
         assert!(json.contains(r#""schemaVersion":3"#));
         assert!(json.contains(r#""canonical":"#));
         assert!(json.contains(r#""family":"#));
-        // Guard against the silent `_ => "unknown"` degrade: every
-        // shipped slug must map to an explicit camelCase family.
+        // Every catalogue slug must map to an explicit camelCase family,
+        // not to the `_ => "unknown"` fallback.
         assert!(
             !json.contains(r#""family":"unknown""#),
             "shipped catalogue leaked an unknown family: {json}"
@@ -734,8 +723,9 @@ mod tests {
     fn ruby_entries_skips_segments_base_ruby() {
         // A gaiji-reference base (※［＃…］) is segmented content, not a single
         // plain run; content_range_as_plain returns None and the entry must be
-        // omitted (the AAT adapter then keeps its own typed emission — pinned
-        // adapter-side by gaiji_base_ruby_keeps_v1_typed_emission).
+        // omitted (the AAT adapter then builds the typed ruby from its own
+        // gaiji scan, which the ab-aat test
+        // gaiji_base_ruby_resolves_base_and_emits_gaiji_base_content checks).
         let src = "※［＃「木＋吶のつくり」、第3水準1-85-57］《かい》\n";
         let doc = Document::new(src);
         let tree = doc.parse();
@@ -758,12 +748,12 @@ mod tests {
 
     #[test]
     fn container_kind_wire_tags_via_as_json_tag() {
-        use ab_aozora_syntax::{BoutenKind, BoutenPosition, RegionFormat};
-        // `RegionFormat::as_json_tag` is the single authority on the
-        // container-pairs wire tag (no `_ => "unknown"` fallback —
-        // exhaustiveness is enforced in aozora-syntax). The scope-specific
-        // `boutenRange` / `combineUprightRange` strings are preserved verbatim
-        // so unrelated region tags stay byte-stable.
+        use ab_aozora_syntax::{BoutenKind, DecorationPosition, RegionFormat};
+        // `RegionFormat::as_json_tag` alone defines the container-pairs
+        // wire tag (its match has no `_ => "unknown"` arm, so the compiler
+        // rejects a variant without a tag). The scope-specific `boutenRange` /
+        // `combineUprightRange` strings are kept verbatim so the other
+        // region tags stay byte-stable.
         assert_eq!(RegionFormat::Bold { padded: false }.as_json_tag(), "bold");
         assert_eq!(RegionFormat::Bold { padded: true }.as_json_tag(), "bold");
         assert_eq!(
@@ -777,7 +767,7 @@ mod tests {
         assert_eq!(
             RegionFormat::Bouten {
                 kind: BoutenKind::Goma,
-                position: BoutenPosition::Right,
+                position: DecorationPosition::Right,
             }
             .as_json_tag(),
             "boutenRange"

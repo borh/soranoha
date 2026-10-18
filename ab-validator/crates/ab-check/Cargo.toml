@@ -27,6 +27,7 @@ zip.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 tempfile.workspace = true
+toml.workspace = true
 
 [[example]]
 name = "vtbo_locate"

@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use ab_aat_to_parser_ir::{ConversionOptions, ConversionRequest, MappingDocument, SchemaSet};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 fn convert(body: &str) -> Value {
     let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
@@ -18,6 +18,28 @@ fn convert(body: &str) -> Value {
     })
     .unwrap()
     .parser_ir
+}
+
+#[test]
+fn indentation_questions_require_a_quantity_locator_and_paragraph_target() {
+    let ir = convert("［＃一字下げ忘れか？200-14］本文");
+    let note = &ir["nodes"][0];
+    assert_eq!(note["note_kind"], "indentation-question");
+    assert_eq!(note["indentation_characters"], 1);
+    assert_eq!(note["source_locator"], "200-14");
+    let schemas = SchemaSet::for_aat_version(2).unwrap();
+    let validator = jsonschema::validator_for(&schemas.parser_ir_schema).unwrap();
+    assert!(validator.is_valid(&ir));
+    for (field, value) in [
+        ("indentation_characters", json!(2)),
+        ("source_locator", json!("200")),
+        ("note_kind", json!("explanation")),
+        ("target_source_spans", json!([])),
+    ] {
+        let mut invalid = ir.clone();
+        invalid["nodes"][0][field] = value;
+        assert!(!validator.is_valid(&invalid), "{field}");
+    }
 }
 
 #[test]
@@ -37,6 +59,61 @@ fn supplied_geometry_retains_independent_dimensions_and_body_text() {
             .any(|node| node["text"] == "本文")
     );
     assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn page_spacing_keeps_uncertain_boundaries_explicit() {
+    for (prefix, boundary, position) in [
+        ("", "改ページ", "right-of-center"),
+        ("前\n［＃改丁］\n", "改丁", "right-of-center"),
+        ("前\n", "改ページ", "undetermined"),
+        ("", "改見開き", "undetermined"),
+    ] {
+        let ir = convert(&format!(
+            "{prefix}［＃ページの左右中央］\n\n扉\n\n\n\n［＃{boundary}］\n後"
+        ));
+        let scope = ir["layout_blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|scope| scope.get("page_spacing").is_some())
+            .unwrap();
+        assert_eq!(scope["page_spacing"]["before_blank_lines"], 1);
+        assert_eq!(scope["page_spacing"]["after_blank_lines"], 3);
+        assert_eq!(scope["page_spacing"]["position"], position, "{ir}");
+        assert_eq!(
+            ir["interpretation_problems"].as_array().unwrap().is_empty(),
+            position != "undetermined",
+            "{ir}"
+        );
+    }
+}
+
+#[test]
+fn page_spacing_without_a_page_boundary_remains_uninterpreted() {
+    let ir = convert("［＃ページの左右中央］\n\n\n扉\n\n\n［＃改段］\n後");
+    assert!(ir["layout_blocks"].as_array().unwrap().is_empty());
+    assert!(
+        ir["interpretation_problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|problem| {
+                problem["raw"] == "［＃ページの左右中央］"
+                    && problem["aspects"] == serde_json::json!(["layout"])
+            }),
+        "{ir}"
+    );
+}
+
+#[test]
+fn empty_page_does_not_assign_the_same_gap_to_both_sides() {
+    let ir = convert("［＃ページの左右中央］\n\n\n［＃改ページ］\n後");
+    assert_eq!(
+        ir["layout_blocks"][0]["page_spacing"],
+        serde_json::json!({"position":"undetermined"})
+    );
+    assert!(!ir["interpretation_problems"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -156,7 +233,7 @@ fn a_line_measure_keeps_its_dimensions_whichever_order_the_source_writes_them() 
 }
 
 #[test]
-fn a_foot_margin_stated_of_the_block_reads_as_the_margin_it_names() {
+fn a_foot_margin_stated_of_the_block_reads_as_the_margin_it_states() {
     for clause in ["地は本文より２字上", "地より２字上げ", "地から２字上げ"]
     {
         let ir = convert(&format!(
@@ -175,9 +252,9 @@ fn a_foot_margin_stated_of_the_block_reads_as_the_margin_it_names() {
 
 #[test]
 fn a_margin_clause_whose_verb_contradicts_its_edge_stays_unresolved() {
-    // `地から３字下げ` names the foot edge and then moves away from it. Reading
-    // it as a foot margin would choose an intent the spelling does not state,
-    // so the indentation is kept and the clause is retained as it stands.
+    // `地から３字下げ` refers to the foot edge and then an offset away from it.
+    // The spelling does not state a foot margin, so the indentation is kept
+    // and the clause is retained unchanged.
     let ir = convert("［＃ここから２字下げ、地から３字下げ］\n本文\n［＃ここで字下げ終わり］");
     let scope = &ir["layout_blocks"][0];
     assert_eq!(scope["indent"], 2);
@@ -193,28 +270,59 @@ fn a_margin_clause_whose_verb_contradicts_its_edge_stays_unresolved() {
 }
 
 #[test]
-fn an_exception_naming_the_lines_it_applies_to_stays_unresolved() {
-    // The source names a subset of the enclosed lines and gives it a different
-    // indentation. Which lines those are is not recoverable without reading the
-    // text, so the supplied scope indentation stands and the clause is kept.
-    for clause in [
-        "ただし冒頭の歌記号のみは２字下げ",
-        "ただし改行行頭の「・」のみ１字下げ",
-        "一つの行が複数行に渡る場合は２行目から２字下げ",
+fn an_exception_identifying_the_lines_it_applies_to_stays_unresolved() {
+    // The source refers to every line that begins with a quoted character.
+    // Which lines those are is not recoverable without reading the text, so
+    // the supplied scope indentation is kept and the clause is retained.
+    let clause = "ただし改行行頭の「・」のみ１字下げ";
+    let ir = convert(&format!(
+        "［＃ここから３字下げ、{clause}］\n本文\n［＃ここで字下げ終わり］"
+    ));
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["indent"], 3, "{ir}");
+    assert!(scope.get("first_line_indent").is_none(), "{ir}");
+    assert!(
+        ir["interpretation_problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|problem| problem["raw"] == clause),
+        "{ir}"
+    );
+}
+
+#[test]
+fn an_exception_quoting_the_first_character_gives_the_first_line_indent() {
+    for (opener, indent, first_line) in [
+        (
+            "［＃ここから３字下げ、ただし冒頭の歌記号のみは２字下げ］",
+            3,
+            2,
+        ),
+        ("［＃ここから２字下げ、ただし冒頭の「のみは１字下げ］", 2, 1),
+        (
+            "［＃ここから２字下げ、ただし冒頭の※［＃歌記号、1-3-28］のみ１字下げ］",
+            2,
+            1,
+        ),
     ] {
-        let ir = convert(&format!(
-            "［＃ここから３字下げ、{clause}］\n本文\n［＃ここで字下げ終わり］"
-        ));
-        assert_eq!(ir["layout_blocks"][0]["indent"], 3, "{clause}");
-        assert!(
-            ir["interpretation_problems"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|problem| problem["raw"] == clause),
-            "{clause}"
-        );
+        let ir = convert(&format!("{opener}\n「本文\n［＃ここで字下げ終わり］"));
+        let scope = &ir["layout_blocks"][0];
+        assert_eq!(scope["indent"], indent, "{opener}");
+        assert_eq!(scope["first_line_indent"], first_line, "{opener}");
+        assert_eq!(ir["interpretation_problems"], json!([]), "{ir}");
     }
+}
+
+#[test]
+fn a_clause_stating_the_indent_of_wrapped_lines_gives_the_continuation_indent() {
+    let ir = convert(
+        "［＃ここから３字下げ、一つの行が複数行に渡る場合は２行目から２字下げ］\n本文\n［＃ここで字下げ終わり］",
+    );
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["indent"], 3);
+    assert_eq!(scope["continuation_indent"], 2);
+    assert_eq!(ir["interpretation_problems"], serde_json::json!([]), "{ir}");
 }
 
 #[test]
@@ -241,8 +349,8 @@ fn a_close_that_restates_its_measure_ends_the_scope_that_measure_opened() {
 #[test]
 fn a_restated_measure_that_disagrees_with_the_open_does_not_close_it() {
     // The measure on the close is the source's own statement of which scope it
-    // ends. Closing a scope it does not name would move the boundary to a place
-    // the source did not put it.
+    // ends. Closing a scope it does not identify would move the boundary to a
+    // place the source did not put it.
     let ir = convert("［＃ここから１字下げ］\n本文\n［＃３字下げここまで］");
     assert_eq!(ir["layout_blocks"], serde_json::json!([]));
     assert!(!ir["interpretation_problems"].as_array().unwrap().is_empty());
@@ -266,16 +374,28 @@ fn a_measured_close_reads_its_measure_in_either_numeral_spelling() {
 }
 
 #[test]
-fn an_indent_applied_at_every_break_stays_unresolved() {
-    // `改行ごとに二字下げ` indents at each line break. Whether the scope's own
-    // first line counts as following a break is what the source leaves open,
-    // and a layout scope cannot carry a continuation indent without also
-    // stating the indent of the first line. Choosing either reading would put a
-    // measure on a line the source did not measure, so both markers are kept.
+fn an_indent_applied_at_every_break_keeps_its_policy_and_unmatched_close() {
     let ir = convert("［＃改行ごとに二字下げ］前略我等両人［＃二字下げ終わり］");
     assert_eq!(ir["layout_blocks"], serde_json::json!([]));
+    let instruction = ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["type"] == "formatting-instruction")
+        .unwrap();
+    assert_eq!(instruction["raw"], "［＃改行ごとに二字下げ］");
+    assert_eq!(
+        instruction["operations"][0]["effect"],
+        serde_json::json!({
+            "kind": "layout-policy",
+            "indent": 2,
+            "horizontal": false,
+            "align_end": false
+        })
+    );
     let problems = ir["interpretation_problems"].as_array().unwrap();
-    assert_eq!(problems.len(), 2, "{problems:?}");
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert_eq!(problems[0]["raw"], "［＃二字下げ終わり］");
     let text = serde_json::to_string(&ir["nodes"]).unwrap();
     assert!(
         text.contains("前略我等両人"),
@@ -284,9 +404,38 @@ fn an_indent_applied_at_every_break_stays_unresolved() {
 }
 
 #[test]
-fn a_close_naming_scopes_no_block_opened_stays_unresolved() {
-    // `次行は…で` measures one named line and opens no scope. The close that
-    // follows names an indentation and a foot alignment that were never opened
+fn following_text_end_alignment_keeps_an_open_ended_policy() {
+    for marker in ["以下地付き", "以下、地付き", "以下の文章は地付き"] {
+        let ir = convert(&format!("［＃{marker}］\n署名\n"));
+        let instruction = ir["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["type"] == "formatting-instruction")
+            .unwrap();
+        let operation = &instruction["operations"][0];
+        assert_eq!(
+            operation["selector"],
+            serde_json::json!({"kind":"following-text"})
+        );
+        assert_eq!(
+            operation["effect"],
+            serde_json::json!({
+                "kind":"layout-policy",
+                "indent":0,
+                "horizontal":false,
+                "align_end":true
+            })
+        );
+        assert!(operation.get("selection").is_none());
+        assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn a_close_stating_scopes_no_block_opened_stays_unresolved() {
+    // `次行は…で` measures one stated line and opens no scope. The close that
+    // follows states an indentation and a foot alignment that were never opened
     // as blocks, so reading it as a close would end scopes that do not exist.
     let ir = convert(
         "［＃次行は三字下げ、九字空き地付きで］\n一金一百円也\n［＃字下げ、地付きここまで］",
@@ -325,17 +474,13 @@ fn a_line_holds_a_foot_measure_beside_a_size_the_source_gives_no_degree_for() {
 }
 
 #[test]
-fn a_foot_measure_naming_a_target_stays_unresolved() {
-    // The marker is then about a piece of the line rather than the line, and
-    // which piece is not something it settles. The truncated forms have lost
-    // the target entirely and leave a bare `は` with nothing before it.
+fn a_missing_foot_target_stays_unresolved_unless_the_line_is_the_supplied_subject() {
+    // The marker then refers to a piece of the line rather than the line, and
+    // does not state which piece. The truncated forms lack the target entirely
+    // and leave a bare `は` with nothing before it.
     for body in [
         "この行はポイントを下げ、「昔の武蔵野今は東京府下」は地より１１字上げ",
         "この行はポイントを下げ、は地より７字上げ",
-        "この行はポイントを上げ、は地より３字上げ",
-        // The spacing clause names 名前の部分 without locating it, and a line
-        // format holds no spacing for a part of the line it does not identify.
-        "この行は下揃え一字上げ、名前の部分は一字毎に空きあり",
     ] {
         let ir = convert(&format!("香港にて［＃{body}］"));
         assert_eq!(ir["layout_blocks"], serde_json::json!([]), "{body}");
@@ -344,18 +489,93 @@ fn a_foot_measure_naming_a_target_stays_unresolved() {
             "{body}"
         );
     }
+
+    let ir = convert("香港にて［＃この行はポイントを上げ、は地より３字上げ］");
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["align"], "right");
+    assert_eq!(scope["offset_from_end"], 3);
+    assert_eq!(scope["typography"]["size_type"], "qualitative");
+    assert_eq!(scope["typography"]["direction"], "larger");
+    assert!(scope["typography"].get("qualifier").is_none());
+    assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
 }
 
 #[test]
-fn a_marker_that_changes_treatment_inside_its_own_line_stays_unresolved() {
-    // `この行ここまで…、ここからは…` ends one treatment and begins another at
-    // the marker's own position. A line format scopes a whole line and holds no
-    // boundary inside one, so reading it would move the boundary to a place the
-    // source did not put it.
+fn a_named_line_part_keeps_spacing_without_inventing_its_extent() {
+    let ir = convert("松永哲夫［＃この行は下揃え一字上げ、名前の部分は一字毎に空きあり］");
+    let instruction = ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["type"] == "formatting-instruction")
+        .unwrap();
+    let operations = instruction["operations"].as_array().unwrap();
+    assert_eq!(
+        operations[0]["effect"],
+        serde_json::json!({
+            "kind":"attribute",
+            "layout":{"kind":"chitsuki", "align":"right", "offset_from_end":1, "source":"aat-inline"}
+        })
+    );
+    assert_eq!(
+        operations[0]["selector"],
+        serde_json::json!({"kind":"preceding-text"})
+    );
+    assert!(operations[0]["selection"].is_object());
+    assert_eq!(operations[1]["selector"]["kind"], "named");
+    assert_eq!(
+        operations[1]["selector"]["operands"][0]["text"],
+        "名前の部分"
+    );
+    assert_eq!(
+        operations[1]["effect"],
+        serde_json::json!({"kind":"letter-spacing", "amount":1})
+    );
+    assert!(operations[1].get("selection").is_none());
+    assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_marker_that_changes_treatment_inside_its_own_line_keeps_the_boundary() {
     let ir = convert(
         "七月　日［＃この行ここまで相対的に字が小さい、ここからは下揃え、下から３字上げ］武　男",
     );
     assert_eq!(ir["layout_blocks"], serde_json::json!([]));
-    let text = serde_json::to_string(&ir["nodes"]).unwrap();
-    assert!(text.contains("ここまで相対的に字が小さい"), "kept: {text}");
+    let instruction = ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["type"] == "formatting-instruction")
+        .unwrap();
+    let operations = instruction["operations"].as_array().unwrap();
+    assert_eq!(operations[0]["selector"]["kind"], "preceding-text");
+    assert_eq!(operations[0]["effect"]["layout"]["kind"], "font-size");
+    assert_eq!(operations[1]["selector"]["kind"], "following-text");
+    assert_eq!(operations[1]["effect"]["layout"]["kind"], "chitsuki");
+    assert_eq!(operations[1]["effect"]["layout"]["offset_from_end"], 3);
+    assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_closer_on_its_own_line_ends_the_policy_line_before_it() {
+    for newline in ["\n", "\r\n"] {
+        let ir = convert(
+            &[
+                "［＃「序」全体、天より２字下げ］",
+                "序",
+                "本文",
+                "［＃ここで字下げ終わり］",
+                "後",
+            ]
+            .join(newline),
+        );
+        let blocks = ir["layout_blocks"].as_array().unwrap();
+        assert_eq!(blocks.len(), 1, "{newline:?}: {blocks:?}");
+        assert_eq!(blocks[0]["indent"], 2, "{newline:?}");
+        assert_eq!(
+            ir["interpretation_problems"],
+            serde_json::json!([]),
+            "{newline:?}"
+        );
+    }
 }

@@ -1,4 +1,4 @@
-//! Pin the Aozora-source serializer's "fixed point after one pass"
+//! Tests of the Aozora-source serializer's "fixed point after one pass"
 //! invariant.
 //!
 //! Contract: for every input that the lexer can ingest, running
@@ -7,8 +7,8 @@
 //!
 //! Some inputs are pinned to the stronger statement that the first pass
 //! already reproduces the source: the normalizer's blank-line padding around
-//! a block sentinel is internal, and adding it to the output changed what the
-//! next parse saw.
+//! a block sentinel is internal, and adding it to the output changes what the
+//! next parse reads.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::serialize;
@@ -29,7 +29,7 @@ fn fixed_point(src: &str) -> bool {
 /// line-oriented recognizers have a boundary to work with. Those newlines are
 /// not source: writing them out inserts blank lines the author never wrote.
 #[test]
-fn a_block_directive_keeps_the_lines_the_source_gave_it() {
+fn a_block_directive_round_trips_its_source_blank_lines() {
     for source in [
         "前\n［＃改ページ］\n後",
         "前\n\n［＃改ページ］\n\n後",
@@ -44,13 +44,13 @@ fn a_block_directive_keeps_the_lines_the_source_gave_it() {
     }
 }
 
-/// On input whose brackets do not balance, the padding was parse-relevant:
-/// the pair stage expires an open bracket at a newline, so a bracket the
-/// first parse still held was gone by the time the next parse reached the `］`
-/// that closed it, and the trailing directive ended up buried in a body
-/// instead of at top level.
+/// On input whose brackets do not balance, the padding is parse-relevant:
+/// the pair stage expires an open bracket at a newline, so with the padding
+/// written out, a bracket that the first parse kept open expires before the
+/// next parse reaches its closing `］`, and the trailing directive is parsed
+/// inside a body instead of at top level.
 #[test]
-fn a_block_directive_in_unbalanced_brackets_keeps_the_lines_the_source_gave_it() {
+fn a_block_directive_in_unbalanced_brackets_round_trips_its_source_blank_lines() {
     let source = "［［》》［＃ここから字下げ］《《≪≪］］［＃改］］";
     assert_eq!(round_trip(source), source, "serialize introduced newlines");
 }
@@ -93,7 +93,7 @@ fn fixed_point_on_paragraph_breaks() {
 #[test]
 fn fixed_point_on_html_unsafe_chars_in_source() {
     // Source contains literal `<`, `>`, `&`, `"`, `'`. Serialization
-    // must NOT escape them — only HTML rendering does.
+    // must not escape them — only HTML rendering does.
     let src = "a<b>&\"'";
     let out = round_trip(src);
     assert_eq!(out, src, "serializer must not escape HTML metachars");
@@ -110,7 +110,7 @@ fn fixed_point_on_gaiji_reference() {
 #[test]
 fn fixed_point_on_standalone_gaiji() {
     // No-`※` standalone external-character notes must round-trip
-    // *without* gaining a `※` — the `standalone` flag suppresses it.
+    // without gaining a `※` — the `standalone` flag suppresses it.
     for src in [
         "［＃「※」は「祿－示」、第3水準1-84-27、144-上-9］",
         "［＃「比」の「ヒ」に代えて「く」、第4水準2-1-23］",
@@ -168,5 +168,20 @@ fn supplied_component_substitutions_keep_their_source_spelling() {
     ] {
         assert_eq!(round_trip(source), source);
         assert!(fixed_point(source));
+    }
+}
+
+#[test]
+fn a_gaiji_description_keeps_its_source_quoting() {
+    for source in [
+        "※［＃改］",
+        "※［＃改］あ",
+        "※［＃未知の字指定］",
+        "※［＃二重かっこ開く］",
+        "※［＃二の字点、1-2-23］",
+        "※［＃「改」］",
+        "※［＃「口＋愛」、第3水準1-15-23］",
+    ] {
+        assert_eq!(round_trip(source), source);
     }
 }

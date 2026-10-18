@@ -1,22 +1,22 @@
 //! Input strategies for the workspace's property suites.
 //!
-//! The strategies are stratified rather than monolithic: each targets one
-//! shape of input that exercises a particular class of invariant. A test opts
-//! into the shapes it needs, so a shrinker narrows on the offending shape
-//! instead of wandering through unrelated regions of the input space.
+//! The strategies are stratified: each generates one shape of input that
+//! tests one class of invariant. A test selects the shapes it needs, so
+//! shrinking stays within the failing shape instead of moving through
+//! unrelated regions of the input space.
 //!
-//! | Strategy | Shape | What it is for |
+//! | Strategy | Shape | Property tested |
 //! |---|---|---|
-//! | [`aozora_fragment`] | Trigger glyphs, prose filler, decorative rule rows | The workhorse: parse is total, no sentinel leaks |
+//! | [`aozora_fragment`] | Trigger glyphs, prose filler, decorative rule rows | Parse is total; no sentinel appears in output |
 //! | [`pathological_aozora`] | Unbalanced and stacked delimiters | Malformed input never panics |
-//! | [`unicode_adversarial`] | Combining marks, overrides, PUA, astral planes | The parser never decodes its way into a panic |
-//! | [`xss_payload`] | Script-injection vectors | Nothing executable survives HTML rendering |
+//! | [`unicode_adversarial`] | Combining marks, overrides, PUA, astral planes | Decoding never panics |
+//! | [`xss_payload`] | Script-injection vectors | No executable content remains after HTML rendering |
 //! | [`nested_pairs`] | Delimiters nested to depth | The pair stage's frame stack under depth |
 //!
 //! The Aozora vocabulary comes from `ab_aozora_spec`: [`trigger_glyphs`]
 //! reads the parser's own trigger set, and [`unicode_adversarial`] reads the
-//! reserved sentinel characters. Restating either as a literal list here
-//! would let the generators drift from the parser they test.
+//! reserved sentinel characters, so the generators use the same sets as the
+//! parser they test.
 
 use std::str;
 
@@ -32,7 +32,7 @@ use proptest::sample::select;
 /// # Panics
 ///
 /// Panics if a trigram in the spec is not valid UTF-8. Every entry is a BMP
-/// codepoint's encoding, so this cannot fire without a corrupt spec table.
+/// codepoint's encoding, so the panic occurs only for a corrupt spec table.
 #[must_use]
 pub fn trigger_glyphs() -> Vec<String> {
     ALL_TRIGGER_TRIGRAMS
@@ -45,7 +45,7 @@ pub fn trigger_glyphs() -> Vec<String> {
         .collect()
 }
 
-/// Prose and layout filler: what sits between the triggers in real source.
+/// Prose and layout filler: the text between the triggers in real source.
 const FILLER: &[&str] = &[
     "漢字",
     "かんじ",
@@ -70,10 +70,10 @@ const FILLER: &[&str] = &[
 ///
 /// The widths bracket the isolator's minimum, `DECORATIVE_RULE_MIN_LEN`, which
 /// is 10. Three and nine are below it: `CommonMark` still reads them as a
-/// thematic break or a setext underline, but the isolator leaves them alone,
-/// so they are the side of the boundary where a disagreement between the two
-/// would show. Twelve and thirty-five are above it, and differ from each other
-/// so a failure shrinks to the shorter row.
+/// thematic break or a setext underline, but the isolator does not change
+/// them, so they are the side of the boundary where a disagreement between
+/// the two is observable. Twelve and thirty-five are above it, and differ from
+/// each other so a failure shrinks to the shorter row.
 fn decorative_rule_rows() -> Vec<String> {
     ["-", "=", "_"]
         .into_iter()
@@ -88,11 +88,11 @@ fn decorative_rule_rows() -> Vec<String> {
 /// Mixed-shape Aozora source: 0 to `max_atoms` atoms drawn from the trigger
 /// set, prose filler, and decorative rule rows, concatenated.
 ///
-/// This is the primary strategy for "parse is total" and "no sentinel
-/// escapes into output" properties. It emits *unbalanced* delimiter shapes on
-/// purpose, so shrinking can surface a malformed-input panic; a property that
-/// needs well-formed input gates on the lexer's diagnostics instead of
-/// expecting this generator to supply it.
+/// This is the primary strategy for the "parse is total" and "no sentinel
+/// appears in output" properties. It emits unbalanced delimiter shapes so
+/// shrinking can surface a malformed-input panic; a property that needs
+/// well-formed input filters on the lexer's diagnostics instead of expecting
+/// this generator to supply it.
 pub fn aozora_fragment(max_atoms: usize) -> impl Strategy<Value = String> {
     let mut atoms = trigger_glyphs();
     atoms.extend(FILLER.iter().map(|filler| (*filler).to_owned()));
@@ -118,11 +118,11 @@ const UNPAIRED_DIRECTIVES: &[&str] = &[
 ///
 /// No atom can balance on its own: each is a doubled delimiter, a truncated
 /// directive, or a complete container directive without its partner. Joining
-/// a handful therefore produces an imbalance reliably, which is what drives
-/// the pair stage's stack into its error paths. `max_depth` caps how many
-/// atoms are joined; 4 to 8 keeps the shrinker fast. Well past that the draws
-/// are almost all malformed, and shrinking spends its budget inside the
-/// malformed regime.
+/// a handful therefore produces an imbalance reliably, which exercises the
+/// error paths of the pair stage's stack. `max_depth` caps how many atoms are
+/// joined; 4 to 8 keeps shrinking fast. Well past that the draws are almost
+/// all malformed, and shrinking spends its iteration budget on malformed
+/// inputs.
 pub fn pathological_aozora(max_depth: usize) -> impl Strategy<Value = String> {
     let mut atoms: Vec<String> = doubled_trigger_glyphs();
     atoms.extend(UNPAIRED_DIRECTIVES.iter().map(|shape| (*shape).to_owned()));
@@ -132,9 +132,8 @@ pub fn pathological_aozora(max_depth: usize) -> impl Strategy<Value = String> {
 
 /// Every trigger character doubled.
 ///
-/// Doubling is what makes an atom reliably unbalanced: two of a delimiter
-/// cannot both find a partner in a fragment assembled from other doubled
-/// atoms.
+/// Doubling makes an atom reliably unbalanced: two of a delimiter cannot both
+/// have a partner in a fragment assembled from other doubled atoms.
 fn doubled_trigger_glyphs() -> Vec<String> {
     ALL_TRIGGER_TRIGRAMS
         .iter()
@@ -146,13 +145,13 @@ fn doubled_trigger_glyphs() -> Vec<String> {
         .collect()
 }
 
-/// Unicode edge cases: sequences that are valid UTF-8 but hostile to naive
-/// index arithmetic, plus the codepoints the lexer reserves for itself.
+/// Unicode edge cases: sequences that are valid UTF-8 but break naive index
+/// arithmetic, plus the codepoints the lexer reserves for itself.
 ///
 /// The reserved sentinels come from `ab_aozora_spec::ALL_SENTINELS` rather
 /// than a literal list. Source text that already contains one must produce a
-/// diagnostic and must not panic, and that property is only as good as this
-/// generator's agreement with what the lexer actually reserves.
+/// diagnostic and must not panic; the property covers only the sentinels this
+/// generator emits, so the list is the lexer's reserved set.
 pub fn unicode_adversarial() -> impl Strategy<Value = String> {
     let mut cases: Vec<String> = vec![
         // Combining marks stacked on ASCII bases: char count and byte length
@@ -178,20 +177,19 @@ pub fn unicode_adversarial() -> impl Strategy<Value = String> {
         "［＃ｂｒａｃｋｅｔ］".to_owned(),
     ];
     // Each reserved sentinel, embedded between two ordinary characters so a
-    // failure names the sentinel rather than a bare one-character input.
+    // failure report shows the sentinel rather than a bare one-character input.
     cases.extend(ALL_SENTINELS.iter().map(|sentinel| format!("X{sentinel}Y")));
     select(cases)
 }
 
-/// Script-injection vectors, one per way a renderer can leak executable
+/// Script-injection vectors, one per way a renderer can emit executable
 /// content.
 ///
 /// Grouped by the escaping mistake each one catches: raw tags, event handler
 /// attributes, `javascript:` and `data:` URLs, comment and CDATA smuggling,
 /// percent-encoding that must stay literal, and fullwidth lookalikes that
 /// must not be folded to ASCII. The last two put Aozora markup on either side
-/// of the payload, since the interesting bugs live where the two escaping
-/// paths meet.
+/// of the payload, where the Aozora and HTML escaping paths meet.
 pub fn xss_payload() -> impl Strategy<Value = String> {
     select(vec![
         // Raw script elements, including case and attribute variation.
@@ -214,7 +212,7 @@ pub fn xss_payload() -> impl Strategy<Value = String> {
         // Smuggling through constructs a passthrough might not descend into.
         "<!--<script>x()</script>-->".to_owned(),
         "<![CDATA[<script>bad()</script>]]>".to_owned(),
-        // Percent-encoded: must survive as literal text, never be decoded.
+        // Percent-encoded: must remain literal text, never be decoded.
         "%3Cscript%3Ealert(1)%3C%2Fscript%3E".to_owned(),
         // Fullwidth angle brackets: must not be normalised to ASCII, even
         // though the parser does handle fullwidth ［ as markup.
@@ -228,9 +226,9 @@ pub fn xss_payload() -> impl Strategy<Value = String> {
 /// Delimiters nested to a drawn depth with no content between them: `depth`
 /// opens followed by `depth` closes.
 ///
-/// The workhorse [`aozora_fragment`] spreads its atoms thin, so it rarely
-/// reaches the depth that would corrupt the pair stage's frame stack. This
-/// strategy goes straight there. Depth is drawn from `0..=max_depth` rather
+/// [`aozora_fragment`] mixes atoms of every shape, so it rarely reaches the
+/// nesting depth that stresses the pair stage's frame stack; this strategy
+/// generates that depth directly. Depth is drawn from `0..=max_depth` rather
 /// than fixed at the maximum so a failure shrinks to the shallowest depth
 /// that still reproduces it.
 pub fn nested_pairs(max_depth: usize) -> impl Strategy<Value = String> {

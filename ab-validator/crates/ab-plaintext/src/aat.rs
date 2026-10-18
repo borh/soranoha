@@ -50,12 +50,12 @@ pub fn visible_text_projection(aat: &Value) -> String {
     canonicalize_line_endings(sink.0)
 }
 
-/// Projects the visible text AND records, per contributing AAT inline node,
+/// Projects the visible text and records, per contributing AAT inline node,
 /// the projected char span it produced. The returned text is byte-identical
 /// to [`visible_text_projection`]; spans are in document order, disjoint, and
-/// jointly reconstruct the text. Only nodes contributing ≥1 char emit a span
-/// (`is_note` is therefore structurally false today: note nodes are excluded
-/// from projection).
+/// jointly reconstruct the text. Only nodes contributing ≥1 char emit a span,
+/// so `is_note` is false on every span: note nodes are excluded from
+/// projection.
 pub fn visible_text_projection_with_spans(aat: &Value) -> (String, Vec<ProjectionSpan>) {
     let mut sink = SpanSink::default();
     walk_blocks(aat, &mut Vec::new(), &mut sink);
@@ -82,6 +82,7 @@ enum SpanKind {
     RubyBase,
     Gaiji,
     Accent,
+    IterationMark,
 }
 
 impl SpanKind {
@@ -91,6 +92,7 @@ impl SpanKind {
             Self::RubyBase => "ruby",
             Self::Gaiji => "gaiji",
             Self::Accent => "accent",
+            Self::IterationMark => "iteration-mark",
         }
     }
 }
@@ -102,8 +104,8 @@ enum PathSeg {
 }
 
 /// Receives each contributing node's text. The text-only sink ignores the
-/// span context entirely (and never pays for pointer construction), so the
-/// plain projection keeps its current cost while sharing the single walker.
+/// span context and constructs no pointers, so the plain projection and the
+/// span projection share one walker without adding cost to the plain one.
 trait ProjectionSink {
     fn push(&mut self, value: &str, kind: SpanKind, path: &[PathSeg]);
 }
@@ -143,7 +145,7 @@ impl ProjectionSink for SpanSink {
     }
 }
 
-/// RFC 6901 escaping (`~0`/`~1`) is intentionally omitted: keys are a closed
+/// RFC 6901 escaping (`~0`/`~1`) is omitted: keys are a closed
 /// set of static literals (`blocks`, `content`, `children`, `upper`, `lower`,
 /// `caption`) that contain no `/` or `~`. Escape before adding dynamic keys.
 fn json_pointer(path: &[PathSeg]) -> String {
@@ -175,17 +177,40 @@ fn walk_blocks(aat: &Value, path: &mut Vec<PathSeg>, sink: &mut impl ProjectionS
 }
 
 fn walk_block(node: &Value, path: &mut Vec<PathSeg>, sink: &mut impl ProjectionSink) {
-    // Back-matter `source_note` blocks carry the Aozora colophon and
-    // attribution lines (底本, 入力／校正, 青空文庫作成ファイル). They are
-    // provenance about the text, not the text: projecting them appends a
-    // near-identical modern-kana/ASCII tail to every work, which shows up as
-    // boilerplate "disagreement" in tokenizer comparisons and breaks the
-    // historical-kana remap. The honbun projection cuts at 底本： for the
-    // same reason.
+    // Back-matter `source_note` blocks contain the Aozora colophon and
+    // attribution lines (底本, 入力／校正, 青空文庫作成ファイル), which are
+    // provenance rather than body text. Projecting them appends a
+    // near-identical modern-kana/ASCII tail to every work; tokenizer
+    // comparisons count that tail as disagreement, and the historical-kana
+    // remap breaks on it. The honbun projection cuts at 底本： for the same
+    // reason.
     if node.get("kind").and_then(Value::as_str) == Some("source_note") {
         return;
     }
-    walk_inline_children(node, "content", path, sink);
+    let content = node.get("content").and_then(Value::as_array);
+    let figure_only_line = content.is_some_and(|items| {
+        items
+            .iter()
+            .any(|item| item.get("kind").and_then(Value::as_str) == Some("figure"))
+            && items
+                .iter()
+                .all(|item| match item.get("kind").and_then(Value::as_str) {
+                    Some("figure") => true,
+                    Some("text") => {
+                        item.get("value")
+                            .and_then(Value::as_str)
+                            .is_some_and(|value| {
+                                value
+                                    .chars()
+                                    .all(|character| character.is_ascii_whitespace())
+                            })
+                    }
+                    _ => false,
+                })
+    });
+    if !figure_only_line {
+        walk_inline_children(node, "content", path, sink);
+    }
     if let Some(children) = node.get("children").and_then(Value::as_array) {
         path.push(PathSeg::Key("children"));
         for (index, child) in children.iter().enumerate() {
@@ -218,10 +243,20 @@ fn walk_inline(node: &Value, path: &mut Vec<PathSeg>, sink: &mut impl Projection
     match node.get("kind").and_then(Value::as_str).unwrap_or("") {
         "text" => push_field(node, "value", SpanKind::Text, path, sink),
         "supplied-diacritic" => push_field(node, "text", SpanKind::Accent, path, sink),
-        "ruby" => push_field(node, "base", SpanKind::RubyBase, path, sink),
+        "iteration-mark" => push_field(node, "text", SpanKind::IterationMark, path, sink),
+        "ruby" => {
+            if node.get("base_content").and_then(Value::as_array).is_some() {
+                walk_inline_children(node, "base_content", path, sink);
+            } else {
+                push_field(node, "base", SpanKind::RubyBase, path, sink);
+            }
+        }
+        "ruby_group" => walk_inline_children(node, "base_content", path, sink),
         "gaiji" => {
             if let Some(resolved) = node.get("resolved").and_then(Value::as_str) {
                 sink.push(resolved, SpanKind::Gaiji, path);
+            } else if let Some(fallback) = node.get("source_fallback").and_then(Value::as_str) {
+                sink.push(fallback, SpanKind::Gaiji, path);
             } else if node
                 .get("unresolved_reason")
                 .is_some_and(|value| !value.is_null())
@@ -244,15 +279,16 @@ fn walk_inline(node: &Value, path: &mut Vec<PathSeg>, sink: &mut impl Projection
         // Raw nodes are never body text: the adapter emits them only for
         // layout markers (［＃…字下げ］, 改ページ, kaeriten, …), parser
         // residue, and unparsed markup fragments. Projecting their source
-        // leaks markup into the tokenized text stream; the parser-IR
-        // converter's sibling projections drop raw for the same reason.
+        // would insert markup into the tokenized text stream; the
+        // parser-IR converter's projections drop raw nodes for the same
+        // reason.
         "raw" => {}
         "warigaki" => {
             for key in ["upper", "lower"] {
                 walk_inline_children(node, key, path, sink);
             }
         }
-        "figure" => walk_inline_children(node, "caption", path, sink),
+        "figure" => {}
         "style" if node.get("style_type").and_then(Value::as_str) == Some("notes") => {}
         _ => walk_inline_children(node, "content", path, sink),
     }
@@ -351,29 +387,58 @@ mod tests {
             }]
         });
 
-        // the raw node ("E") is a layout/markup marker and must not project
+        // The raw node ("E") is a layout/markup marker and is not projected.
         assert_eq!(visible_text_projection(&aat), "ABCDéfallbackFGH");
     }
 
     #[test]
-    fn projects_figure_caption_text() {
+    fn excludes_figure_caption_reference_from_body_text() {
         let aat = json!({
             "work_id": "w-figure",
-            "blocks": [{
-                "kind": "paragraph",
-                "content": [{
-                    "kind": "figure",
-                    "filename": "fig00001_01.png",
-                    "alt": "猫の図",
-                    "css_class": "",
-                    "width": 321,
-                    "height": 123,
-                    "caption": [{"kind": "text", "value": "猫の図"}]
-                }]
-            }]
+            "blocks": [
+                {
+                    "kind": "paragraph",
+                    "content": [
+                        {
+                            "kind": "figure",
+                            "filename": "fig00001_01.png",
+                            "alt": "猫の図",
+                            "css_class": "",
+                            "width": 321,
+                            "height": 123,
+                            "caption": [{"kind": "text", "value": "猫の図"}]
+                        },
+                        {"kind": "text", "value": "\n"}
+                    ]
+                },
+                {
+                    "kind": "paragraph",
+                    "content": [{
+                        "kind": "caption",
+                        "content": [{"kind": "text", "value": "猫の図"}]
+                    }]
+                }
+            ]
         });
 
         assert_eq!(visible_text_projection(&aat), "猫の図");
+    }
+
+    #[test]
+    fn projects_iteration_mark_realization() {
+        let aat = json!({
+            "work_id": "w-iteration",
+            "blocks": [{
+                "kind": "paragraph",
+                "content": [{"kind": "iteration-mark", "source": "／＼", "text": "〱"}]
+            }]
+        });
+
+        let (text, spans) = visible_text_projection_with_spans(&aat);
+        assert_eq!(text, "〱");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].inline_kind, "iteration-mark");
+        assert_eq!(spans[0].aat_pointer, "/blocks/0/content/0");
     }
 
     #[test]
@@ -432,9 +497,8 @@ mod tests {
 
     #[test]
     fn projection_excludes_raw_layout_markers() {
-        // The corpus-scale leakage class: adapter-parsed layout notes
-        // (字下げ etc.) arrive as raw nodes and must not reach the
-        // tokenized text stream.
+        // Adapter-parsed layout notes (字下げ etc.) occur across the corpus
+        // as raw nodes and are excluded from the tokenized text stream.
         let aat = json!({
             "work_id": "w-raw-markers",
             "blocks": [{
@@ -504,6 +568,59 @@ mod tests {
         });
 
         assert_eq!(visible_text_projection(&aat), "前後");
+    }
+
+    #[test]
+    fn unresolved_gaiji_ruby_base_does_not_project_source_markup() {
+        let aat = json!({
+            "work_id": "w-unresolved-gaiji-ruby",
+            "blocks": [{
+                "kind": "paragraph",
+                "content": [
+                    {"kind": "text", "value": "前"},
+                    {
+                        "kind": "ruby",
+                        "base": "※［＃「凵＜茲」、355-17］",
+                        "reading": "しげる",
+                        "base_content": [{
+                            "kind": "gaiji",
+                            "description": "凵＜茲",
+                            "resolved": null,
+                            "unresolved_reason": "unresolved"
+                        }]
+                    },
+                    {"kind": "text", "value": "後"}
+                ]
+            }]
+        });
+
+        assert_eq!(visible_text_projection(&aat), "前後");
+    }
+
+    #[test]
+    fn ruby_group_projects_its_base_once() {
+        let aat = json!({
+            "work_id": "w-ruby-group",
+            "blocks": [{
+                "kind": "paragraph",
+                "content": [{
+                    "kind": "ruby_group",
+                    "base": "甲乙丙",
+                    "base_content": [
+                        {"kind": "text", "value": "甲"},
+                        {"kind": "text", "value": "乙丙"}
+                    ],
+                    "readings": [
+                        {"kind": "ruby_reading", "reading": "おつへい", "direction": "right",
+                         "base_range": {"start": 3, "end": 9}},
+                        {"kind": "ruby_reading", "reading": "こうおつ", "direction": "left",
+                         "base_range": {"start": 0, "end": 6}}
+                    ]
+                }]
+            }]
+        });
+
+        assert_eq!(visible_text_projection(&aat), "甲乙丙");
     }
 
     #[test]
@@ -629,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn figure_caption_and_block_children_get_pointer_spans() {
+    fn figure_caption_reference_is_excluded_from_pointer_spans() {
         let aat = json!({
             "work_id": "w",
             "blocks": [{
@@ -642,29 +759,18 @@ mod tests {
             }]
         });
         let (text, spans) = visible_text_projection_with_spans(&aat);
-        assert_eq!(text, "猫子");
+        assert_eq!(text, "子");
         assert_eq!(
             spans.iter().map(span_tuple).collect::<Vec<_>>(),
-            vec![
-                (
-                    0,
-                    1,
-                    "/blocks/0/content/0/caption/0",
-                    "text",
-                    false,
-                    false,
-                    false
-                ),
-                (
-                    1,
-                    2,
-                    "/blocks/0/children/0/content/0",
-                    "text",
-                    false,
-                    false,
-                    false
-                ),
-            ]
+            vec![(
+                0,
+                1,
+                "/blocks/0/children/0/content/0",
+                "text",
+                false,
+                false,
+                false
+            ),]
         );
     }
 
@@ -695,8 +801,9 @@ mod tests {
     #[test]
     fn crlf_split_across_nodes_attributes_newline_to_the_cr_node() {
         // Node 1 ends with '\r', node 2 begins with '\n': whole-string
-        // canonicalization produces ONE '\n', owned by the '\r' node; the
-        // '\n' node loses a char (and is dropped if it becomes empty).
+        // canonicalization produces one '\n', attributed to the '\r' node; the
+        // '\n' node's span shrinks by one char and is dropped if it becomes
+        // empty.
         let aat = json!({
             "work_id": "w",
             "blocks": [{
@@ -718,7 +825,7 @@ mod tests {
                 (0, 2, "/blocks/0/content/0", "text", false, false, false),
                 (2, 3, "/blocks/0/content/1", "text", false, false, false),
                 (3, 4, "/blocks/0/content/2", "text", false, false, false),
-                // content/3's lone '\n' was consumed by content/2's '\r' → span dropped.
+                // content/3's lone '\n' merges with content/2's '\r' → span dropped.
             ]
         );
     }

@@ -4,10 +4,11 @@
 //! locally-extracted `aozorabunko_text` clone (or any other directory
 //! of aozora-format text), letting sweep tests run invariants against
 //! every candidate file. The directory structure is not inspected:
-//! labels are paths relative to the root, and ordering follows
-//! [`walkdir`]'s default (lexicographic per-directory).
+//! labels are paths relative to the root. The walker sets no sort, so
+//! ordering is the `readdir(2)` directory-entry order, which depends on
+//! the OS and filesystem.
 //!
-//! Files with extensions other than `.txt` are skipped silently.
+//! Files with extensions other than `.txt` are skipped without an error.
 //! Symbolic links are not followed (walkdir's default `follow_links =
 //! false`) to prevent cycles.
 
@@ -32,9 +33,8 @@ pub struct FilesystemCorpus {
 }
 
 impl FilesystemCorpus {
-    /// Construct from a directory root. Rejects non-directory paths
-    /// eagerly so misconfiguration surfaces at callsite rather than
-    /// deep inside iteration.
+    /// Construct from a directory root. A non-directory path is rejected
+    /// here, at the call site, rather than during iteration.
     ///
     /// # Errors
     ///
@@ -55,18 +55,17 @@ impl FilesystemCorpus {
         &self.root
     }
 
-    /// Enumerate every `.txt` file under the root WITHOUT reading its
-    /// bytes. Useful for splitting walkdir cost from read cost in
-    /// per-phase load benchmarks and for fanning the read step
-    /// across rayon workers. The returned iterator yields
-    /// absolute paths in walkdir's lexicographic-per-directory order.
+    /// Enumerate every `.txt` file under the root without reading its
+    /// bytes. This separates the walk from the reads, for per-phase
+    /// load benchmarks and for distributing the reads across rayon
+    /// workers. The returned iterator yields absolute paths in
+    /// `readdir(2)` directory-entry order.
     ///
-    /// Uses `DirEntry::file_type()` for the file-vs-directory check —
-    /// walkdir caches that from the underlying `readdir(2)` so no
-    /// extra `stat(2)` is needed per entry. The naive
-    /// `path.is_file()` shape would double the directory-walk cost on
-    /// cold filesystem caches by issuing a fresh `stat` for every
-    /// entry walkdir already inspected.
+    /// The file-vs-directory check uses `DirEntry::file_type()`, which
+    /// walkdir caches from the underlying `readdir(2)`, so no extra
+    /// `stat(2)` is issued per entry. A `path.is_file()` check issues a
+    /// fresh `stat` for every entry and doubles the directory-walk cost
+    /// on cold filesystem caches.
     #[must_use]
     pub fn walk_paths(&self) -> Box<dyn Iterator<Item = Result<PathBuf, CorpusError>> + '_> {
         let walker = WalkDir::new(&self.root)
@@ -88,10 +87,10 @@ impl FilesystemCorpus {
         Box::new(walker)
     }
 
-    /// Read a single file's bytes into a fresh `CorpusItem`. Public
-    /// helper used by the parallel-load path so each rayon worker
-    /// can call this on a path it dequeued from the shared work queue
-    /// without re-running walkdir.
+    /// Read a single file's bytes into a fresh `CorpusItem`. The
+    /// parallel-load path calls this from each rayon worker on a path
+    /// taken from the shared work queue, so the read does not repeat
+    /// the walk.
     ///
     /// # Errors
     ///
@@ -110,19 +109,19 @@ impl CorpusSource for FilesystemCorpus {
             .filter_map(move |entry_result| match entry_result {
                 Ok(entry) if is_text_dir_entry(&entry) => Some(read_item(&root, entry.path())),
                 Ok(_) => None,
-                // walkdir's errors are io-level (permission denied walking
-                // into a subdir, broken symlink). We surface them so the
-                // caller decides skip vs fail, attaching the path walkdir
-                // was inspecting.
+                // walkdir's errors are I/O errors (permission denied on a
+                // subdirectory, broken symlink). Each is yielded with the
+                // path walkdir was inspecting, and the caller decides
+                // whether to skip or fail.
                 Err(err) => {
                     let path = err.path().map(Path::to_path_buf).unwrap_or_default();
                     Some(Err(CorpusError::Io {
                         path,
                         source: err.into_io_error().unwrap_or_else(|| {
                             // walkdir errors without an io::Error cause are
-                            // cycle-detection reports; map to a generic
-                            // io::Error of kind Other so downstream matches
-                            // on `io::ErrorKind` remain meaningful.
+                            // cycle-detection reports; they map to an
+                            // io::Error of kind Other so that callers can
+                            // match every item on `io::ErrorKind`.
                             io::Error::other("walkdir cycle or loop detected")
                         }),
                     }))
@@ -138,14 +137,13 @@ impl CorpusSource for FilesystemCorpus {
 
 /// `walkdir::DirEntry`-aware "is this a `.txt` file" check that uses
 /// the cached `file_type` from `readdir(2)` instead of issuing a
-/// fresh `stat(2)`. Saves one syscall per entry — on a 17 k-file
-/// corpus with cold inode cache this shrinks the walkdir phase from
-/// ~4.5 s to ~0.3 s.
+/// fresh `stat(2)`. This removes one syscall per entry; on a 17 k-file
+/// corpus with a cold inode cache, the walkdir phase takes ~0.3 s
+/// instead of ~4.5 s.
 ///
-/// Excludes directories and symlinks (matching the original
-/// `path.is_file()` semantics walkdir already returns); device /
-/// fifo / socket types fall through too — Aozora corpus content is
-/// always regular `.txt` files.
+/// Excludes directories and symlinks, as `path.is_file()` does.
+/// Device, FIFO and socket entries are not checked separately, because
+/// Aozora corpus content is always regular `.txt` files.
 fn is_text_dir_entry(entry: &walkdir::DirEntry) -> bool {
     let ft = entry.file_type();
     !ft.is_dir() && !ft.is_symlink() && entry.path().extension().is_some_and(|ext| ext == "txt")
@@ -156,10 +154,8 @@ fn read_item(root: &Path, path: &Path) -> Result<CorpusItem, CorpusError> {
         path: path.to_path_buf(),
         source,
     })?;
-    // walkdir always yields paths nested inside the root it was handed, so
-    // strip_prefix cannot fail here; the invariant is encoded as `expect`
-    // rather than a defensive fallback branch that would never execute
-    // (and would therefore drag coverage down with no behavioural value).
+    // walkdir yields only paths inside the root it was given, so
+    // strip_prefix cannot fail here; `expect` states that invariant.
     let label = path
         .strip_prefix(root)
         .expect("walkdir yielded a path outside the corpus root")
@@ -301,10 +297,9 @@ mod tests {
                 .any(|r| matches!(r, Err(CorpusError::Io { .. })));
             assert!(has_err, "locked file should yield an Io error");
 
-            // Restore perms so TempDir's drop can clean up. The outcome
-            // of the restore itself is diagnostic noise — we just want
-            // the file's permissions back to "cleanable" before TempDir
-            // drops. `drop` makes the intent explicit (discard Result).
+            // Restore permissions so TempDir's drop can remove the file.
+            // `drop` discards the restore's `Result`, which the test does
+            // not check.
             let mut back = fs::metadata(&locked).expect("re-stat").permissions();
             back.set_mode(0o644);
             drop(fs::set_permissions(&locked, back));

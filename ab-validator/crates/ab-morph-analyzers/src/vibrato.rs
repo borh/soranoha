@@ -20,7 +20,7 @@ const DEFAULT_VIBRATO_DICTIONARY: &str = "unidic-cwj-202512";
 pub const DEFAULT_VIBRATO_ANALYZER_ID: &str = "vibrato:unidic-cwj-202512";
 // Nix-built dictionaries only: `just dictionary-build-*` symlinks flake outputs
 // into dictionary/compiled/. No other directory is consulted, so a stale
-// hand-built artifact can never shadow the nix package.
+// hand-built artifact cannot take precedence over the nix package.
 const VIBRATO_DICTIONARY_SEARCH_PATHS: [&str; 1] = ["compiled"];
 const ZSTD_DICTIONARY_LOAD_LOCK_RETRIES: usize = 600;
 const ZSTD_DICTIONARY_LOAD_LOCK_SLEEP: Duration = Duration::from_millis(50);
@@ -76,10 +76,10 @@ impl VibratoAnalyzer {
     /// SHA-256 (`sha256:<hex>`) of the dictionary archive this analyzer loaded.
     ///
     /// Hashes the on-disk archive bytes (the `.dic.zst`/`.dic` file), so it pins
-    /// the exact dictionary content — the value bound as the `dictionary_hash`
-    /// of the M2 historical detector (I2-D17) and mirrored by the manifest's
+    /// the exact dictionary content: the value bound as the `dictionary_hash`
+    /// of the historical detector and recorded as the manifest's
     /// `tokenizer_dictionary_hash`. Read on demand rather than at load so the
-    /// common analyze path pays no hashing cost.
+    /// common analyze path does not hash the archive.
     ///
     /// # Errors
     ///
@@ -124,13 +124,13 @@ impl VibratoAnalyzer {
     }
 }
 
-/// SHA-256 (`sha256:<hex>`) of a named dictionary archive **without loading it**.
+/// SHA-256 (`sha256:<hex>`) of a named dictionary archive, without loading it.
 ///
 /// Resolves the archive by the same name logic as
 /// [`VibratoAnalyzer::from_dictionary_name`], reads the compressed bytes, and
-/// hashes them — cheap (no zstd decompression, no tokenizer build). Lets a
-/// caller bind the M2 oracle dictionary into policy identity before the full
-/// analyzer is constructed; the value equals the loaded analyzer's
+/// hashes them without zstd decompression or a tokenizer build. Lets a
+/// caller bind the historical oracle dictionary into policy identity before
+/// the full analyzer is constructed; the value equals the loaded analyzer's
 /// [`archive_content_hash`](VibratoAnalyzer::archive_content_hash).
 ///
 /// # Errors
@@ -230,11 +230,11 @@ fn resolve_dictionary_path_from_basename(name: &str) -> Result<PathBuf, Analyzer
 /// Where the decompressed-dictionary cache (and its load lock) live. This is
 /// decoupled from the source `.dic.zst` location so the source can be a
 /// read-only nix store path (via `AB_VIBRATO_DICT_DIR`) while the multi-GB
-/// decompressed cache lands on a writable, roomy filesystem.
+/// decompressed cache is written to a writable filesystem with enough space.
 ///
 /// Order: `AB_VIBRATO_CACHE_DIR` if set, else the workspace-local
-/// `dictionary/compiled/.cache/` (the historical location, on the project
-/// filesystem — not the potentially small `$HOME`). The cache is content-hash
+/// `dictionary/compiled/.cache/` (on the project filesystem, not the
+/// potentially small `$HOME`). The cache is content-hash
 /// keyed by vibrato-rkyv, so pointing store-path and symlink loads at the same
 /// dir reuses one decompressed artifact per dictionary.
 fn zstd_cache_dir() -> PathBuf {
@@ -395,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn default_dictionary_path_honors_env_override() {
+    fn default_dictionary_path_uses_env_override() {
         let override_path = std::env::temp_dir().join("unidic-cwj-202512.dic");
 
         assert_eq!(
@@ -417,8 +417,8 @@ mod tests {
     }
 
     #[test]
-    fn zstd_cache_dir_honors_env_override_else_workspace_local() {
-        // Override wins.
+    fn zstd_cache_dir_uses_env_override_else_workspace_local() {
+        // The override takes precedence.
         assert_eq!(
             zstd_cache_dir_from(Some("/big/fs/cache".into())),
             PathBuf::from("/big/fs/cache")

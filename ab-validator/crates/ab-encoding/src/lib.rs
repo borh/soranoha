@@ -1,65 +1,73 @@
 //! Canonical source-byte decoder for Aozora Bunko source files.
 //!
-//! Single source of truth for the decode + hash pipeline shared by `ab-check`
-//! and (text-only) `ab-coverage`. The decoder strips a UTF-8 BOM,
-//! then tries strict UTF-8, then falls back to Windows-31J (Shift_JIS) with a
-//! `windows-31j-lossy` classification when bytes are invalid (matching the
-//! behaviour of reference Aozora parsers).
+//! Provides the decode and hash steps shared by `ab-check` and (text-only)
+//! `ab-coverage`. The decoder strips a UTF-8 BOM, then tries strict UTF-8,
+//! then falls back to Windows-31J (Shift_JIS) with a `windows-31j-lossy`
+//! classification when bytes are invalid, as reference Aozora parsers do.
 
 use anyhow::Result;
 use encoding_rs::SHIFT_JIS;
 use sha2::{Digest, Sha256};
 
+pub mod emendation;
+
+pub use emendation::AppliedEmendation;
+
 /// Decoded source text plus its detected encoding and raw byte SHA-256.
 ///
 /// `encoding` is one of: `utf-8-bom`, `utf-8`, `windows-31j`, `windows-31j-lossy`.
 /// `raw_sha256` is the `sha256:<hex>` of the original bytes (pre-BOM-strip).
+/// `text` is the decoded text after the source emendations in `emendations`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DecodedSource {
     pub text: String,
     pub encoding: String,
     pub raw_sha256: String,
+    pub emendations: Vec<AppliedEmendation>,
 }
 
-/// Decode source bytes with UTF-8 (BOM-aware) detection and SHIFT-JIS fallback.
+/// Decode source bytes with UTF-8 (BOM-aware) detection and SHIFT-JIS
+/// fallback, then apply the source emendation table.
 ///
 /// # Errors
 ///
 /// Returns an error when the bytes start with a UTF-8 BOM but the bytes that
-/// follow are not valid UTF-8 (such as a file that claims to be UTF-8-encoded but
-/// is not). Plain UTF-8 and Windows-31J inputs never error.
+/// follow are not valid UTF-8, when the emendation table is invalid, or when
+/// two emendations overlap in the decoded text. Plain UTF-8 and Windows-31J
+/// decoding never errors.
 pub fn decode_source_bytes(bytes: &[u8]) -> Result<DecodedSource> {
     let raw_sha256 = format!("sha256:{}", hex_sha256(bytes));
-
-    if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
-        let text = std::str::from_utf8(&bytes[3..])?.to_owned();
-        return Ok(DecodedSource {
-            text,
-            encoding: "utf-8-bom".to_owned(),
-            raw_sha256,
-        });
-    }
-
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        return Ok(DecodedSource {
-            text: text.to_owned(),
-            encoding: "utf-8".to_owned(),
-            raw_sha256,
-        });
-    }
-
-    let (cow, _, had_errors) = SHIFT_JIS.decode(bytes);
+    let (text, encoding) = decode_text(bytes)?;
+    let (text, emendations) = emendation::emend(&text)?.unwrap_or((text, Vec::new()));
     Ok(DecodedSource {
-        text: cow.into_owned(),
-        encoding: if had_errors {
-            "windows-31j-lossy"
-        } else {
-            "windows-31j"
-        }
-        .to_owned(),
+        text,
+        encoding: encoding.to_owned(),
         raw_sha256,
+        emendations,
     })
+}
+
+/// Decode source bytes without applying the emendation table.
+///
+/// # Errors
+///
+/// Returns an error when the bytes start with a UTF-8 BOM but the bytes that
+/// follow are not valid UTF-8.
+pub fn decode_text(bytes: &[u8]) -> Result<(String, &'static str)> {
+    if let Some(body) = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]) {
+        return Ok((std::str::from_utf8(body)?.to_owned(), "utf-8-bom"));
+    }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Ok((text.to_owned(), "utf-8"));
+    }
+    let (cow, _, had_errors) = SHIFT_JIS.decode(bytes);
+    let encoding = if had_errors {
+        "windows-31j-lossy"
+    } else {
+        "windows-31j"
+    };
+    Ok((cow.into_owned(), encoding))
 }
 
 /// Lowercase hex SHA-256 of the input bytes.
@@ -106,8 +114,22 @@ mod tests {
     }
 
     #[test]
+    fn applies_emendations_after_decoding_and_hashes_the_raw_bytes() {
+        let bytes = "前\n一番向｜《むか》うにある".as_bytes();
+        let decoded = decode_source_bytes(bytes).unwrap();
+        assert_eq!(decoded.text, "前\n一番｜向《むか》うにある");
+        assert_eq!(decoded.raw_sha256, format!("sha256:{}", hex_sha256(bytes)));
+        let ids = decoded
+            .emendations
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["pariyori-403-ruby-bar-after-base"]);
+    }
+
+    #[test]
     fn errors_when_bom_prefix_but_body_is_not_utf8() {
-        // BOM claims UTF-8, but a lone 0xff is not valid UTF-8.
+        // A UTF-8 BOM followed by a lone 0xff, which is not valid UTF-8.
         let err = decode_source_bytes(&[0xef, 0xbb, 0xbf, 0xff]).unwrap_err();
         assert!(
             err.to_string().contains("utf-8"),

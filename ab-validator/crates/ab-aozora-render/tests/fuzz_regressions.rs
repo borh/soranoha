@@ -12,8 +12,9 @@ use ab_aozora_render::serialize;
 #[test]
 fn render_html_regressions_replay_cleanly() {
     replay_each("render_html", |src| {
-        // Mirror the fuzz target's PUA-sentinel skip: source-supplied
-        // U+E001..U+E004 falls outside the no-leak invariant.
+        // Apply the fuzz target's PUA-sentinel skip: source-supplied
+        // U+E001..U+E004 is exempt from the check that no sentinel
+        // appears in the HTML.
         if src.chars().any(|c| ALL_SENTINELS.contains(&c)) {
             return;
         }
@@ -31,9 +32,9 @@ fn render_html_regressions_replay_cleanly() {
 #[test]
 fn serialize_round_trip_regressions_replay_cleanly() {
     replay_each("serialize_round_trip", |src| {
-        // Mirror the fuzz target's PUA-sentinel skip: sources carrying
+        // Apply the fuzz target's PUA-sentinel skip: sources containing
         // U+E001..U+E004 are out of contract for I3 (the lexer
-        // consumes them as reserved markers).
+        // reads them as reserved markers).
         if src.chars().any(|c| ALL_SENTINELS.contains(&c)) {
             return;
         }
@@ -48,12 +49,17 @@ fn serialize_round_trip_regressions_replay_cleanly() {
     });
 }
 
+/// Pass the decoded UTF-8 source of every artifact under
+/// `tests/fuzz_regressions/<target>/` to `assert_one`. Panics when the
+/// directory is missing or holds no artifact.
 fn replay_each(target: &str, assert_one: impl Fn(&str)) {
     let dir = regression_dir(target);
     let artifacts = collect_artifacts(&dir);
-    if artifacts.is_empty() {
-        return;
-    }
+    assert!(
+        !artifacts.is_empty(),
+        "no regression artifacts under {}",
+        dir.display(),
+    );
     for path in artifacts {
         let path_display = path.display();
         let bytes = fs::read(&path)
@@ -86,9 +92,8 @@ fn regression_dir(target: &str) -> PathBuf {
 }
 
 fn collect_artifacts(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
+    let entries = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read regression directory {}: {e}", dir.display()));
     let mut out: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())

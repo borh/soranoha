@@ -1,7 +1,7 @@
 # AAT to Parser-IR Fixture Provenance
 
 These fixtures are minimized, schema-valid AAT documents used by the hermetic
-`ab-aat-to-parser-ir` tests. They are intentionally small enough for flake checks
+`ab-aat-to-parser-ir` tests. They are small enough for flake checks
 and require no external corpus.
 
 - `real-aozora-rs-sample.aat.json` is copied from the checked-in aozora-rs

@@ -9,6 +9,7 @@ dependencies = [
  "ab-aozora-facade",
  "ab-aozora-pipeline",
  "ab-artifact-store",
+ "ab-encoding",
  "ab-source-syntax",
  "anyhow",
  "encoding_rs",
@@ -149,6 +150,7 @@ dependencies = [
  "phf",
  "serde",
  "thiserror 2.0.18",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -177,6 +179,7 @@ dependencies = [
  "serde_json",
  "serde_stacker",
  "tempfile",
+ "toml 1.1.2+spec-1.1.0",
  "unicode-normalization",
  "zip",
 ]
@@ -185,6 +188,8 @@ dependencies = [
 name = "ab-coverage"
 version = "0.1.0"
 dependencies = [
+ "ab-aozora-encoding",
+ "ab-aozora-syntax",
  "ab-encoding",
  "ab-source-syntax",
  "anyhow",
@@ -192,10 +197,12 @@ dependencies = [
  "criterion",
  "encoding_rs",
  "flate2",
+ "jsonschema",
  "rayon",
  "regex",
  "serde",
  "serde_json",
+ "serde_stacker",
  "sha2 0.10.9",
  "toml 1.1.2+spec-1.1.0",
  "toml_edit",
@@ -222,6 +229,7 @@ dependencies = [
  "encoding_rs",
  "serde",
  "sha2 0.10.9",
+ "toml 1.1.2+spec-1.1.0",
 ]
 
 [[package]]
@@ -268,7 +276,6 @@ version = "0.1.0"
 dependencies = [
  "ab-morph-analyzers",
  "ab-plaintext",
- "bincode 1.3.3",
  "regex",
  "serde",
  "serde_json",
@@ -564,15 +571,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bincode"
@@ -2990,7 +2988,7 @@ dependencies = [
  "argmin 0.10.0",
  "argmin-math 0.4.0",
  "argmin-observer-slog 0.1.0",
- "bincode 2.0.1",
+ "bincode",
  "crossbeam-channel",
  "hashbrown 0.15.5",
 ]
@@ -3980,7 +3978,7 @@ version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d7437bd3d45100e1ed1a284187ce4e9ee863f1fdac97b7eaa614623741464c6"
 dependencies = [
- "bincode 2.0.1",
+ "bincode",
  "daachorse",
  "hashbrown 0.15.5",
 ]
@@ -3996,7 +3994,7 @@ name = "vibrato-rkyv"
 version = "0.7.7"
 source = "git+https://github.com/o24s/vibrato-rkyv.git?rev=6467251cdb945f8f0ca0c6bfd8c96036ab9d4e12#6467251cdb945f8f0ca0c6bfd8c96036ab9d4e12"
 dependencies = [
- "bincode 2.0.1",
+ "bincode",
  "bumpalo",
  "crawdad",
  "crawdad-rkyv",

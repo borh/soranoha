@@ -13,6 +13,9 @@ struct Args {
     #[arg(long)]
     aat: Option<PathBuf>,
 
+    #[arg(long, requires = "aat", conflicts_with_all = ["txt", "index"])]
+    oracle: Option<PathBuf>,
+
     #[arg(long)]
     output: Option<PathBuf>,
 
@@ -43,6 +46,19 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if let (Some(oracle), Some(aat)) = (&args.oracle, &args.aat) {
+        let request = serde_json::from_slice(&std::fs::read(oracle)?)?;
+        let document = serde_json::from_slice(&std::fs::read(aat)?)?;
+        let report = ab_check::oracle::evaluate(&request, &document)?;
+        let bytes = serde_json::to_vec_pretty(&report)?;
+        if let Some(path) = &args.output {
+            std::fs::write(path, bytes)?;
+        } else {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes)?;
+        }
+        return Ok(());
+    }
     if let (Some(txt), Some(aat)) = (&args.txt, &args.aat) {
         check_single(txt, aat, args.output.as_deref())?;
         return Ok(());

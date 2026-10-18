@@ -1,0 +1,1995 @@
+# How earlier Aozora parsers (aozora2, aozora-rs, aozora2html) and their AAT
+# adapters handled each syntax row. Historical comparison evidence; parser
+# evidence values are permalinks into each parser's upstream repository at a
+# pinned commit. Validated by
+# schemas/records/historical-parser-comparison.schema.json and by
+# SchemaValidator::validate_parser_comparison.
+
+[[row]]
+syntax_row_id = "ruby.basic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/ruby_parser.rs#L35"
+notes = "extract_ruby_base handler for ruby syntax (《》)"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L10"
+notes = "ruby fn parses 《...》; RubyDelimiter handles ｜base《...》; conversion.rs:33 builds Deco::Ruby scope"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/ruby.rb#L11"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2/src/lib.rs:138"
+notes = "adapter emits ruby AAT node (kind=\"ruby\") with reading; parser recognises via Node::Ruby"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:247"
+notes = "DecoBegin(Deco::Ruby) emits Inline::Ruby with reading via push_ruby_inline at aat.rs:356"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = ""
+
+[[row]]
+syntax_row_id = "gaiji.marker"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L52"
+notes = "Node::Gaiji variant with description, unicode, jis_code fields"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "※［＃...］ has no gaiji-specific handler; ※ is plain text and the inner command falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "normalised"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/gaiji.rb#L6"
+notes = "gaiji marker resolved by --use-unicode"
+
+[row.adapters."aozora2"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2/src/lib.rs:162"
+notes = "adapter emits gaiji AAT node from source events; parser captures structured Node::Gaiji"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:1242"
+notes = "parsed_gaiji parses ※［＃...］ from source events to emit GaijiRef; bypasses parser"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "span gaiji preserved as text, marker lost"
+
+[[row]]
+syntax_row_id = "gaiji_ruby.inline_base"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L22"
+notes = "Parser handles both ruby and gaiji nodes sequentially"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "gaiji marker not parsed; following 《...》 ruby has no kanji base so backref_to_scope yields empty span; combined construct unrecognised"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "ruby with gaiji base"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:139"
+notes = "adapter emits ruby without structured gaiji base; see orphan handling test at 230"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:790"
+notes = "structured_source_fallback_blocks_with_events emits gaiji+ruby from source events when last_gaiji_end matches ruby span"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = ""
+
+[[row]]
+syntax_row_id = "heading.basic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L42"
+notes = "Node::Midashi variant with level and style"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L94"
+notes = "sandwiched_begin handles 大見出し/中見出し/小見出し; backref handles 「ref」は大見出し"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/midashi.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "adapter only parses inline content; block-level midashi not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:256"
+notes = "Deco::AHead/BHead/CHead emit Block::Heading with level 1/2/3"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = ""
+
+[[row]]
+syntax_row_id = "emphasis.basic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L32"
+notes = "Node::Style variant with style_type for boten, bousen, bold, italic"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L97"
+notes = "sandwiched_begin parses 太字/斜体/boten/bosen; backref handles 「base」は太字"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/decorate.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "adapter only parses inline content as text; styles not projected"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:285"
+notes = "DecoBegin emits Inline::Style with stable_style_type bold/italic/boten/bosen"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = ""
+
+[[row]]
+syntax_row_id = "indentation.basic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L14"
+notes = "parse_block_start handles jisage, chitsuki patterns"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/wholeline.rs#L38"
+notes = "wholeline parses N字下げ/地付き/N字上げ; multiline parses ここからN字下げ"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/indent.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "adapter ignores block structure; no indentation in AAT output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:425"
+notes = "stable_style_type returns 'indent'/'grounded'/'low_flying' but level/magnitude not preserved in Inline::Style"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = ""
+
+[[row]]
+syntax_row_id = "warichu.basic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L110"
+notes = "Node::Warigaki with upper/lower variants"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L103"
+notes = "sandwiched_begin parses 割り注 → SandwichedBegins::Warichu → Deco::Warichu"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "warigaki nodes not projected in AAT output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:434"
+notes = "Deco::Warichu maps to style 'warichu' via stable_style_type"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "warichu content as paragraph"
+
+[[row]]
+syntax_row_id = "figure.image_caption"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/content_parser.rs#L8"
+notes = "try_parse_image handles caption/filename patterns"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L79"
+notes = "Single::Figure parses caption（path、横W×縦H）入る into Figure{path, caption, size}"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/img.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "image nodes not included in AAT paragraph output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:240"
+notes = "Retokenized::Figure flattened to Inline::gaiji using figure.to_string(); structured path/caption/size lost (per inline comment)"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "img alt preserved, caption structure lost"
+
+[[row]]
+syntax_row_id = "figure.insertion_declaration"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured. The reference implementations are not vendored, and their image handlers require a filename this construction does not supply."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured. Single::Figure parses caption（path、横W×縦H）入る, which requires the path this construction omits."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Not measured."
+
+[[row]]
+syntax_row_id = "break.page_line"
+
+[row.parsers."aozora2"]
+recognition = "unrecognised"
+evidence = ""
+notes = "No explicit page/line break handler in parser"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L60"
+notes = "改ページ/改頁/改丁/改段/改見開き parsed to Single::PageBreak/RectoBreak/ColumnBreak/SpreadBreak; ページの左右中央 parsed via wholeline.rs:41"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = "Parser does not recognize; adapter has no projection"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora-rs/src/aat.rs:238"
+notes = "All Retokenized::Break variants flush_paragraph; no node distinguishes PageBreak/RectoBreak/etc"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "br as raw HTML"
+
+[[row]]
+syntax_row_id = "layout.center_page"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes page-center markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/wholeline.rs#L41"
+notes = "wholeline parser recognizes page centering; the AAT projection does not preserve a typed center node."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes page-center markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed page-center AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora-rs/src/aat.rs:238"
+notes = "AAT projection flushes paragraphs for wholeline/single break handling and does not preserve a typed center node."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed page-center AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "ruby.double"
+
+[row.parsers."aozora2"]
+recognition = "normalised"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/ruby_parser.rs#L70"
+notes = "Parser extracts ruby base but flattens nested ruby into single node"
+
+[row.parsers."aozora-rs"]
+recognition = "normalised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/scopenizer/parser.rs#L47"
+notes = "RubyDelimiter handler emits one Deco::Ruby; second 《...》 attaches via backref to last kanji run; double-ruby relationship not represented"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/ruby.rb#L43"
+notes = "double ruby validation"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:141"
+notes = "adapter emits flat ruby; cannot represent nested structure"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:362"
+notes = "push_ruby_inline emits one ruby node per Deco::Ruby; nested ruby suppressed by contains_ruby_inline check; multiple readings flattened"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "under_ruby ignored"
+
+[[row]]
+syntax_row_id = "ruby.placement_directional"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L28"
+notes = "Node::Ruby.direction field (Right or Left)"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L60"
+notes = "backref に/は arms have no left-side ruby handler; falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/ruby.rb#L11"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:141"
+notes = "AAT ruby node has no direction field; information discarded"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:368"
+notes = "RubyPlacement::Right hard-coded throughout; no synthesis path for left placement"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "left/right placement mapped"
+
+[[row]]
+syntax_row_id = "ruby.nested_forbidden"
+
+[row.parsers."aozora2"]
+recognition = "normalised"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/ruby_parser.rs#L98"
+notes = "Parser rejects gaiji-like nodes as ruby base; normalizes to text"
+
+[row.parsers."aozora-rs"]
+recognition = "normalised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/scopenizer/parser.rs#L118"
+notes = "scopenizer accumulates BackRefFailed errors for nested ruby but does not abort; outer/inner scopes flattened into separate Deco::Ruby decos"
+
+[row.parsers."aozora2html"]
+recognition = "aborts"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/ruby.rb#L50"
+notes = "dont_use_double_ruby error"
+
+[row.adapters."aozora2"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = "Parser rejects nested structure; adapter receives normalized output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora-rs/src/aat.rs:362"
+notes = "push_ruby_inline drops outer ruby when contains_ruby_inline is true; nested structure suppressed"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = ""
+
+[[row]]
+syntax_row_id = "annotation.chuuki"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/reference_parser.rs#L59"
+notes = "try_parse_annotation_ruby handles chuuki (注記) patterns"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L83"
+notes = "backref に arm requires 「base」に「note」の注記 but matrix examples use の; aozora-rs lacks の-form chuuki handler"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L104"
+notes = "PAT_CHUUKI pattern"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "annotation ruby nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "Adapter has no synthesis path for の-form chuuki annotation"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "chuuki table used, marker emitted separately"
+
+[[row]]
+syntax_row_id = "annotation.bouki"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/command_parser.rs#L162"
+notes = "try_parse_side_note handles bouki (傍記) patterns"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L60"
+notes = "No 傍記 handler in any backref/sandwiched/multiline/wholeline/single arm"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L105"
+notes = "PAT_BOUKI pattern"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "side note nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "Adapter has no synthesis path for bouki side-gloss annotation"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "bouki markers not mapped in adapter"
+
+[[row]]
+syntax_row_id = "annotation.layout_note"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes layout/metamark notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes layout/metamark notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes layout/metamark notes; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed layout/metamark AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed layout/metamark AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed layout/metamark AAT contract exists; adapter behavior not measured."
+
+[[row]]
+syntax_row_id = "source.bracket_note"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Literal bracket-note handling has not been measured separately from text."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Literal bracket-note handling has not been measured separately from text."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Literal bracket-note handling has not been measured separately from text."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Exact visible preservation has not been measured for this adapter."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Exact visible preservation has not been measured for this adapter."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Exact visible preservation has not been measured for this adapter."
+
+[[row]]
+syntax_row_id = "source.note_label"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes label notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes label notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes label notes; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed source-label AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed source-label AAT projection has been measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed source-label AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "source.reviewed_residual_command"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes these residual commands; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes these residual commands; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes these residual commands; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed residual-command AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed residual-command AAT projection has been measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed residual-command AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "source.page_reference"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes page/cross-reference notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes page/cross-reference notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes page/cross-reference notes; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed page-reference AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed page-reference AAT projection has been measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed page-reference AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "gaiji.unicode_codepoint"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L52"
+notes = "Gaiji node unicode field stores resolved codepoint"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "U+ codepoint form inside ※［＃...］ not handled; falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "normalised"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/embed_gaiji.rb#L46"
+notes = "--use-unicode mode"
+
+[row.adapters."aozora2"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2/src/lib.rs:162"
+notes = "adapter records description; resolved/unicode from parser path is dropped (description preserved)"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:1249"
+notes = "parsed_gaiji extracts unicode field from source-event description and emits GaijiRef with kind UnicodeCodepoint"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "span gaiji with resolved text"
+
+[[row]]
+syntax_row_id = "gaiji.jis_code"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L58"
+notes = "Gaiji node jis_code field stores JIS encoding"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "JIS code form (Nth水準/N-NN-NN) inside ※［＃...］ not handled by parser"
+
+[row.parsers."aozora2html"]
+recognition = "normalised"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/embed_gaiji.rb#L44"
+notes = "--use-jisx0213 mode"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:155"
+notes = "adapter sets jis_code:null in AAT despite parser capturing it"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:1258"
+notes = "parsed_gaiji extracts plane/row/cell from source-event description and emits GaijiKind::JisCode"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "img fallback preserves alt, not code"
+
+[[row]]
+syntax_row_id = "gaiji.dakuten_katakana"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L174"
+notes = "Node::DakutenKatakana variant for voiced katakana"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "voiced katakana JIS lookup (1-07-82..85) not implemented"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/dakuten_katakana.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "dakuten katakana nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:1258"
+notes = "parsed_gaiji handles JIS-form gaiji from source events; dakuten katakana fall through this same JIS path"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "img gaiji rendered, dakuten marker lost"
+
+[[row]]
+syntax_row_id = "gaiji.un_embed"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/mod.rs#L414"
+notes = "parse_gaiji_to_node handles various GaijiResult variants"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "No structured handler for description-only gaiji; falls to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/un_embed_gaiji.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "embedded gaiji metadata not in AAT output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "synthesised"
+evidence = "adapters/aozora-rs/src/aat.rs:1238"
+notes = "gaiji_inline fallback emits GaijiRef with description and no resolved kind from source events"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "un-embed marker not mapped"
+
+[[row]]
+syntax_row_id = "glyph.variant_note"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes glyph-variant notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes glyph-variant notes; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes glyph-variant notes; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed glyph-variant AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed glyph-variant AAT projection has been measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed glyph-variant AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "iteration.kunoji"
+
+[row.parsers."aozora2"]
+recognition = "unrecognised"
+evidence = ""
+notes = "No iteration mark (々、ゝ) handler in parser"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L34"
+notes = "／ is in the fast-skip stop set but no special handler matches; ／＼ pair emitted as plain text"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L1"
+notes = "KUNOJI/NOJI constants"
+
+[row.adapters."aozora2"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = "Parser does not recognize; adapter has no projection"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "Adapter has no synthesis path for kunoji iteration mark"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "iteration marker not in adapter"
+
+[[row]]
+syntax_row_id = "accent.diacritic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L62"
+notes = "Node::Accent variant with code, name, unicode fields"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L34"
+notes = "〔...@name〕 syntax has no handler; emitted as plain text"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/accent.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "accent nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No accent table or synthesis path"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "accent as img, name in alt"
+
+[[row]]
+syntax_row_id = "accent.dotted_letter"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes dotted-letter markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes dotted-letter markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes dotted-letter markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed dotted-letter AAT projection has been measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed dotted-letter AAT projection has been measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed dotted-letter AAT projection has been measured."
+
+[[row]]
+syntax_row_id = "kunten.kaeriten"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L128"
+notes = "Node::Kaeriten variant for classical kaeriten marks"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L65"
+notes = "Bare 一/レ/上/etc inside ［＃...］ parsed as Single::Kundoku, but ［＃返り点一］ form does not match (返り点 prefix unhandled); falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/kaeriten.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "kaeriten nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:237"
+notes = "Even when bare Kundoku tokens are produced, adapter discards Retokenized::Kunten; for the matrix's 返り点 form there is no synthesis path"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "sub.kaeriten maps to style_type=kaeriten and is preserved in ruby base_content when embedded in ruby bases"
+
+[[row]]
+syntax_row_id = "kunten.okurigana"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L131"
+notes = "Node::Okurigana variant for kunten okurigana"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L78"
+notes = "Bare ［＃（読）］ would parse as Single::Okurigana, but ［＃訓点送り仮名「読」］ form not handled"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/okurigana.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "okurigana nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:237"
+notes = "Retokenized::Okurigana discarded by adapter; no synthesis for 訓点送り仮名 marker form"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "sup.okurigana unmapped"
+
+[[row]]
+syntax_row_id = "heading.dogyo"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/midashi.rs#L1"
+notes = "MidashiStyle::Dogyo variant for in-line headings"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L94"
+notes = "sandwiched_begin matches 大/中/小見出し but not 同行N見出し prefixed form"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline_midashi.rb#L1"
+notes = "dogyo midashi"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "midashi styles not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for dogyo heading variant"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "div.o-midashi/naka-midashi/ko-midashi"
+
+[[row]]
+syntax_row_id = "heading.mado"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/midashi.rs#L1"
+notes = "MidashiStyle::Mado variant for windowed headings"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L94"
+notes = "sandwiched_begin matches 大/中/小見出し but not 窓N見出し prefixed form"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline_midashi.rb#L1"
+notes = "mado midashi"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "mado heading styles not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for mado heading variant"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "div mado class mapping"
+
+[[row]]
+syntax_row_id = "decoration.boten"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/style.rs#L6"
+notes = "StyleType enum includes boten, white sesame dot, etc."
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/definition.rs#L31"
+notes = "boten parser recognises sesame/circle/triangle/etc variants; sandwiched + backref both consume them"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/decorate.rb#L6"
+notes = "boten marker"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "boten style nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:424"
+notes = "stable_style_type collapses Deco::Boten(BotenKind) to flat 'boten' string; sesame/circle/triangle variant lost"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "em class mapped to style"
+
+[[row]]
+syntax_row_id = "decoration.bousen"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/style.rs#L29"
+notes = "StyleType variants for underline/overline (solid, double, dotted, dashed, wave)"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/definition.rs#L50"
+notes = "bosen parser recognises plain/double/chain/dashed/wavy variants"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/decorate.rb#L6"
+notes = "bousen marker"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "bousen style nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:423"
+notes = "stable_style_type collapses Deco::Bosen(BosenKind) to flat 'bosen'; line variant lost"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "em underline mapped"
+
+[[row]]
+syntax_row_id = "decoration.bold_italic"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/style.rs#L43"
+notes = "StyleType::Bold and StyleType::Italic variants"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L97"
+notes = "［＃太字］/［＃斜体］ parse as SandwichedBegins::BoldBegin/ItalicBegin; backref handles 「base」は太字"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/decorate.rb#L6"
+notes = "bold/italic markers"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:376"
+notes = "block-scoped bold/italic are projected to style nodes; inline backref coverage is incomplete"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:421"
+notes = "stable_style_type maps Bold→bold, Italic→italic"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "em futoji/shatai"
+
+[[row]]
+syntax_row_id = "decoration.typeface"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes typeface markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes typeface markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes typeface markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No reviewed typeface-style AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No reviewed typeface-style AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No reviewed typeface-style AAT contract exists; adapter behavior not measured."
+
+[[row]]
+syntax_row_id = "decoration.font_size"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L118"
+notes = "Node::FontSize with Dai/Sho and level (1-5)"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L138"
+notes = "smaller_block_begins/bigger_block_begins parse N段階小さな文字/N段階大きな文字; sandwiched and backref forms handled too"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/font_size.rb#L1"
+notes = "font size markers"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:376"
+notes = "block-scoped font size is projected with direction and level; inline/backref coverage is incomplete"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:431"
+notes = "stable_style_type returns 'smaller'/'bigger' but level (1-N) is dropped"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "em dai/sho classes"
+
+[[row]]
+syntax_row_id = "decoration.keigakomi"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L92"
+notes = "Node::Keigakomi variant"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L156"
+notes = "multiline_begins lacks 罫囲み handler; sandwiched_begin lacks it too; falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/keigakomi.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "keigakomi nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for keigakomi"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "keigakomi as em, structure lost"
+
+[[row]]
+syntax_row_id = "decoration.direction_override"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L98"
+notes = "Node::Yokogumi variant for horizontal text override"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L83"
+notes = "backref に arm only handles bosen/boten directly or 「note」の注記; ［＃「ref」の左に傍点］ form not matched"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L49"
+notes = "PAT_DIRECTION pattern"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "yokogumi nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No directional placement attribute on style nodes"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "direction override not mapped"
+
+[[row]]
+syntax_row_id = "indentation.jisage_block"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L11"
+notes = "parse_block_start with jisage type and width parameter"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L105"
+notes = "block_indent_begins parses ここからN字下げ to MultiLineBegins::BlockIndent(level); ここで字下げ終わり closes"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline_jisage.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "block-level indentation not in AAT output"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:425"
+notes = "Inline::Style 'indent' emitted but level magnitude dropped"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "div.jisage_N mapped"
+
+[[row]]
+syntax_row_id = "indentation.jisage_oneline"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L115"
+notes = "try_parse_line_indent for line-level jisage"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/wholeline.rs#L38"
+notes = "wholeline expects optional 天から prefix then digit; ［＃この行N字下げ］ form does not match (この行 prefix unhandled)"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/oneline_jisage.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "line indentation not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for one-line jisage"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "span jisage inline"
+
+[[row]]
+syntax_row_id = "indentation.chitsuki"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L125"
+notes = "try_parse_line_chitsuki handles baseline and offset patterns"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L120"
+notes = "chitsuki_begins parses ここから地付き; chiyose_block_begins parses ここから地からN字上げ; wholeline handles single-line forms"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/chitsuki.rb#L8"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "chitsuki baseline nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora-rs/src/aat.rs:427"
+notes = "Deco::Grounded → 'grounded' style; Deco::LowFlying(level) → 'low_flying' (level lost but type preserved)"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "chitsuki alignment preserved in style"
+
+[[row]]
+syntax_row_id = "layout.cross_line_head_alignment"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "source-authority inventory"
+notes = "Not audited independently."
+
+[[row]]
+syntax_row_id = "indentation.jizume"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/block.rs#L13"
+notes = "BlockType::Jizume for character compression"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L150"
+notes = "kerning_begins expects N字詰め (digit then 字詰め); matrix form 字詰めN (字詰め then digit) does not match"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/jizume.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "jizume block nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for matrix-form jizume"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "jizume letter-spacing not mapped"
+
+[[row]]
+syntax_row_id = "indentation.burasage"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L48"
+notes = "try_parse_burasage for hanging indent with wrap width"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L108"
+notes = "block_indent_begins handles N字下げ、折り返してM字下げ → MultiLineBegins::HangingIndent(N,M)"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/oneline_indent.rb#L1"
+notes = "burasage via jisage"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "burasage block nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:426"
+notes = "Deco::Hanging((fst,snd)) flattens to 'hanging' style; magnitude pair dropped"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "burasage div not recognized"
+
+[[row]]
+syntax_row_id = "layout.yokogumi"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L98"
+notes = "Node::Yokogumi variant for horizontal text direction"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L156"
+notes = "multiline_begins lacks 横組み handler; sandwiched 横組み matches plain ［＃横組み］ but not the matrix-pattern ［＃ここから横組み］ or 「ABC」の横組み (の-form unsupported)"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline_yokogumi.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "yokogumi nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for ここから/の-form yokogumi"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "div.yokogumi layout"
+
+[[row]]
+syntax_row_id = "layout.tcy"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L86"
+notes = "Node::Tcy (vertical-to-horizontal) variant"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L67"
+notes = "backref は arm includes 縦中横 but matrix uses の (「12」の縦中横); pattern unrecognised"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L52"
+notes = "TCY_COMMAND"
+
+[row.adapters."aozora2"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2/src/lib.rs:376"
+notes = "block-scoped TCY is projected; の-form inline coverage is incomplete"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for の-form TCY"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "tcy marker not in adapter"
+
+[[row]]
+syntax_row_id = "layout.rotation"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "corpus:cards/000207/files/42284_ruby_16271.zip::kyojinnikki.txt:143"
+notes = "The corpus occurrence is recorded; parser-specific behavior has not been measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "corpus:cards/000207/files/42284_ruby_16271.zip::kyojinnikki.txt:143"
+notes = "The corpus occurrence is recorded; parser-specific behavior has not been measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "corpus:cards/000207/files/42284_ruby_16271.zip::kyojinnikki.txt:143"
+notes = "The corpus occurrence is recorded; parser-specific behavior has not been measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "adapters/aozora2/src/lib.rs"
+notes = "Rotation handling has not been measured for this adapter."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for rotation."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "Rotation handling has not been measured for this adapter."
+
+[[row]]
+syntax_row_id = "layout.multicolumn"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes multi-column markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes multi-column markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes multi-column markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "This adapter has not been measured against the column-count scope contract."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "This adapter has not been measured against the column-count scope contract."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "This adapter has not been measured against the column-count scope contract."
+
+[[row]]
+syntax_row_id = "structure.quote_block"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes quote/letter block markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes quote/letter block markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes quote/letter block markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed quote/letter block AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed quote/letter block AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed quote/letter block AAT contract exists; adapter behavior not measured."
+
+[[row]]
+syntax_row_id = "structure.table"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes table markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes table markers; parser-specific typed behavior not measured."
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "Source inventory observes table markers; parser-specific typed behavior not measured."
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed table AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed table AAT contract exists; adapter behavior not measured."
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+evidence = "abc:ab-validator/docs/superpowers/reports/2026-07-04-source-authority-representability.md"
+notes = "No typed table AAT contract exists; adapter behavior not measured."
+
+[[row]]
+syntax_row_id = "warigaki.parenthetical"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L110"
+notes = "Node::Warigaki with upper/lower division"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/sandwiched.rs#L103"
+notes = "sandwiched_begin recognises 割り注 (warichu) but not 割書 (warigaki); these are distinct"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L56"
+notes = "WARIGAKI_COMMAND"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "warigaki nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for warigaki parenthetical aside"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "warigaki as em, marker lost"
+
+[[row]]
+syntax_row_id = "caption.inline"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L104"
+notes = "Node::Caption variant"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L60"
+notes = "backref requires は/に; matrix の-form 「desc」のキャプション does not match any handler"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/inline_caption.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "caption nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for inline caption"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "caption in paragraph, structure lost"
+
+[[row]]
+syntax_row_id = "caption.block"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/parser/block_parser.rs#L107"
+notes = "BlockStart/BlockEnd for caption blocks"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/multiline.rs#L156"
+notes = "multiline_begins lacks キャプション handler; ［＃ここからキャプション］ falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/multiline_caption.rb#L1"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "block-level captions not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No synthesis path for block caption scope"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "caption block not distinguished"
+
+[[row]]
+syntax_row_id = "figure.image_inline"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L72"
+notes = "Node::Img with filename, alt, width, height"
+
+[row.parsers."aozora-rs"]
+recognition = "parsed"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L49"
+notes = "Single::Figure parser handles caption（path、横W×縦H）入る form; size optional"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/img.rb#L6"
+notes = "inline image"
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "image nodes not projected to AAT paragraph content"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora-rs/src/aat.rs:240"
+notes = "Retokenized::Figure flattened to gaiji using figure.to_string(); structured src/dim/alt fields lost (per inline comment on line 244)"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "lossy"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "img alt preserved, inline context lost"
+
+[[row]]
+syntax_row_id = "editor_note.unmapped"
+
+[row.parsers."aozora2"]
+recognition = "parsed"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L151"
+notes = "Node::Note variant for editorial annotations"
+
+[row.parsers."aozora-rs"]
+recognition = "normalised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/parser.rs#L23"
+notes = "Unmatched ［＃...］ commands captured as Note::Unknown(raw_str); scopenizer.rs:114 ignores them"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html/tag/editor_note.rb#L6"
+notes = ""
+
+[row.adapters."aozora2"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2/src/lib.rs:53"
+notes = "note nodes not projected to AAT"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora-rs/src/aat.rs:453"
+notes = "strip_cross_node_commands removes any leftover ［＃...］ text from inline content; Note::Unknown produces no AAT node"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "span.notes unmapped, command syntax lost"
+
+[[row]]
+syntax_row_id = "reference.frontref"
+
+[row.parsers."aozora2"]
+recognition = "normalised"
+evidence = "https://github.com/takahashim/aozora2/blob/e7765e7b8237b7bae42482141291fe05c3fb2a10/crates/aozora-core/src/node/mod.rs#L163"
+notes = "UnresolvedReference nodes indicate forward references not yet resolved"
+
+[row.parsers."aozora-rs"]
+recognition = "unrecognised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/backref.rs#L83"
+notes = "backref に/は arms do not handle 「ref」に「ref2」の傍点 (two-target form); falls through to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L102"
+notes = "PAT_FRONTREF pattern"
+
+[row.adapters."aozora2"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = "Parser emits unresolved marker; adapter has no projection for references"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "not_applicable"
+evidence = "adapters/aozora-rs/src/aat.rs:1"
+notes = "No reference resolution or synthesis path"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "anchor kept, link structure lost"
+
+[[row]]
+syntax_row_id = "break.line_explicit"
+
+[row.parsers."aozora2"]
+recognition = "unrecognised"
+evidence = ""
+notes = "No explicit newline/break command handler in parser"
+
+[row.parsers."aozora-rs"]
+recognition = "normalised"
+evidence = "https://github.com/kinoko0518/aozora-rs/blob/d4b3b7a35fa7d6bb9632c647a84592d4452a45db/aozora-rs/aozora-rs-core/src/tokenizer/note/single.rs#L60"
+notes = "Single only recognises 改ページ/改頁/改丁/改段/改見開き; 改行 is not among its alternatives; ［＃改行］ falls to Note::Unknown"
+
+[row.parsers."aozora2html"]
+recognition = "parsed"
+evidence = "https://github.com/aozorahack/aozora2html/blob/9ca5395fef8d5e96c44a0b0d7f4bba27013e66a4/lib/aozora2html.rb#L1"
+notes = "explicit line break"
+
+[row.adapters."aozora2"]
+aat_fidelity = "not_applicable"
+evidence = ""
+notes = "Parser does not recognize; adapter has no projection"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "dropped"
+evidence = "adapters/aozora-rs/src/aat.rs:453"
+notes = "strip_cross_node_commands strips the marker; no Inline::Break emitted for 改行"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "preserved"
+evidence = "adapters/aozora2html/src/lib.rs"
+notes = "br flushes paragraph"
+
+[[row]]
+syntax_row_id = "source.translation_scope"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"
+
+[[row]]
+syntax_row_id = "structure.formula"
+
+[row.parsers."aozora2"]
+recognition = "unknown"
+
+[row.parsers."aozora-rs"]
+recognition = "unknown"
+
+[row.parsers."aozora2html"]
+recognition = "unknown"
+
+[row.adapters."aozora2"]
+aat_fidelity = "unknown"
+
+[row.adapters."aozora-rs"]
+aat_fidelity = "unknown"
+
+[row.adapters."aozora2html"]
+aat_fidelity = "unknown"

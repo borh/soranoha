@@ -19,13 +19,13 @@ cat > "$out_dir/corpus/pass/cards/000001/files/1.txt" <<'TXT'
 ［＃ルビは「？符」に掛かる］
 ［＃］：入力者注　主に外字の説明や、傍点の位置の指定
 ［＃…］
+［＃
+[#fixture raw preserved]
 ［＃本文終わり］
 宛先東京市麹町区三番町六四
 発信地千葉県夷隅郡御宿上野屋旅館
 ［＃地付き］（fixture provenance）
 底本：「fixture」
-［＃
-[#fixture raw preserved]
 TXT
 
 cat > "$out_dir/pass-index.json" <<'JSON'
@@ -140,8 +140,6 @@ plaintext_projection = "base_only"
 comparison_projection = "base_only"
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.typed_no_tei"

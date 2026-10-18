@@ -10,15 +10,14 @@
 /// Sentinel kind tag.
 ///
 /// Each variant matches a Private-Use-Area codepoint reserved by the
-/// lexer. The discriminant doubles as the codepoint, so the
-/// `as_char` / `from_char` projections compile to a noop / range
-/// check respectively.
+/// lexer. The discriminant is the codepoint, so the `as_char` /
+/// `from_char` projections compile to a no-op / range check
+/// respectively.
 ///
-/// `#[repr(u32)]` pins the in-memory layout to the codepoint scalar,
-/// matching Rust's `char` ABI for round-tripping cost. The variant
-/// values stay inside the PUA range (`0xE000..=0xF8FF`); pinning the
-/// 4-byte layout instead of `u8` lets the enum carry the codepoint
-/// directly without a lookup table.
+/// `#[repr(u32)]` gives the enum the 4-byte layout of the codepoint
+/// scalar, the same as Rust's `char`. The variant values lie inside the
+/// PUA range (`0xE000..=0xF8FF`); a 4-byte representation, unlike `u8`,
+/// holds the codepoint itself, so no lookup table is needed.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Sentinel {
@@ -33,8 +32,8 @@ pub enum Sentinel {
 }
 
 impl Sentinel {
-    /// All sentinel kinds in declaration order. Useful for collision
-    /// scans, exhaustive iteration, and round-trip property tests.
+    /// All sentinel kinds in declaration order, for collision scans,
+    /// exhaustive iteration, and round-trip property tests.
     pub const ALL: [Self; 4] = [
         Self::Inline,
         Self::BlockLeaf,
@@ -42,18 +41,17 @@ impl Sentinel {
         Self::BlockClose,
     ];
 
-    /// Codepoint for this sentinel kind. Compiles to a constant: the
-    /// `#[repr(u32)]` discriminant is the codepoint scalar, so the
-    /// transmute via `char::from_u32_unchecked` is a no-op.
+    /// Codepoint for this sentinel kind. The `#[repr(u32)]`
+    /// discriminant is the codepoint scalar.
     ///
     /// # Panics
     ///
     /// Panics if a discriminant is not a valid Unicode scalar value.
     #[must_use]
     pub const fn as_char(self) -> char {
-        // SAFETY-equivalent reasoning: each discriminant is a valid
-        // scalar value (PUA codepoint), so `char::from_u32` returns
-        // `Some` for every variant.
+        // Each discriminant is a PUA codepoint and therefore a valid
+        // scalar value, so `char::from_u32` returns `Some` for every
+        // variant.
         match char::from_u32(self as u32) {
             Some(c) => c,
             None => panic!("Sentinel discriminant must be a valid Unicode scalar"),
@@ -131,8 +129,8 @@ mod tests {
 
     #[test]
     fn all_sentinels_constant_lists_every_named_constant() {
-        // Defensive: if a new sentinel is ever added we want this test
-        // to fail until ALL_SENTINELS is updated too.
+        // The length and membership assertions together require
+        // ALL_SENTINELS to list exactly the four named constants.
         assert_eq!(ALL_SENTINELS.len(), 4);
         assert!(ALL_SENTINELS.contains(&INLINE_SENTINEL));
         assert!(ALL_SENTINELS.contains(&BLOCK_LEAF_SENTINEL));

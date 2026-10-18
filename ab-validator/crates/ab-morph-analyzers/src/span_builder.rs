@@ -138,7 +138,7 @@ fn find_sequential_span(
     }
 }
 
-/// Per-analysis summary of how [`remap_spans`] carried morphemes back to
+/// Per-analysis summary of how [`remap_spans`] mapped morphemes back to
 /// original-text coordinates.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RemapReport {
@@ -154,10 +154,9 @@ pub struct RemapReport {
 /// Remap each morpheme's `byte_span`, `char_span`, and
 /// `surface` from normalized-text coordinates to original-text coordinates.
 ///
-/// This honors the spec invariant #2: after remapping, `byte_span`,
-/// `char_span`, and `surface` of every morpheme refer to the ORIGINAL source
-/// text (the same text the analyzer's caller will validate against), not the
-/// normalized view that was actually tokenized.
+/// After remapping, `byte_span`, `char_span`, and `surface` of every morpheme
+/// refer to the original source text (the same text the analyzer's caller
+/// validates against), not the normalized view that was tokenized.
 ///
 /// A morpheme whose normalized span crosses an annotation boundary where the
 /// byte length changed (the analyzer segmented a rewritten span differently
@@ -165,13 +164,13 @@ pub struct RemapReport {
 /// original span; if that overlaps the preceding morpheme's span the two are
 /// folded into one morpheme (surface and spans from the original text, features
 /// of the first). Both cases are counted in the returned [`RemapReport`] and
-/// recorded as an `ortho_remap` warning on the analysis, so the projected
-/// tokenization is never silently coarser than the analyzer's.
+/// recorded as an `ortho_remap` warning on the analysis, so a projected
+/// tokenization coarser than the analyzer's is always reported.
 ///
 /// # Errors
 ///
 /// Returns [`OrthoMapError::UncoveredOffset`] if a morpheme byte offset does
-/// not map to any entry — this should not happen for well-formed inputs and is
+/// not map to any entry; well-formed inputs do not produce this, and it is
 /// treated as a hard diagnostic. In that case the analysis is left untouched
 /// (still in normalized coordinates).
 pub fn remap_spans(
@@ -234,7 +233,7 @@ pub fn remap_spans(
     Ok(report)
 }
 
-/// Rebuild `surface` and `char_span` from the ORIGINAL text at the morpheme's
+/// Rebuild `surface` and `char_span` from the original text at the morpheme's
 /// (already remapped) `byte_span`, so the morpheme reports the original-doc
 /// substring rather than the normalized-text substring (e.g. "ヴ" instead of
 /// "う゛"), in original-doc char coordinates.
@@ -384,11 +383,11 @@ mod tests {
 
     #[test]
     fn reported_spans_cover_whitespace_leading_surfaces() {
-        // The full-corpus qkana failure class: a token whose surface begins
-        // with whitespace but contains non-whitespace cannot be re-matched
-        // sequentially (the walk skips the source whitespace first), but a
-        // reported span is authoritative. Vibrato reports spans for exactly
-        // this reason.
+        // Failure observed in the full-corpus qkana run: a token whose surface
+        // begins with whitespace but contains non-whitespace cannot be
+        // re-matched sequentially (the walk skips the source whitespace first),
+        // but a reported span is authoritative. The Vibrato adapter reports
+        // spans for this case.
         let source = "あ　　～\n";
         let tokens = vec![
             RawToken {
@@ -415,8 +414,8 @@ mod tests {
     fn sequential_matching_rejects_whitespace_leading_surfaces() {
         // Companion to the test above: the same token stream expressed as
         // emitted surfaces (no reported spans) fails, because the
-        // whitespace-skip heuristic consumes the source whitespace the
-        // surface itself claims.
+        // whitespace-skip heuristic consumes the source whitespace that begins
+        // the surface.
         let err = build_analysis_from_tokens(
             "test".to_owned(),
             "t6".to_owned(),

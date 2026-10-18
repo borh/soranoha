@@ -1,13 +1,15 @@
 use std::{collections::BTreeSet, fmt};
 
-use crate::matrix::{CoverageMatrix, Recognition, RepresentabilityStatus, Row, RowAatFidelity};
+use crate::matrix::{
+    CoverageMatrix, ParserComparison, ParserComparisonRow, Recognition, RepresentabilityStatus,
+    Row, RowAatFidelity,
+};
 
-/// Options for `SchemaValidator::validate`.
+/// Options for `SchemaValidator::validate_parser_comparison`.
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationOptions {
     /// If true, `recognition = "unknown"` and `aat_fidelity = "unknown"` are
-    /// allowed  where rows are filled
-    /// parser-by-parser).
+    /// allowed, for records whose rows are filled parser by parser.
     pub allow_unknown: bool,
     /// If true, every row must declare cells for these parser/adapter ids.
     pub required_keys: &'static [&'static str],
@@ -39,43 +41,55 @@ pub struct SchemaValidator;
 
 impl SchemaValidator {
     #[must_use]
-    pub fn validate(matrix: &CoverageMatrix, opts: ValidationOptions) -> Vec<RowError> {
+    pub fn validate(matrix: &CoverageMatrix) -> Vec<RowError> {
         let mut errors = Vec::new();
-        let row_ids = matrix
-            .rows()
-            .iter()
-            .map(|row| row.id.as_str())
-            .collect::<BTreeSet<_>>();
+        let row_ids = row_ids(matrix);
         for row in matrix.rows() {
-            validate_row(row, opts, &row_ids, &mut errors);
+            validate_row(row, &row_ids, &mut errors);
+        }
+        errors
+    }
+
+    #[must_use]
+    pub fn validate_parser_comparison(
+        comparison: &ParserComparison,
+        matrix: &CoverageMatrix,
+        opts: ValidationOptions,
+    ) -> Vec<RowError> {
+        let mut errors = Vec::new();
+        let row_ids = row_ids(matrix);
+        for row in &comparison.row {
+            if !row_ids.contains(row.syntax_row_id.as_str()) {
+                errors.push(RowError {
+                    row_id: row.syntax_row_id.clone(),
+                    message: "parser comparison names an unknown syntax row".into(),
+                });
+            }
+            validate_comparison_row(row, opts, &mut errors);
         }
         errors
     }
 }
 
-fn validate_row(
-    row: &Row,
+fn row_ids(matrix: &CoverageMatrix) -> BTreeSet<&str> {
+    matrix.rows().iter().map(|row| row.id.as_str()).collect()
+}
+
+fn validate_comparison_row(
+    row: &ParserComparisonRow,
     opts: ValidationOptions,
-    row_ids: &BTreeSet<&str>,
     errors: &mut Vec<RowError>,
 ) {
-    if row.id.is_empty() {
-        errors.push(RowError {
-            row_id: "<missing id>".into(),
-            message: "row id must be non-empty".into(),
-        });
-    }
-
     for key in opts.required_keys {
         if !row.parsers.contains_key(*key) {
             errors.push(RowError {
-                row_id: row.id.clone(),
+                row_id: row.syntax_row_id.clone(),
                 message: format!("missing parsers.{key} sub-table"),
             });
         }
         if !row.adapters.contains_key(*key) {
             errors.push(RowError {
-                row_id: row.id.clone(),
+                row_id: row.syntax_row_id.clone(),
                 message: format!("missing adapters.{key} sub-table"),
             });
         }
@@ -84,7 +98,7 @@ fn validate_row(
     for (parser_id, cell) in &row.parsers {
         if !opts.allow_unknown && cell.recognition.is_unknown() {
             errors.push(RowError {
-                row_id: row.id.clone(),
+                row_id: row.syntax_row_id.clone(),
                 message: format!(
                     "parsers.{parser_id}.recognition = \"unknown\" is not allowed in strict mode"
                 ),
@@ -92,7 +106,7 @@ fn validate_row(
         }
         if let Some(adapter_cell) = row.adapters.get(parser_id) {
             check_combination(
-                row,
+                &row.syntax_row_id,
                 parser_id,
                 cell.recognition,
                 adapter_cell.aat_fidelity,
@@ -105,12 +119,21 @@ fn validate_row(
     for (adapter_id, cell) in &row.adapters {
         if !opts.allow_unknown && cell.aat_fidelity.is_unknown() {
             errors.push(RowError {
-                row_id: row.id.clone(),
+                row_id: row.syntax_row_id.clone(),
                 message: format!(
                     "adapters.{adapter_id}.aat_fidelity = \"unknown\" is not allowed in strict mode"
                 ),
             });
         }
+    }
+}
+
+fn validate_row(row: &Row, row_ids: &BTreeSet<&str>, errors: &mut Vec<RowError>) {
+    if row.id.is_empty() {
+        errors.push(RowError {
+            row_id: "<missing id>".into(),
+            message: "row id must be non-empty".into(),
+        });
     }
 
     if let Some(prev) = &row.corpus_prevalence
@@ -191,14 +214,14 @@ fn has_tei_projection(row: &Row) -> bool {
 }
 
 fn check_combination(
-    row: &Row,
+    row_id: &str,
     id: &str,
     recognition: Recognition,
     fidelity: RowAatFidelity,
     opts: ValidationOptions,
     errors: &mut Vec<RowError>,
 ) {
-    // While placeholders are tolerated, skip the cross-field rules.
+    // When placeholders are allowed, skip the cross-field rules.
     if opts.allow_unknown && (recognition.is_unknown() || fidelity.is_unknown()) {
         return;
     }
@@ -218,7 +241,7 @@ fn check_combination(
 
     if invalid {
         errors.push(RowError {
-            row_id: row.id.clone(),
+            row_id: row_id.to_owned(),
             message: format!(
                 "forbidden combination for {id}: recognition = \"{}\" + aat_fidelity = \"{}\"",
                 recognition.as_str(),

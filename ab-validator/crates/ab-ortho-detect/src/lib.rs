@@ -1,7 +1,6 @@
 pub mod features;
 pub mod heuristic;
 pub mod historical;
-pub mod ml;
 pub mod policy;
 pub mod script;
 pub mod types;
@@ -24,7 +23,7 @@ pub struct OrthoToken {
     pub pos2: Option<String>,
 }
 
-/// Abstract first-pass tokenizer used by [`HeuristicV1`] for the
+/// Abstract first-pass tokenizer used by [`heuristic::HeuristicV1`] for the
 /// proper-noun guard. Defined here so `ab-ortho-detect` does not depend
 /// on any concrete analyzer crate; adapters implement this in their own
 /// crates (e.g. `ab-morph-analyzers` impls it for `VibratoAnalyzer`).

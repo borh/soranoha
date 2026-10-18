@@ -1,18 +1,17 @@
 //! Invariants for `DirectiveKind::Unknown`: the catch-all that
 //! the classify stage emits when no recogniser claimed an `［＃…］` annotation.
 //!
-//! The catch-all ensures every bracket annotation is
-//! claimed *somewhere* in the AST so the Tier-A canary (no bare `［＃`
-//! survives to HTML) holds end-to-end. The property tests here pin the
-//! four invariants the catch-all must satisfy:
+//! The catch-all places every bracket annotation in the AST, so the
+//! Tier-A canary (no bare `［＃` reaches HTML) holds end-to-end. The
+//! property tests here pin the four invariants the catch-all must
+//! satisfy:
 //!
 //! 1. **panic-free**: lex must not panic on any input that exercises
 //!    the catch-all path, including pathological / unbalanced bracket
 //!    shapes.
 //! 2. **non-empty raw bytes**: every emitted `Directive` node carries
-//!    a `NonEmptyStr` raw payload (the type system enforces it, and
-//!    this runtime invariant ensures a future refactor that loosens
-//!    the type fails if it emits empty annotations).
+//!    a `NonEmptyStr` raw payload (the type enforces it; the runtime
+//!    check fails if a change to the type permits empty annotations).
 //! 3. **lex → serialise → lex round-trip preserves Directive count**:
 //!    re-parsing the serialised output must produce the same number of
 //!    Directive nodes (any kind, including Unknown). A regression that
@@ -21,10 +20,10 @@
 //! 4. **Tier-A canary holds on well-formed input**: when the lexer
 //!    emits no diagnostics for the source, the serialised text must
 //!    not contain a bare `［＃` (i.e. one not paired with a closing
-//!    `］`). On *malformed* inputs the serialiser legitimately
-//!    round-trips the source's own asymmetry: Tier-A is an HTML-side
-//!    contract, and the serialise side honours it only when the
-//!    lexer accepts the input cleanly.
+//!    `］`). On malformed inputs the serialiser reproduces the source's
+//!    unbalanced brackets: Tier-A is an HTML-side contract, and the
+//!    serialised text satisfies it only when the lexer emits no
+//!    diagnostics.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::serialize;
@@ -33,7 +32,7 @@ use ab_notation_strategies::config::default_config;
 use ab_notation_strategies::generators::*;
 use proptest::prelude::*;
 
-/// Walk every registry hit and pull out the `Directive` nodes.
+/// Count the `Directive` nodes in the registry.
 ///
 /// Annotations are emitted on `Sentinel::Inline` positions, so they
 /// surface as `NodeRef::Inline(Node::Directive(_))`. Container
@@ -47,10 +46,8 @@ fn count_annotations(out: &ab_aozora_pipeline::LexOutput) -> usize {
         .count()
 }
 
-/// Whether the registry contains at least one annotation. Used as a
-/// guard for properties that only make sense when the input actually
-/// triggered the catch-all path; properties that hold *unconditionally*
-/// don't need this guard.
+/// Whether the registry contains at least one annotation. Guards the
+/// properties that apply only when the input reached the catch-all path.
 fn has_annotation(out: &ab_aozora_pipeline::LexOutput) -> bool {
     out.registry
         .iter_sorted()
@@ -58,10 +55,9 @@ fn has_annotation(out: &ab_aozora_pipeline::LexOutput) -> bool {
 }
 
 /// Tier-A canary on a string: no bare `［＃` may appear without a
-/// corresponding `］` after it on the same line. Not a perfect
-/// scanner; it exists to catch regressions where the
-/// serialiser drops a closing bracket, but a bare `［＃` reaching
-/// the output is itself a Tier-A violation regardless of context.
+/// corresponding `］` after it on the same line. The check is
+/// approximate; it detects a serialiser that drops a closing bracket,
+/// and a bare `［＃` in the output is a Tier-A violation in any context.
 fn assert_no_bare_open_bracket(serialised: &str) {
     let mut cursor = 0_usize;
     while let Some(rel) = serialised[cursor..].find("［＃") {
@@ -78,12 +74,10 @@ fn assert_no_bare_open_bracket(serialised: &str) {
 fn assert_annotation_invariants(source: &str) {
     let out_a = lex(source);
 
-    // (2) Every annotation's raw payload is non-empty (the type system
-    // already says so via `NonEmptyStr`, but we cross-check at runtime
-    // so the property fails loudly if a future refactor weakens the
-    // invariant). Also verify each annotation's raw bytes are valid
-    // UTF-8: true by construction (it's `&str`), but an `is_empty`
-    // probe on every annotation closes the loop on (2).
+    // (2) Every annotation's raw payload is non-empty. `NonEmptyStr`
+    // enforces this; the runtime check fails if a change to the type
+    // weakens the invariant. The raw bytes are valid UTF-8 by
+    // construction (`&str`).
     for (_, nr) in out_a.registry.iter_sorted() {
         if let NodeRef::Inline(Node::Directive(a)) = nr {
             assert!(
@@ -104,19 +98,18 @@ fn assert_annotation_invariants(source: &str) {
          source: {source:?}\nserialised: {serialised:?}"
     );
 
-    // (4) Tier-A canary on serialised text: no bare `［＃` leaks
-    // out *when the lexer accepts the input cleanly*. On malformed
-    // inputs (those that emit diagnostics), the serialiser round-trips
-    // the user's own asymmetry; Tier-A is an HTML-side contract and
-    // does not bind the serialise path on malformed source.
+    // (4) Tier-A canary on serialised text: no bare `［＃` appears when
+    // the lexer emits no diagnostics. On malformed inputs (those that
+    // emit diagnostics), the serialiser reproduces the source's
+    // unbalanced brackets; Tier-A is an HTML-side contract and does not
+    // apply to the serialise path on malformed source.
     if out_a.diagnostics.is_empty() {
         assert_no_bare_open_bracket(&serialised);
     }
 
     // (1) panic-free is implicit: reaching this point means lex did not
-    // panic. We add an explicit reachability marker for inputs that
-    // actually exercised the catch-all so a future generator change
-    // that stops producing Unknown annotations is visible.
+    // panic. The check below runs only for inputs that reached the
+    // catch-all.
     if has_annotation(&out_a) {
         // Stability check: re-lexing the annotated output must still observe
         // at least one annotation (catch-all is stable across passes).
@@ -128,9 +121,7 @@ fn assert_annotation_invariants(source: &str) {
     }
 }
 
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
+// Fixed regression inputs.
 
 #[test]
 fn empty_input_has_no_annotations() {
@@ -145,7 +136,7 @@ fn known_annotations_round_trip() {
 
 #[test]
 fn unknown_annotations_round_trip() {
-    // Definitely not in the recogniser table: falls through to
+    // Absent from the recogniser table: falls through to
     // `DirectiveKind::Unknown`.
     assert_annotation_invariants("text［＃this is a wholly novel marker］more");
     assert_annotation_invariants("［＃random text 1234］");
@@ -167,40 +158,39 @@ fn directive_before_repeated_explicit_ruby_markers_round_trips() {
 proptest! {
     #![proptest_config(default_config())]
 
-    /// Workhorse: Aozora-shaped fragments must satisfy all four
-    /// invariants regardless of which annotation kinds get exercised.
+    /// Aozora-shaped fragments must satisfy all four invariants for every
+    /// annotation kind they contain.
     #[test]
     fn aozora_fragment_annotations_are_well_formed(s in aozora_fragment(120)) {
         assert_annotation_invariants(&s);
     }
 
-    /// Pathological: unbalanced and runaway bracket shapes are the
-    /// ones that drive the catch-all hardest. If the catch-all panics
-    /// or drops annotations on the round-trip, this property fails
-    /// under shrinking with a minimal repro.
+    /// Pathological: unbalanced and unterminated bracket shapes, which
+    /// exercise the catch-all most heavily. If the catch-all panics or
+    /// drops annotations on the round-trip, this property fails and
+    /// proptest shrinks the input to a minimal case.
     #[test]
     fn pathological_input_annotations_are_well_formed(s in pathological_aozora(120)) {
         assert_annotation_invariants(&s);
     }
 
     /// Unicode adversarial: combining marks, RTL overrides, PUA
-    /// codepoints, full-width bracket variants. Cross-checks that the
-    /// catch-all does not misbehave when the annotation body itself
-    /// contains adversarial Unicode.
+    /// codepoints, full-width bracket variants. Checks the four
+    /// invariants when the annotation body contains adversarial Unicode.
     #[test]
     fn unicode_adversarial_annotations_are_well_formed(s in unicode_adversarial()) {
         assert_annotation_invariants(&s);
     }
 }
 
-/// An unpaired `［` before a block directive used to suppress a later
-/// directive: the newline expiry reclaimed the stray bracket and, because a
-/// stack pops only from the top, took the live multi-line directive above it
-/// as well. The serializer then padded the block directive with blank lines,
-/// which separated the stray bracket from what followed, so the second parse
-/// saw the later directive after all and the count drifted. The expiry now
-/// leaves a directive with newline allowance alone, which makes both parses
-/// agree with what the same text does without the stray bracket.
+/// An unpaired `［` before a block directive must not suppress a later
+/// directive. The newline expiry leaves a directive with newline allowance
+/// on the stack: reclaiming the stray bracket would pop the live multi-line
+/// directive above it as well, because a stack pops only from the top. The
+/// serializer pads the block directive with blank lines, which separates the
+/// stray bracket from what follows, so a suppressed directive would reappear
+/// in the second parse and the directive counts would differ. Both parses
+/// agree with the parse of the same text without the stray bracket.
 #[test]
 fn unpaired_bracket_before_a_block_directive_round_trips() {
     assert_annotation_invariants("［［＃ここから字下げ］［＃\n］");

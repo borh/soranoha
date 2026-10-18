@@ -1,28 +1,28 @@
-//! Owned-AST incremental re-parse engine: the sole incremental path.
+//! Owned-AST incremental re-parse engine, the only incremental path.
 //!
-//! This engine caches the owned lex output's store-free region-find tables as a
+//! The engine caches the owned lex output's store-free region-find tables as a
 //! structure-sharing [`PieceSeq`] and, on an edit, re-lexes only the minimal
 //! balanced region around the edit before splicing that sequence.
 //!
-//! This module hosts the **region finder** ([`minimal_balanced_region`]), the
+//! This module contains the **region finder** ([`minimal_balanced_region`]), the
 //! structure-sharing [`PieceSeq`], the **diagnostics-only splice**
-//! ([`reparse_incremental_diagnostics_only`]), and the shared "where is it safe
-//! to cut the document" cut helpers. The splice is the production incremental
-//! path: it is re-exported from the crate root as the **unstable**
-//! [`crate::reparse_incremental_diagnostics_only`] and consumed by the LSP's
-//! debounced diagnostics. It is internal-unit-tested and proven
-//! byte-identical to a full re-parse by the `corpus_incremental_merge`
-//! differential gate.
+//! ([`reparse_incremental_diagnostics_only`]), and the shared helpers that select
+//! the offsets at which the document may be cut. The splice is the production
+//! incremental path: the crate root re-exports it as the unstable
+//! [`crate::reparse_incremental_diagnostics_only`], and the LSP's debounced
+//! diagnostics call it. Unit tests in this module and the
+//! `corpus_incremental_merge` differential test check that its output is
+//! byte-identical to a full re-parse.
 //!
 //! # Stability
 //!
 //! The incremental re-parse API is pre-1.0 and not subject to semver
 //! until the crate reaches v0.5.0.
 //!
-//! All coordinates here are **sanitized-source** byte offsets (the space every
+//! All coordinates here are sanitized-source byte offsets (the space every
 //! [`LexOutput::source_span`](crate::SourceNode::source_span) and
-//! [`LexOutput::pairs`](crate::LexOutput::pairs) indexes); the
-//! raw↔sanitized bridge is handled externally. A cut is admitted only
+//! [`LexOutput::pairs`](crate::LexOutput::pairs) indexes); callers convert
+//! between raw and sanitized offsets. A cut is admitted only
 //! where the block-container depth is zero and no resolved delimiter pair
 //! straddles it (see [`structurally_safe`]).
 
@@ -35,17 +35,18 @@ use crate::{
     CoupledKind, Diagnostic, Document, LexOutput, Node, NodeRef, PairLink, SourceNode, SpliceSafety,
 };
 
-/// Read-only byte view of a **sanitized** buffer the incremental engine cuts,
+/// Read-only byte view of a sanitized buffer the incremental engine cuts,
 /// scans, and re-lexes against.
 ///
-/// Abstracted so the engine is generic over the backing store. The primary
-/// implementation is `&str` (the cached `String`'s slice); callers can also implement
-/// it over rope structures without copying to a flat `String` per edit.
+/// The engine is generic over this trait so that the backing store can vary. The
+/// primary implementation is `&str` (the cached `String`'s slice); callers can also
+/// implement it over rope structures without copying to a flat `String` per edit.
 ///
-/// Every method mirrors the corresponding `str` operation exactly: [`byte`] is
+/// Every method has the semantics of the corresponding `str` operation: [`byte`] is
 /// `as_bytes()[i]`, [`slice`] is `str::get` (returns `None` off-bounds or on a
-/// non-char-boundary range). [`byte`] is the monotone scan's hot probe and must
-/// be amortized `O(1)` (a direct index for `&str`; a moving cursor for a rope).
+/// non-char-boundary range). The monotone scan calls [`byte`] once per scanned
+/// byte, so it must be amortized `O(1)` (a direct index for `&str`; a moving
+/// cursor for a rope).
 ///
 /// [`byte`]: SanitizedSrc::byte
 /// [`slice`]: SanitizedSrc::slice
@@ -66,23 +67,21 @@ pub trait SanitizedSrc {
     /// range is off-bounds or splits a UTF-8 code point.
     fn slice(&self, range: Range<usize>) -> Option<Cow<'_, str>>;
 
-    /// Debug-only check that an incremental edit changed **only** bytes inside
+    /// Debug-only check that an incremental edit changed only bytes inside
     /// `edit_old`: the prefix `[0, edit_old.start)` and the suffix after the
     /// edit must be byte-identical between `self` (the cached sanitized buffer)
     /// and `new` (the edited one, whose suffix starts at `new_edit_end`).
     ///
-    /// This is the incremental splice's caller precondition, not a runtime gate.
-    /// `splice_prologue` used to enforce it here with an unconditional
-    /// prefix/suffix `memcmp`; that was deleted primarily for **time**, not
-    /// defence: on a rope source comparing `[0, edit_old.start)` is
-    /// `O(prefix) = O(doc)` per edit (a `RopeSlice` equality still walks
-    /// `O(min len)`), which is incompatible with the per-keystroke hot path. The
-    /// default is a deliberate no-op (a backing store with no cheap external
-    /// witness pays nothing); the `&str` impl restores the exact comparison
-    /// under `debug_assert!` so the `&str`-backed proptests and corpus
-    /// differential keep pinning it in debug builds, and a rope impl can add a
-    /// no-alloc `byte_slice == byte_slice` probe. Gated `#[cfg(debug_assertions)]`
-    /// so the method and its sole call vanish from release builds together.
+    /// This is the incremental splice's caller precondition; release builds do
+    /// not check it. On a rope source, comparing `[0, edit_old.start)` costs
+    /// `O(prefix) = O(doc)` per edit (a `RopeSlice` equality walks
+    /// `O(min len)`), which exceeds the per-keystroke budget. The default
+    /// implementation is a no-op, so a backing store without a cheap comparison
+    /// performs none; the `&str` impl runs the exact comparison under
+    /// `debug_assert!`, which the `&str`-backed proptests and corpus differential
+    /// exercise in debug builds, and a rope impl can add a no-alloc
+    /// `byte_slice == byte_slice` probe. `#[cfg(debug_assertions)]` removes the
+    /// method and its only call from release builds.
     #[cfg(debug_assertions)]
     fn debug_assert_unchanged_outside(
         &self,
@@ -117,13 +116,10 @@ impl SanitizedSrc for &str {
         edit_old: Range<usize>,
         new_edit_end: usize,
     ) {
-        // The exact prefix/suffix comparison `splice_prologue` used to run
-        // unconditionally as a `memcmp`, now a debug-only restatement of the
-        // caller precondition: every byte outside `edit_old` is identical
-        // between the cached buffer (`self`) and the edited one (`new`).
-        // Byte-for-byte the deleted `slice(..)`-based check, kept
-        // `O(prefix + suffix)` for the `&str` corpus gate and proptests, which
-        // exercise this branch in debug.
+        // Caller precondition: every byte outside `edit_old` is identical
+        // between the cached buffer (`self`) and the edited one (`new`). The
+        // check is `O(prefix + suffix)`; the `&str` corpus differential and
+        // proptests run it in debug builds.
         debug_assert!(
             self.slice(0..edit_old.start) == new.slice(0..edit_old.start)
                 && self.slice(edit_old.end..self.len()) == new.slice(new_edit_end..new.len()),
@@ -134,7 +130,7 @@ impl SanitizedSrc for &str {
     }
 }
 
-/// The store-free spliceable base of the cached parse the **diagnostics-only**
+/// The store-free spliceable base of the cached parse the diagnostics-only
 /// incremental path reads.
 ///
 /// Consumed by [`crate::reparse_incremental_diagnostics_only`] and the shared
@@ -142,8 +138,8 @@ impl SanitizedSrc for &str {
 /// unified, incrementally-maintained representation of the three region-find
 /// tables (`source_nodes` / `pairs` / `diagnostics`).
 ///
-/// The LSP's per-keystroke hot path keeps only these two fields of the prior
-/// parse (its `DiagBase`) and never materialises the full [`LexOutput`].
+/// The LSP's per-keystroke path keeps only these two fields of the prior
+/// parse (its `DiagBase`) and does not materialise the full [`LexOutput`].
 /// Both are store-independent: the prologue's region-find
 /// (`minimal_balanced_region` / [`PieceSeq::structurally_safe`] / the coupling
 /// guard) and the diagnostics splice read only `sanitized` and the
@@ -154,10 +150,9 @@ impl SanitizedSrc for &str {
 /// tables by [`PieceSeq::from_contiguous`]).
 ///
 /// Generic over the sanitized byte source `S` (a [`SanitizedSrc`]); `S` defaults
-/// to `&'a str` so every existing `DiagBaseRef { sanitized: &x, .. }` literal and
-/// [`DiagBaseRef::from_cached`] construction keeps compiling. `Copy` is dropped
-/// (a future rope source holds a cursor and cannot be `Copy`), so the engine
-/// takes the base by reference.
+/// to `&'a str`, the type of `DiagBaseRef { sanitized: &x, .. }` literals and of
+/// [`DiagBaseRef::from_cached`]. The type is not `Copy`, because a rope source
+/// holds a cursor and cannot be `Copy`, so the engine takes the base by reference.
 #[derive(Debug, Clone)]
 pub struct DiagBaseRef<'a, S: SanitizedSrc = &'a str> {
     /// The cached sanitized buffer (a sanitize fixed point), the coordinate
@@ -177,7 +172,7 @@ impl<'a> DiagBaseRef<'a> {
     ///
     /// The caller owns the [`PieceSeq`] (so it can outlive this borrow). The
     /// `pieces` need not be `cached`'s own freshly-built sequence: the multi-edit
-    /// base threads an *accumulated* sequence whose flattened tables are
+    /// base threads an accumulated sequence whose flattened tables are
     /// byte-identical to `cached`'s (the [`PieceSeq`] ≡ contiguous invariant), so
     /// the prologue's region-find reads either interchangeably.
     #[must_use]
@@ -193,33 +188,33 @@ impl<'a> DiagBaseRef<'a> {
 /// the prefix-sum recurrence each `PieceIndex` wraps once per backing table.
 ///
 /// Crate-internal (`pub(crate)`) so the in-crate byte-identity oracle proptests
-/// can build one directly; in production it is no longer owned per parse.
+/// can build one directly; production code does not own one per parse.
 /// [`PieceSeq`] holds one `PieceIndex` (an `Arc`-shared `RegionIndex` over a
 /// backing table) per piece and answers every query through it, so the LSP
-/// `DiagBase` keeps a [`PieceSeq`] and splices it incrementally instead of
-/// rebuilding this each edit.
+/// `DiagBase` keeps a [`PieceSeq`] and splices it incrementally rather than
+/// rebuilding a `RegionIndex` on each edit.
 ///
 /// Built in a single `O(N + P + D)` pass (plus small `O(P log P + D log D)`
 /// sorts of the few pairs/diagnostics) over the three store-free tables the
-/// prologue reads, matching the `O(N)` cost the base copy already pays each edit.
-/// Replaces two `O(doc)` per-edit scans with `O(log n)`/`O(1)` lookups:
+/// prologue reads, which equals the `O(N)` cost of the per-edit base copy.
+/// The index answers two queries that a linear oracle answers with `O(doc)` scans:
 ///
-/// - the whole-buffer `candidate_boundaries` byte scan plus its `O(#cuts · N)`
-///   `structurally_safe` calls become an outward scan with `O(log n)` safety
-///   probes (see `RegionIndex::structurally_safe`);
-/// - the diagnostic-straddle scan becomes two `O(log n)` probes
+/// - instead of a whole-buffer `candidate_boundaries` byte scan plus
+///   `O(#cuts · N)` `structurally_safe` calls, an outward scan with `O(log n)`
+///   safety probes (see `RegionIndex::structurally_safe`);
+/// - instead of a diagnostic-straddle scan, two `O(log n)` probes
 ///   (`RegionIndex::diag_straddles`).
 ///
-/// (The whole-document-scoped / unbalanced-delimiter / coupling guards are no
-/// longer `RegionIndex`'s: they moved to per-piece `PieceFlags`, because a split
-/// piece needs the OR over its *live range*, not the whole backing table.)
+/// The whole-document-scoped, unbalanced-delimiter, and coupling guards are in
+/// per-piece `PieceFlags`, because a split piece needs the OR over its *live
+/// range*, not over the whole backing table.
 ///
-/// Every recurrence mirrors its linear oracle exactly; the
-/// `corpus_incremental_merge` differential gate plus the oracle proptests pin
+/// Every recurrence computes the same result as its linear oracle; the
+/// `corpus_incremental_merge` differential test and the oracle proptests check
 /// byte-identity.
 #[derive(Debug)]
 pub(crate) struct RegionIndex {
-    /// Clamped LIFO block-container depth **after** each `source_node`
+    /// Clamped LIFO block-container depth after each `source_node`
     /// (parallel to `source_nodes`, which is sorted by `source_span.start`).
     depth_prefix: Vec<i32>,
     /// Running max of `source_span.end` over `source_nodes[0..=i]`: the
@@ -243,8 +238,8 @@ pub(crate) struct RegionIndex {
 }
 
 impl RegionIndex {
-    /// Build the index in one pass over the store-free tables. Mirrors the
-    /// linear recurrence of `structurally_safe` exactly.
+    /// Build the index in one pass over the store-free tables, using the
+    /// linear recurrence of `structurally_safe`.
     #[must_use]
     pub(crate) fn build(
         nodes: &[SourceNode],
@@ -323,43 +318,30 @@ impl RegionIndex {
     }
 }
 
-// ============================================================================
-// Structure-sharing piece-sequence for incremental region-find.
-//
-// `PieceSeq` is the unified, truly-incremental representation of the three
-// store-free region-find tables (`source_nodes` / `pairs` / `diagnostics`),
-// keyed by the engine's *structurally-safe cuts*: the only places
-// `splice_prologue` ever divides a document.
-// The `PieceSeq ≡ contiguous` adversarial proptest (see `oracle_proptests`)
-// pins every query byte-identical to the linear oracle over the flattened
-// tables across multi-edit splice runs.
-// ============================================================================
-
-/// Per-piece acceleration over an immutable *backing* table triple: the
+/// Per-piece acceleration over an immutable backing table triple: the
 /// [`RegionIndex`] recurrence built once per backing table
 /// and shared (behind an [`Arc`]) by every piece that views a slice of it,
 /// never rebuilt after a cut.
 ///
-/// `PieceIndex` is the cut-geometry specialisation the incremental design calls
-/// for. Because every piece boundary is a structurally-safe cut (block-container
+/// Because every piece boundary is a structurally-safe cut (block-container
 /// depth zero; no node span, resolved pair, or diagnostic straddling it), the
-/// whole-backing recurrence answers each *within-piece* query directly: the
-/// boundary invariant makes the absolute and piece-local values coincide for the
+/// whole-backing recurrence answers each within-piece query directly: under
+/// this boundary invariant the absolute and piece-local values are equal for the
 /// depth / span-straddle / pair-straddle / diagnostic-straddle predicates (read
-/// at the backing-local offset the owning [`Piece`]'s `san_shift` derives).
-/// Wrapping [`RegionIndex`] keeps the build recurrence and the query primitives a
-/// single proven implementation; the wrapper exists only to name the per-piece
-/// role.
+/// at the backing-local offset derived from the owning [`Piece`]'s `san_shift`).
+/// `PieceIndex` wraps [`RegionIndex`] without adding behaviour, so the build
+/// recurrence and the query primitives have one implementation; the wrapper
+/// type identifies the per-piece role.
 #[derive(Debug)]
 struct PieceIndex {
     /// The reused whole-backing acceleration. Every query reads its prefix-sum
-    /// arrays at a *backing-local* offset (`queried_offset - piece.san_shift`).
+    /// arrays at a backing-local offset (`queried_offset - piece.san_shift`).
     region: RegionIndex,
 }
 
 impl PieceIndex {
     /// Build the index once over a backing `nodes` / `pairs` / `diagnostics`
-    /// triple. Verbatim [`RegionIndex::build`]; see it for the recurrence.
+    /// triple with [`RegionIndex::build`]; see it for the recurrence.
     fn build(nodes: &[SourceNode], pairs: &[PairLink], diagnostics: &[Diagnostic]) -> Self {
         Self {
             region: RegionIndex::build(nodes, pairs, diagnostics),
@@ -403,10 +385,10 @@ impl PieceFlags {
 /// Views `nodes[n_range]` / `pairs[p_range]` / `diags[d_range]` of a backing
 /// triple shared (via [`Arc`]) with every sibling piece cut from the same
 /// parse, plus the [`Arc`]-shared [`PieceIndex`] over that whole backing.
-/// `san_data` is the piece's byte span in **backing** (original-parse)
-/// sanitized coordinates; `san_shift` lifts backing coordinates to the piece's
-/// **current** position in the live document: a per-piece scalar so a suffix
-/// shift is `O(1)`, never a per-node rewrite. It is added on read; comparisons
+/// `san_data` is the piece's byte span in backing (original-parse)
+/// sanitized coordinates; `san_shift` maps backing coordinates to the piece's
+/// **current** position in the live document. It is a per-piece scalar, so a
+/// suffix shift is `O(1)` rather than a per-node rewrite. It is added on read; comparisons
 /// against the index run in backing-local coordinates. A `split` is `O(log len)`
 /// (range endpoints by binary search; data shared).
 #[derive(Debug, Clone)]
@@ -433,15 +415,15 @@ struct Piece {
     /// `len` boundary of a globally-unbalanced document (an unclosed
     /// `［＃ここから…］`).
     ///
-    /// The global depth is `base_depth + local_depth` with **no clamping**, which
-    /// is true only because of two reachability facts, not for an arbitrary
-    /// balanced sequence: (a) a re-lexed piece is *strictly* Dyck-balanced
-    /// ([`relexed_is_balanced`] gates the prologue), so it has no leading stray
+    /// The global depth is `base_depth + local_depth` with no clamping. This
+    /// holds because of two reachability facts, not for an arbitrary balanced
+    /// sequence: (a) a re-lexed piece is strictly Dyck-balanced (the prologue
+    /// requires [`relexed_is_balanced`]), so it has no leading stray
     /// `BlockClose` that would clamp locally but not globally; and (b) a piece
     /// with `base_depth > 0` is never [`narrow`](Self::narrow)ed, because
-    /// [`PieceSeq::structurally_safe`] gates every cut to a `base_depth == 0`
+    /// [`PieceSeq::structurally_safe`] admits a cut only in a `base_depth == 0`
     /// piece. The invariant checked is `base_depth + local == 0`
-    /// iff both summands are zero; exact nonzero depths never feed a query.
+    /// iff both summands are zero; no query reads an exact nonzero depth.
     base_depth: i32,
     /// Region-find guard predicates over this piece's live range.
     flags: PieceFlags,
@@ -491,7 +473,7 @@ impl Piece {
 
 /// Cumulative aggregate at a piece boundary: the current-coordinate sanitized
 /// offset at the piece's start, plus the running node count. A [`PieceSeq`]'s
-/// `cum` holds one per piece *plus a trailing sentinel* whose `base_san` is the
+/// `cum` holds one per piece plus a trailing sentinel whose `base_san` is the
 /// document's total sanitized length and whose `cum_count` is the total node
 /// count.
 #[derive(Debug, Clone, Copy)]
@@ -504,23 +486,26 @@ struct PieceAgg {
 
 /// A structure-sharing sequence of pieces, keyed by structurally-safe cuts.
 ///
-/// The unified, truly incremental representation of a parse's three
-/// store-free region-find tables (`source_nodes`, `pairs`, `diagnostics`).
+/// The incremental representation of a parse's three store-free region-find
+/// tables (`source_nodes`, `pairs`, `diagnostics`). Structurally-safe cuts are
+/// the only offsets at which `splice_prologue` divides a document.
 ///
-/// The incremental representation the production diagnostics-only
-/// engine splices on every edit: the per-keystroke hot path replaces the
-/// per-edit whole-table re-materialization + `RegionIndex::build` with
-/// `O(region + log #pieces)` piece splicing.
+/// The production diagnostics-only engine splices this sequence on every edit
+/// in `O(region + log #pieces)`, rather than re-materialising the whole tables
+/// and calling `RegionIndex::build` per edit.
 ///
 /// Each piece views a slice of an immutable backing table (the cached parse or a
 /// region re-lex) through a shared [`Arc`]; a [`splice`](Self::splice) divides
 /// the pieces overlapping the edited region at its structurally-safe boundaries
 /// (`O(1)` view adjustments), drops the middle, inserts one piece for the
 /// re-lex, and shifts the suffix by a per-piece scalar. Backing tables store
-/// each entry's *original* absolute offset; reads add the piece's scalar shift,
+/// each entry's original absolute offset; reads add the piece's scalar shift,
 /// which keeps every piece's index byte-identical to a freshly built
 /// `RegionIndex`. Queries binary-search the piece containing the offset
-/// (`O(log #pieces)`) and answer from its shared index.
+/// (`O(log #pieces)`) and answer from its shared index. The `PieceSeq ≡
+/// contiguous` adversarial proptest in `oracle_proptests` checks every query
+/// against the linear oracle over the flattened tables across multi-edit splice
+/// runs.
 #[derive(Debug, Clone)]
 pub struct PieceSeq {
     /// Current-order pieces; non-empty (`from_contiguous` makes one, `splice`
@@ -566,10 +551,10 @@ impl PieceSeq {
     }
 
     /// Materialise the three current-coordinate tables (each piece's entries
-    /// shifted by its scalar). Reproduces a contiguous parse's tables exactly:
+    /// shifted by its scalar). The result equals a contiguous parse's tables:
     /// `source_nodes` ascending by `start`, `pairs` ascending by `close.end`,
-    /// and `diagnostics` position-sorted. The bridge by which the corpus
-    /// differential gate keeps reading the engine `&str`-first.
+    /// and `diagnostics` position-sorted. The `&str`-backed corpus differential
+    /// test reads the engine's tables through this method.
     #[must_use]
     pub fn flatten(&self) -> (Vec<SourceNode>, Vec<PairLink>, Vec<Diagnostic>) {
         let total = self.cum.last().map_or(0, |agg| agg.cum_count) as usize;
@@ -593,18 +578,18 @@ impl PieceSeq {
         (nodes, pairs, self.collect_diagnostics())
     }
 
-    /// Materialise just the diagnostics (each piece's entries shifted by its
+    /// Materialise only the diagnostics (each piece's entries shifted by its
     /// scalar), in piece order. Because pieces are ascending and each piece's
-    /// diagnostics are position-sorted with **none straddling a piece boundary**,
-    /// the concatenation is already globally ascending by span start (`O(D)`): it
-    /// walks only the diagnostic ranges, not the `O(N)` node table, so the
-    /// per-keystroke hot path flattens diagnostics for the LSP surface without
+    /// diagnostics are position-sorted with none straddling a piece boundary,
+    /// the concatenation is globally ascending by span start (`O(D)`). It
+    /// reads only the diagnostic ranges, not the `O(N)` node table, so the
+    /// per-keystroke path flattens diagnostics for the LSP without
     /// re-materialising the maintained `source_nodes`/`pairs`.
     ///
     /// The LSP re-sorts the result by its full positional order (`(start, end)`
-    /// then a debug-string tiebreak), so two diagnostics sharing a span order
-    /// identically to a full parse; the in-piece `(start, end)` sort already
-    /// agrees except for that tiebreak.
+    /// then a debug-string tiebreak), so two diagnostics sharing a span are
+    /// ordered as in a full parse; the in-piece `(start, end)` sort gives the
+    /// same order except for that tiebreak.
     #[must_use]
     pub fn collect_diagnostics(&self) -> Vec<Diagnostic> {
         let mut diags = Vec::new();
@@ -620,20 +605,20 @@ impl PieceSeq {
     /// both endpoints safe cuts) with one piece built from the region re-lex's
     /// tables, shifting the suffix by the sanitized length delta `d_san`. The
     /// new sequence's flattened tables equal a full re-parse's whenever the
-    /// caller's `region` / re-lex satisfy the engine's splice preconditions
-    /// (exactly what `splice_prologue` guarantees). `O(region + #pieces)`.
+    /// caller's `region` / re-lex satisfy the engine's splice preconditions,
+    /// which `splice_prologue` establishes. `O(region + #pieces)`.
     ///
-    /// Backing tables are immutable, so the prefix and untouched suffix pieces
-    /// are carried by `Arc` share; only the pieces straddling a region endpoint
-    /// are re-viewed (`narrow`), and the suffix moves by a per-piece scalar
-    /// `san_shift`: no per-node coordinate rewrite.
+    /// Backing tables are immutable, so the prefix and unedited suffix pieces
+    /// share their `Arc` backing; only the pieces straddling a region endpoint
+    /// are re-viewed (`narrow`), and the suffix moves by the per-piece scalar
+    /// `san_shift` without a per-node coordinate rewrite.
     ///
     /// # Panics
     ///
     /// Panics if the region geometry is internally inconsistent: `region.end <
     /// region.start`, or `d_san` deletes more than the region's bytes (a
-    /// negative re-lexed length). Both are caller-precondition violations the
-    /// engine never produces.
+    /// negative re-lexed length). Both are caller-precondition violations that
+    /// the engine does not produce.
     #[must_use]
     #[allow(
         clippy::too_many_arguments,
@@ -707,8 +692,8 @@ impl PieceSeq {
     #[must_use]
     pub fn structurally_safe(&self, off: u32) -> bool {
         let piece = &self.pieces[self.find_piece(off)];
-        // A piece is internally balanced, so its local depth never dips below
-        // zero; the global depth `base_depth + local_depth` is therefore zero
+        // A piece is internally balanced, so its local depth is never negative;
+        // the global depth `base_depth + local_depth` is therefore zero
         // iff both are. A nonzero `base_depth` means the cut sits inside an open
         // container, so no offset in the piece is safe.
         piece.base_depth == 0
@@ -741,15 +726,15 @@ impl PieceSeq {
     /// `RegionIndex` diagnostic-straddle query.
     ///
     /// Delegates to the containing piece's shared `RegionIndex`, which scans
-    /// its *whole* backing diagnostic table, including diagnostics now dropped
-    /// into sibling pieces. That is exact only under the invariant **no
-    /// diagnostic straddles a structurally-safe cut** (the same invariant that
-    /// lets [`flatten`](Self::flatten) partition `d_range` cleanly, and that
-    /// `splice_prologue` enforces by declining any edit whose cached diagnostic
-    /// straddles a region boundary). A future diagnostic class that spanned a
-    /// blank-line cut would break it; the `PieceSeq ≡ contiguous` proptest pins
-    /// today's classes, and the `debug_assert` in `finalize` fails loudly if a
-    /// live diagnostic ever straddles a piece boundary.
+    /// its whole backing diagnostic table, including diagnostics that belong
+    /// to sibling pieces after a split. The result is exact only under the
+    /// invariant no diagnostic straddles a structurally-safe cut (the same
+    /// invariant under which [`flatten`](Self::flatten) partitions `d_range`
+    /// cleanly, and which `splice_prologue` enforces by declining any edit whose
+    /// cached diagnostic straddles a region boundary). A diagnostic class that
+    /// spans a blank-line cut would violate it; the `PieceSeq ≡ contiguous`
+    /// proptest covers the existing classes, and the `debug_assert` in `finalize`
+    /// panics if a live diagnostic straddles a piece boundary.
     #[must_use]
     pub fn diag_straddles(&self, b: u32) -> bool {
         if b > self.total_san_len() {
@@ -800,17 +785,16 @@ impl PieceSeq {
     }
 
     /// Collapse the accumulated pieces back into a single backing triple,
-    /// freeing the dead middle ranges that spliced-away pieces still retain in
-    /// their shared `Arc` backing, and bounding piece count + per-query cost.
+    /// releasing the unreferenced middle ranges that spliced-out pieces retain in
+    /// their shared `Arc` backing, and bounding piece count and per-query cost.
     ///
     /// `O(N)`: flatten the live tables and build one fresh `PieceIndex` without
     /// re-lexing or re-sanitizing. The result is query-equivalent to `self` by
     /// construction: [`flatten`](Self::flatten) reproduces the live tables and
     /// [`from_contiguous`](Self::from_contiguous) over them answers every query
-    /// identically (the same `PieceSeq ≡ contiguous` proptest that pins the
-    /// single-piece base case). This is the structure-only replacement for the
-    /// LSP cache's periodic forced full re-parse: the incremental base
-    /// never re-derives itself from source, it compacts.
+    /// identically (checked by the same `PieceSeq ≡ contiguous` proptest that
+    /// covers the single-piece base case). The LSP cache compacts its
+    /// incremental base periodically and does not re-parse it from source.
     #[must_use]
     pub fn compact(&self) -> Self {
         let (nodes, pairs, diags) = self.flatten();
@@ -825,7 +809,7 @@ impl PieceSeq {
     }
 
     /// Index of the piece to answer a query at current-coordinate offset `off`
-    /// (`O(log #pieces)`): the piece **ending** at `off` when `off` is a piece
+    /// (`O(log #pieces)`): the piece ending at `off` when `off` is a piece
     /// boundary (so its backing holds every node with `start < off`), else the
     /// piece strictly containing `off`; for `off == 0`, the first piece.
     ///
@@ -834,8 +818,8 @@ impl PieceSeq {
     /// container-depth zero (an unclosed `［＃ここから…］` leaves depth nonzero at
     /// `len`), so the depth at `off` must be read from the piece that accumulated
     /// the preceding nodes, and an empty boundary piece (a zero-width re-lex) is
-    /// skipped. The pair/diagnostic/normalized answers are identical from either
-    /// side of a safe cut, so this choice is uniformly correct.
+    /// skipped. The pair, diagnostic, and normalized answers are identical on
+    /// either side of a safe cut, so this selection does not change them.
     fn find_piece(&self, off: u32) -> usize {
         let i = self.cum.partition_point(|agg| agg.base_san < off);
         i.saturating_sub(1).min(self.pieces.len() - 1)
@@ -849,11 +833,11 @@ impl PieceSeq {
         let mut base_san: u32 = 0;
         let mut cum_count: u32 = 0;
         for piece in &pieces {
-            // The safe-cut invariant `diag_straddles` relies on: every live
+            // The safe-cut invariant `diag_straddles` requires: every live
             // diagnostic lies wholly inside its piece's backing span (none
-            // straddles a piece boundary). Checked once per construction so a
-            // future spanning-diagnostic class fails loudly here instead of
-            // silently diverging from `flatten` at query time.
+            // straddles a piece boundary). Checked once per construction, so a
+            // diagnostic class that spans a cut panics here rather than giving
+            // query results that differ from `flatten`.
             #[cfg(debug_assertions)]
             for d in &piece.diags[piece.d_range.start..piece.d_range.end] {
                 debug_assert!(
@@ -886,7 +870,7 @@ fn to_backing(off: u32, san_shift: i64) -> u32 {
     shift_u32(off, -san_shift).expect("a queried offset lies at or after its piece's san base")
 }
 
-/// A re-lexed region's backing sanitized length: the old region length shifted
+/// A re-lexed region's backing sanitized length: the pre-edit region length shifted
 /// by `d_san`. Never negative for an edit the engine admits.
 fn backing_len(region_len: u32, d_san: i64) -> u32 {
     shift_u32(region_len, d_san).expect("a re-lexed region length is non-negative")
@@ -903,21 +887,22 @@ fn sort_diags(diags: &mut [Diagnostic]) {
     });
 }
 
-/// The result of a successful **diagnostics-only** incremental splice.
+/// The result of a successful diagnostics-only incremental splice.
 ///
 /// The incremental API (see module-level Stability section).
 ///
 /// Returned by [`crate::reparse_incremental_diagnostics_only`]: the spliced
 /// [`PieceSeq`] (the next edit's region-find base, from which the LSP also
 /// flattens this edit's diagnostics: [`PieceSeq::collect_diagnostics`]), plus
-/// the reuse accounting the LSP reports as cache hits/misses. No
+/// the reuse counts the LSP reports as cache hits/misses. The splice builds no
 /// [`LexOutput`] (no `normalized`, `registry`, `container_pairs`, or
-/// [`crate::NodeStore`]) is built; that is the goal of the hot path.
+/// [`crate::NodeStore`]).
 ///
-/// The re-lexed region's piece carries the **re-lexed** sub-output's
-/// `NodeRef` handles verbatim (no store graft). This is sound only because
+/// The re-lexed region's piece carries the re-lexed sub-output's
+/// `NodeRef` handles unchanged (no store graft). This is sound only because
 /// the next edit's region-find reads those handles store-independently (see
-/// [`crate::reparse_incremental_diagnostics_only`] for the pinned invariant).
+/// [`crate::reparse_incremental_diagnostics_only`] for the invariant and its
+/// test).
 #[derive(Debug)]
 pub struct DiagSplice {
     /// The spliced region-find representation (prefix pieces shared by `Arc` ++
@@ -947,8 +932,8 @@ struct Prologue {
     d_san: i64,
 }
 
-/// Whether `s` carries document structure that an incremental segment re-lex
-/// must not silently absorb: a line terminator (could move a blank-line
+/// Whether `s` contains document structure whose effect an incremental segment
+/// re-lex cannot bound to the segment: a line terminator (could move a blank-line
 /// boundary) or a directive bracket `［` / `］` (could open or close a container
 /// or forward reference, both whole-document-scoped concerns: corrupting a
 /// `［…］` close re-pairs inline containers document-wide).
@@ -962,8 +947,8 @@ pub(crate) fn carries_structure(s: &str) -> bool {
 /// Editing inside a directive can re-pair an inline container (e.g. a warichu
 /// `［＃割り注］…［＃割り注終わり］`) document-wide without emitting any local
 /// diagnostic: corrupting the `［＃割り注終わり］` close leaves the warichu open,
-/// so text far downstream is reinterpreted. The isolated region re-lex cannot
-/// see the matching open in the reused prefix, so the splice must decline.
+/// so text far downstream is reinterpreted. The matching open is in the reused
+/// prefix, outside the isolated region re-lex input, so the splice must decline.
 pub(crate) fn inside_directive(src: &str, pos: usize) -> bool {
     let head = &src[..pos.min(src.len())];
     let Some(open) = head.rfind('［') else {
@@ -982,10 +967,10 @@ pub(crate) fn shift_u32(value: u32, delta: i64) -> Option<u32> {
 /// Whether a diagnostic's classification depends on the whole document and so
 /// cannot be reliably computed from an isolated segment.
 ///
-/// These are the parser's document-global checks, which a segment can get
-/// wrong in *either* direction (a real diagnostic missed, or a phantom
-/// invented), so they are never trusted per-segment and are taken wholesale
-/// from the whole-document parse:
+/// These are the parser's document-global checks, for which a segment re-lex
+/// can err in either direction (a diagnostic missed, or a spurious one
+/// emitted), so the splice does not use a per-segment result for them and takes
+/// them from the whole-document parse:
 ///
 /// - **Forward-reference resolution**: bouten target ambiguity
 ///   ([`Diagnostic::BoutenTargetAmbiguous`], look-back
@@ -1004,16 +989,16 @@ pub(crate) fn shift_u32(value: u32, delta: i64) -> Option<u32> {
 ///   classification is itself context-dependent: a deeply-nested
 ///   heading/indent structure (e.g. 論語-style repeated `中見出し` blocks) can
 ///   be classified as a container only with the whole-document context, so a
-///   segment re-lexed in isolation pairs its closes differently and invents a
-///   phantom mismatch.
+///   segment re-lexed in isolation pairs its closes differently and emits a
+///   spurious mismatch.
 ///
-/// This is the single authority for which diagnostics the incremental splice
-/// cannot reproduce from an isolated re-lexed region; any such diagnostic in
-/// the cached or re-lexed output makes
+/// This predicate is the only definition of the diagnostics the incremental
+/// splice cannot reproduce from an isolated re-lexed region; any such diagnostic
+/// in the cached or re-lexed output makes
 /// [`crate::reparse_incremental_diagnostics_only`] fall back to a full parse.
-/// The `corpus_incremental_merge` differential gate proves the splice is
-/// byte-identical to a full parse over the reference corpus, so a missing class
-/// here surfaces there as a divergence.
+/// The `corpus_incremental_merge` differential test checks that the splice is
+/// byte-identical to a full parse over the reference corpus, so a class missing
+/// here appears there as a divergence.
 pub(crate) fn is_whole_document_scoped(diagnostic: &Diagnostic) -> bool {
     matches!(
         diagnostic,
@@ -1034,10 +1019,10 @@ pub(crate) fn is_whole_document_scoped(diagnostic: &Diagnostic) -> bool {
 /// Whether byte offset `j` is a candidate blank-line boundary in `bytes`: the
 /// offset of an empty line that follows another line. Cutting there keeps a
 /// CRLF (`\r\n`) terminator intact and starts the next segment on a blank line,
-/// matching the whole-document decorative-rule isolation context. The single
-/// predicate the whole-buffer oracle [`candidate_boundaries`] and the
-/// production outward scan ([`minimal_balanced_region`]) both read, so they
-/// cannot drift.
+/// matching the whole-document decorative-rule isolation context. Both the
+/// whole-buffer oracle [`candidate_boundaries`] and the production outward scan
+/// ([`minimal_balanced_region`]) call this predicate, so they use one boundary
+/// definition.
 fn is_blank_line_boundary<S: SanitizedSrc + ?Sized>(src: &S, j: usize) -> bool {
     let len = src.len();
     j >= 1
@@ -1048,9 +1033,9 @@ fn is_blank_line_boundary<S: SanitizedSrc + ?Sized>(src: &S, j: usize) -> bool {
 }
 
 /// Candidate blank-line boundaries on the source, ascending: every byte offset
-/// where [`is_blank_line_boundary`] holds. Retained as the whole-buffer oracle
-/// the outward-scan region finder is proptest-pinned against; the production
-/// path scans outward from the edit instead of materialising this whole vector.
+/// where [`is_blank_line_boundary`] holds. This is the whole-buffer oracle that
+/// the outward-scan region finder's proptest compares against; the production
+/// path scans outward from the edit and does not materialise this vector.
 #[cfg_attr(
     not(test),
     allow(
@@ -1067,10 +1052,10 @@ pub(crate) fn candidate_boundaries(source: &str) -> Vec<usize> {
 /// Whether a cut at sanitized offset `san_off` keeps every block container
 /// and resolved delimiter pair whole.
 ///
-/// Linear oracle retained for the property tests that pin
-/// [`RegionIndex::structurally_safe`] byte-identical to it at every offset; the
-/// production region finder uses the `O(log n)` indexed form. (`dead_code`
-/// allowed outside `cfg(test)` because only the proptests call it now.)
+/// Linear oracle for the property tests that check
+/// [`RegionIndex::structurally_safe`] against it at every offset; the
+/// production region finder uses the `O(log n)` indexed form. (`dead_code` is
+/// allowed outside `cfg(test)` because only the proptests call it.)
 #[cfg_attr(
     not(test),
     allow(
@@ -1107,12 +1092,12 @@ pub(crate) fn structurally_safe(san_off: u32, nodes: &[SourceNode], pairs: &[Pai
 }
 
 /// The minimal region of `cached`'s sanitized buffer that must be re-lexed to
-/// absorb an edit spanning sanitized byte range `edit`, bounded by
-/// structurally-safe blank-line cuts. The returned range is in SANITIZED
+/// cover an edit spanning sanitized byte range `edit`, bounded by
+/// structurally-safe blank-line cuts. The returned range is in sanitized
 /// coordinates, contains `edit`, and both endpoints are safe cut points
 /// (document start/end, or a structurally-safe blank-line boundary), so the
-/// region can be re-lexed in isolation without inventing phantom
-/// unclosed/unmatched brackets or wrongly nesting a container.
+/// region can be re-lexed in isolation without emitting spurious
+/// unclosed/unmatched brackets or nesting a container incorrectly.
 ///
 /// Returns `None` when no sub-document benefit is provable:
 /// - `cached` carries any whole-document-scoped diagnostic (forward-reference /
@@ -1123,8 +1108,7 @@ pub(crate) fn minimal_balanced_region<S: SanitizedSrc>(
     base: &DiagBaseRef<'_, S>,
     edit: Range<usize>,
 ) -> Option<Range<u32>> {
-    // O(1) flag read (was an O(#diags) scan): any whole-document-scoped
-    // diagnostic perturbs beyond the region, so decline.
+    // A whole-document-scoped diagnostic can change outside the region.
     if base.pieces.has_whole_doc_scoped_diag() {
         return None;
     }
@@ -1136,8 +1120,7 @@ pub(crate) fn minimal_balanced_region<S: SanitizedSrc>(
     let es = u32::try_from(edit.start).ok()?;
     let ee = u32::try_from(edit.end).ok()?;
 
-    // Outward scan (was a whole-buffer candidate scan + O(#cuts·N) safety
-    // checks). The safe-cut set is the document ends `{0, len}` plus every
+    // Outward scan. The safe-cut set is the document ends `{0, len}` plus every
     // structurally-safe blank-line boundary; `region_start` is the greatest cut
     // `<= es`, `region_end` the least cut `>= ee`. Scan outward from each edit
     // endpoint and stop at the first cut: `0` always terminates the left scan,
@@ -1163,54 +1146,46 @@ pub(crate) fn minimal_balanced_region<S: SanitizedSrc>(
 }
 
 /// Whether `node` makes the region unsafe to reuse incrementally, so the
-/// splice must fall back to a full parse. Two cases:
+/// splice falls back to a full parse. Four cases:
 ///
 /// - **Text-coupled**: a construct whose resolution depends on a whole-document
 ///   text search (forward reference, heading hint, margin note), so a plain
-///   edit inside a re-lexed region can perturb a partner that sits in the
-///   reused prefix/suffix. Container coupling is excluded: it is bounded by
+///   edit inside a re-lexed region can change a partner in the reused
+///   prefix/suffix. Container coupling is excluded: it is bounded by
 ///   [`structurally_safe`]'s container-depth check, which keeps every
-///   `［＃ここから…］`/`［＃ここで…終わり］` pair whole within one region.
-/// - **Opaque**: a node [`classify_node_ref`] does not understand (a future
-///   variant declined for safety by the minimal-diff splice model). The splice cannot
-///   reason about its coupling, so it declines rather than risk a silent
-///   divergence, keeping this guard correct by construction as the node set
-///   grows.
+///   `［＃ここから…］`/`［＃ここで…終わり］` pair within one region.
+/// - **Opaque**: a node that [`classify_node_ref`] returns as
+///   `Opaque`, a variant the minimal-diff splice model does not classify. Its
+///   coupling is unknown, so the splice declines it; a node variant added
+///   without a classification therefore falls back to a full parse.
 /// - **Context-sensitive diagnostic or classification**: a `Direct`-classified
-///   node whose *whole-document-scoped* diagnostic (or whose very
-///   classification) depends on text **outside** the node's own region, so a
-///   cross-region edit can flip it without touching the node, and the region
-///   re-lex (which does not contain the node) cannot reproduce it. A
-///   **reclaimed forward reference** (`X［＃「X」に傍点］`) emits
-///   `BoutenTargetAmbiguous` from a look-back over the *whole* prefix, so
-///   duplicating the target word in any earlier region makes a full parse
-///   ambiguous while the splice keeps the cached unambiguous node. A
-///   **kaeriten** (`［＃レ］`) emits `KaeritenOutsideKanbun` from a kana-prose
-///   window that spans ±12 chars across blank-line boundaries, so an edit in an
-///   adjacent region can flip it. (The `Coupled(ForwardReference)` *referenced*
-///   forward is already declined above; `Reclaimed` is `Direct` because its
-///   rendered bytes are self-contained, but its *diagnostic* is not.) A
-///   **self-contained forward reference** (`［＃「X」は太字］` with no earlier
-///   `X`) is `Direct` for the same self-contained-bytes reason, but its very
-///   *classification* is a whole-prefix predicate (target absence):
-///   introducing an earlier `X` in another region flips a full parse to
-///   `Reclaimed`/`Referenced` and would resurrect the double-render across
-///   the splice boundary, which the node-free region re-lex cannot see; so it
-///   is declined here too. A **self-contained forward heading**
-///   (`［＃「X」は中見出し］` with no earlier `X`) shares this whole-prefix
-///   classification (an earlier `X` flips it to a referent-bearing hint) and
-///   is declined for the same reason.
-/// - **Render-coupled**: a **ruby with base emphasis** (`｜X《y》…［＃「X」は罫囲み］`) is `Direct` in bytes (it fully owns its base + reading), but its
-///   *render* depends on the declined forward directive that set its
-///   `base_emphasis`. An edit that removes / retargets that directive without
-///   touching the ruby's region would reuse the cached ruby with a stale
-///   emphasis (a divergence the serialize byte-identity gate cannot see, since the
-///   directive change is in the source), so the ruby's region is not reusable
-///   while `base_emphasis.is_some()`.
+///   node whose whole-document-scoped diagnostic, or whose classification,
+///   depends on text outside the node's own region, so a cross-region edit can
+///   change it without touching the node, and the region re-lex (which does
+///   not contain the node) cannot reproduce it. A kaeriten (`［＃レ］`) emits
+///   `KaeritenOutsideKanbun` from a kana-prose window that spans ±12 chars
+///   across blank-line boundaries, so an edit in an adjacent region can change
+///   the diagnostic. A self-contained forward reference (`［＃「X」は太字］` with
+///   no earlier `X`) is `Direct` because its bytes are self-contained, but its
+///   classification is a whole-prefix predicate (target absence): an earlier
+///   `X` inserted in another region changes the full-parse classification to
+///   `Reclaimed`/`Referenced` and would reintroduce the double render across
+///   the splice boundary, which the node-free region re-lex does not detect,
+///   so it is declined. A self-contained forward heading (`［＃「X」は中見出し］`
+///   with no earlier `X`) has the same whole-prefix classification (an earlier
+///   `X` changes it to a referent-bearing hint) and is declined for the same
+///   reason.
+/// - **Render-coupled**: a ruby with base emphasis
+///   (`｜X《y》…［＃「X」は罫囲み］`) is `Direct` in bytes (its span contains its
+///   base and reading), but its render depends on the declined forward
+///   directive that set its `base_emphasis`. An edit that removes or retargets
+///   that directive without touching the ruby's region would reuse the cached
+///   ruby with a stale emphasis (a divergence the serialize byte-identity test
+///   does not detect, since the directive change is in the source), so the
+///   ruby's region is not reusable while `base_emphasis.is_some()`.
 ///
-/// Single-sources the classification through [`classify_node_ref`] (the
-/// splice authority) so this guard and the minimal-diff splice cannot
-/// drift.
+/// The classification comes from [`classify_node_ref`], which the minimal-diff
+/// splice also uses.
 fn node_forbids_region_reuse(node: NodeRef) -> bool {
     let (role, safety) = classify_node_ref(node);
     matches!(
@@ -1220,28 +1195,27 @@ fn node_forbids_region_reuse(node: NodeRef) -> bool {
         ) | SpliceSafety::Opaque
     ) || matches!(
         role,
-        RegionRole::ForwardReclaimed
-            // A `ForwardDetached` decoration is `Direct` in bytes, but its
-            // very *existence* is a whole-prefix predicate: it exists only
-            // because a downstream bracket references it, and duplicating the
-            // target word upstream flips the interior/adjacency decision. A
-            // node-free region re-lex cannot see that, so decline reuse (its
-            // coupled bracket already forces a full parse; this is defence in
-            // depth + keeps the invariant self-documenting).
-            | RegionRole::ForwardDetached
-            | RegionRole::Kunten
+        // A `ForwardDetached` decoration is `Direct` in bytes, but its
+        // very existence is a whole-prefix predicate: it exists only
+        // because a downstream bracket references it, and duplicating the
+        // target word upstream changes the interior/adjacency decision. A
+        // node-free region re-lex does not observe that dependency, so reuse
+        // is declined. Its coupled bracket also forces a full parse; this arm
+        // declines on the node itself.
+        RegionRole::ForwardDetached | RegionRole::Kunten
     ) || matches!(
         // A ruby whose base carries render-only forward emphasis is
-        // `Direct` in bytes (it fully owns its base + reading), but its *render*
-        // now depends on a declined forward directive elsewhere: the lowering
-        // pass set `base_emphasis` because a downstream `［＃「X」は…］` named the
-        // base. An edit that removes / retargets that directive without
+        // `Direct` in bytes (its span contains its base and reading), but its render
+        // depends on a declined forward directive elsewhere: the lowering
+        // pass set `base_emphasis` because a downstream `［＃「X」は…］` refers to
+        // the base. An edit that removes / retargets that directive without
         // intersecting the ruby's region would reuse the cached ruby with a
         // stale `base_emphasis`, so the incremental render keeps an emphasis a
-        // full parse would drop. Serialize stays byte-identical (the directive
-        // change is in the source), so the byte-identity gate cannot catch it:
-        // decline region reuse here. `is_some()` reads only the ruby's `Copy`
-        // Option tag, so it is store-free (see the note below).
+        // full parse would drop. Serialize output is byte-identical (the
+        // directive change is in the source), so the byte-identity test does not
+        // detect it; region reuse is declined here. `is_some()` reads only the
+        // ruby's `Copy` Option tag, so it is store-free (see the store-free-base
+        // section of `reparse_incremental_diagnostics_only`).
         node,
         NodeRef::Inline(Node::Ruby(r)) | NodeRef::BlockLeaf(Node::Ruby(r))
             if r.base_emphasis.is_some()
@@ -1278,11 +1252,11 @@ fn relexed_is_balanced(nodes: &[SourceNode]) -> bool {
 /// be proven local.
 ///
 /// Reads only the store-free [`DiagBaseRef`] of the cached parse, so the
-/// diagnostics-only hot path can run it without ever materialising the full
-/// [`LexOutput`]. [`crate::reparse_incremental_diagnostics_only`] builds on
-/// this single helper.
+/// diagnostics-only path can run it without materialising the full
+/// [`LexOutput`]. [`crate::reparse_incremental_diagnostics_only`] calls this
+/// helper.
 ///
-/// Returns `None` (the caller then full-parses, trivially correct) when:
+/// Returns `None`, after which the caller runs a full parse, when:
 ///
 /// - [`minimal_balanced_region`] declines (whole-document-scoped diagnostic in
 ///   `cached`, out-of-bounds edit, or no interior safe cut);
@@ -1291,9 +1265,9 @@ fn relexed_is_balanced(nodes: &[SourceNode]) -> bool {
 ///   open/close half extends across region boundaries;
 /// - the edited bytes carry document structure ([`carries_structure`]) or sit
 ///   inside an open `［…］` directive; that the edit changes only bytes inside
-///   `edit_old` (truly transforming `cached.sanitized` into `new_sanitized`) is
-///   instead a caller precondition, checked in debug by the sanitized source's
-///   `debug_assert_unchanged_outside` rather than gated at runtime;
+///   `edit_old` (so that it transforms `cached.sanitized` into `new_sanitized`)
+///   is a caller precondition, checked in debug builds by the sanitized source's
+///   `debug_assert_unchanged_outside` and not at runtime;
 /// - the region slice is not a sanitize fixed point in isolation;
 /// - the re-lexed region is not self-contained: it carries a
 ///   whole-document-scoped diagnostic, an unclosed/unmatched delimiter half, or
@@ -1301,7 +1275,7 @@ fn relexed_is_balanced(nodes: &[SourceNode]) -> bool {
 /// - any node in `cached` or the re-lexed region forbids region reuse
 ///   ([`node_forbids_region_reuse`]): a text-coupled construct (forward
 ///   reference / heading hint / margin note resolving by whole-document text
-///   search) or an opaque node the splice cannot reason about;
+///   search) or an opaque node;
 /// - a cached diagnostic straddles a region boundary, or any offset arithmetic
 ///   overflows.
 fn splice_prologue<S: SanitizedSrc>(
@@ -1327,12 +1301,11 @@ fn splice_prologue<S: SanitizedSrc>(
     }
 
     // 2. Edit validation: `edit_old` must be in bounds and the edited bytes
-    //    must touch no document structure. That the edit changes *only* bytes
-    //    inside `edit_old` (so it truly transforms `cached.sanitized` into
-    //    `new_sanitized`) is the caller's precondition: it is restated in debug
-    //    by `debug_assert_unchanged_outside` below, not gated at runtime, so a
-    //    genuinely malformed edit is a caller bug rather than a silent
-    //    full-parse fallback (see that call's comment for why).
+    //    must touch no document structure. That the edit changes only bytes
+    //    inside `edit_old` (so it transforms `cached.sanitized` into
+    //    `new_sanitized`) is the caller's precondition: debug builds check it
+    //    with `debug_assert_unchanged_outside` below and release builds do not,
+    //    so a malformed edit is a caller bug, not a full-parse fallback.
     let old_source = &base.sanitized;
     if edit_old.start > edit_old.end || edit_old.end > old_source.len() {
         return None;
@@ -1345,12 +1318,10 @@ fn splice_prologue<S: SanitizedSrc>(
     }
     // The bytes outside `edit_old` must be byte-identical between the cached and
     // new sanitized buffers (the prefix `[0, edit_old.start)` plus the suffix
-    // after the edit). An unconditional prefix/suffix `memcmp` here would be
-    // `O(doc)` per edit on rope sources, which is incompatible with the
-    // per-keystroke hot path. The check lives as the caller's precondition:
-    // in debug it is restated by `debug_assert_unchanged_outside`, and the
-    // production caller guarantees it by deriving `edit_old` from the
-    // sanitized diff.
+    // after the edit). A prefix/suffix comparison costs `O(doc)` per edit on
+    // rope sources, so this is a caller precondition: debug builds check it
+    // with `debug_assert_unchanged_outside`, and the production caller
+    // establishes it by deriving `edit_old` from the sanitized diff.
     #[cfg(debug_assertions)]
     old_source.debug_assert_unchanged_outside(new_sanitized, edit_old.clone(), new_edit_end);
     let old_slice = old_source.slice(edit_old.clone())?;
@@ -1358,10 +1329,10 @@ fn splice_prologue<S: SanitizedSrc>(
     if carries_structure(&old_slice) || carries_structure(&new_slice) {
         return None;
     }
-    // An edit *inside* a `［…］` directive carries no structural byte itself yet
+    // An edit inside a `［…］` directive contains no structural byte itself yet
     // can re-pair an inline container across the whole document (the region
-    // re-lex sees only the corrupted close, never the matching open in the
-    // reused prefix). The prefix up to `edit_old.start` is byte-identical
+    // re-lex input contains only the corrupted close, not the matching open in
+    // the reused prefix). The prefix up to `edit_old.start` is byte-identical
     // between old and new, so checking `old_source` covers both. `inside_directive`
     // reads only `src[..pos]`, so the head slice with `pos == head.len()` is
     // byte-identical to passing the whole buffer with `pos == edit_old.start`.
@@ -1370,19 +1341,24 @@ fn splice_prologue<S: SanitizedSrc>(
         return None;
     }
 
-    // Decline if any cached diagnostic straddles a region boundary: it is
-    // neither reproduced by the isolated region re-lex nor safely shiftable. A
-    // span is bad iff it straddles `region.start` or `region.end` (proven:
-    // `!(prefix || suffix || inside)` ⇔ `start < rs < end` ∨ `start < re < end`),
-    // so two O(log n) probes replace the O(#diags) scan.
+    // Decline if any cached diagnostic straddles a region boundary: the
+    // isolated region re-lex does not reproduce it, and shifting it would give a
+    // wrong span. A span is excluded iff it straddles `region.start` or
+    // `region.end` (`!(prefix || suffix || inside)` ⇔ `start < rs < end` ∨
+    // `start < re < end`), so two O(log n) probes suffice.
     if base.pieces.diag_straddles(region.start) || base.pieces.diag_straddles(region.end) {
         return None;
     }
 
     // 3. Re-lex the region in isolation. The region slice is already sanitized
     //    (a slice of the sanitized fixed point `new_sanitized`); if re-sanitize
-    //    changes it, bail conservatively.
+    //    changes it, decline.
     let new_r_end = usize::try_from(i64::from(region.end) + edit_delta).ok()?;
+    if (r_start != 0 && !is_blank_line_boundary(new_sanitized, r_start))
+        || (new_r_end != new_sanitized.len() && !is_blank_line_boundary(new_sanitized, new_r_end))
+    {
+        return None;
+    }
     let new_region_src = new_sanitized.slice(r_start..new_r_end)?;
     let relexed = Document::new(&*new_region_src).lex();
     if relexed.sanitized != *new_region_src {
@@ -1409,9 +1385,8 @@ fn splice_prologue<S: SanitizedSrc>(
     // 5. Cross-region text-coupling fallback. Any forward reference / heading
     //    hint / margin note anywhere (cached or relexed) resolves by
     //    whole-document text search, so a plain region edit could perturb a
-    //    partner in the reused prefix/suffix. Conservative: future work can
-    //    narrow this to affected partners. The base side is an O(1) flag
-    //    read; only the re-lexed side (O(region)) is still scanned.
+    //    partner in the reused prefix/suffix. The base side is an O(1) flag
+    //    read; only the re-lexed side (O(region)) is scanned.
     if base.pieces.has_coupled_node()
         || relexed
             .source_nodes
@@ -1430,28 +1405,28 @@ fn splice_prologue<S: SanitizedSrc>(
     })
 }
 
-/// The LSP's per-keystroke hot path: compute the spliced diagnostics for the
+/// The LSP's per-keystroke path: compute the spliced diagnostics for the
 /// edited text `new_sanitized` (a sanitized fixed point) from the store-free
 /// [`DiagBaseRef`] of the prior parse and the single sanitized-coordinate edit
-/// `edit_old`, **without building an [`LexOutput`]**.
+/// `edit_old`, without building an [`LexOutput`].
 ///
-/// A consumer trace established that the debounced `publishDiagnostics` path
-/// reads only `cache.diagnostics()`; the full tree (`with_tree`) is needed only
-/// by the rare F2 rename gesture. So this engine runs the shared
-/// [`splice_prologue`] (`O(region)` re-lex) and then **only** the diagnostics
-/// splice plus the store-free `source_nodes`/`pairs` splice the *next* edit's
-/// region-find consumes, avoiding the `O(doc)` work a full parse does (the
-/// normalized/sanitized string build, the store + registry lookup table, the
-/// container-pairs table). The result is `O(region + #diagnostics)`.
+/// The LSP's debounced `publishDiagnostics` path reads only
+/// `cache.diagnostics()`; only the F2 rename request reads the full tree
+/// (`with_tree`). This engine therefore runs the shared [`splice_prologue`]
+/// (`O(region)` re-lex) and then only the diagnostics splice plus the
+/// store-free `source_nodes`/`pairs` splice that the next edit's region-find
+/// reads, without the `O(doc)` work of a full parse (the normalized/sanitized
+/// string build, the store + registry lookup table, the container-pairs table).
+/// The result is `O(region + #diagnostics)`.
 ///
-/// Its `diagnostics` flatten from the spliced [`PieceSeq`] over the shared
-/// [`splice_prologue`], which the `corpus_incremental_merge` differential gate
-/// pins byte-identical to a full parse over the reference corpus.
+/// Its `diagnostics` are flattened from the spliced [`PieceSeq`] over the shared
+/// [`splice_prologue`]; the `corpus_incremental_merge` differential test checks
+/// them byte-identical to a full parse over the reference corpus.
 ///
 /// # Store-free-base soundness
 ///
-/// The region's nodes carry the **re-lexed** sub-output's [`NodeRef`]
-/// handles verbatim (with no store graft or store clone). A `NodeRef` that
+/// The region's nodes carry the re-lexed sub-output's [`NodeRef`]
+/// handles unchanged (with no store graft or store clone). A `NodeRef` that
 /// embeds a `StrId`/`ContentRange` resolves only against the store it was built
 /// in (here, the re-lex's transient store, which is dropped). This is sound
 /// **only** because the resulting [`DiagSplice::pieces`] (the maintained
@@ -1460,15 +1435,14 @@ fn splice_prologue<S: SanitizedSrc>(
 /// [`relexed_is_balanced`] via the prologue, and the
 /// [`node_forbids_region_reuse`] coupling guard),
 /// every one of which reads only a node's `source_span` (`Copy`,
-/// store-independent), the `NodeRef` **discriminant** (`BlockOpen` /
+/// store-independent), the `NodeRef` discriminant (`BlockOpen` /
 /// `BlockClose` / `Inline` / …), plus the ruby's `Copy` `base_emphasis`
 /// Option-tag (`.is_some()`, a store-free read of the inline
 /// [`ForwardAttr`](ab_aozora_syntax::ForwardAttr) niche), and never resolves a
-/// `StrId`/`ContentRange` against a store. The `debug_assert` below pins this
-/// invariant: a future
-/// change that resolves a region node's payload here must instead graft it into
-/// a real store rather than read it off the transient re-lex store this
-/// `relexed` is about to drop.
+/// `StrId`/`ContentRange` against a store. The `debug_assert` below checks this
+/// invariant. Code that resolves a region node's payload here must graft it
+/// into a real store and not read it from the transient re-lex store that
+/// `relexed` drops.
 #[must_use]
 pub(crate) fn reparse_incremental_diagnostics_only<S: SanitizedSrc>(
     base: &DiagBaseRef<'_, S>,
@@ -1482,13 +1456,10 @@ pub(crate) fn reparse_incremental_diagnostics_only<S: SanitizedSrc>(
         d_san,
     } = splice_prologue(base, new_sanitized, edit_old)?;
 
-    // Invariant pin (store-free base, see the doc above): the region nodes are
-    // carried with the re-lex's own `NodeRef` handles and never resolved
-    // against a store on this path. If a future change needs a region node's
-    // resolved payload here, it must graft into a real store, not read it off
-    // the transient re-lex store this `relexed` is about to drop. This assert
-    // trips loudly if such a resolution is wired in by accident: the region
-    // nodes must stay parallel to the re-lex registry.
+    // Store-free base invariant (see the doc above): the region nodes carry the
+    // re-lex's own `NodeRef` handles, which this path does not resolve against
+    // a store. The region nodes must remain parallel to the re-lex registry;
+    // this assert fails otherwise.
     debug_assert_eq!(
         relexed.registry.len(),
         relexed.source_nodes.len(),
@@ -1497,13 +1468,13 @@ pub(crate) fn reparse_incremental_diagnostics_only<S: SanitizedSrc>(
     );
 
     // Splice the maintained `PieceSeq` in `O(region + #pieces)`: the prefix and
-    // shifted suffix pieces are carried by `Arc` share (no per-node rewrite), the
-    // edited region becomes one re-lexed piece, and `cum` is patched. This is the
-    // whole point of the hot path: no `source_nodes`/`pairs`/`diagnostics`
-    // whole-table re-materialization, no `RegionIndex` rebuild. The result's
-    // flattened tables and every query are byte-identical to a full parse's: the
-    // `PieceSeq ≡ contiguous` adversarial proptest over multi-edit splice runs,
-    // plus the `corpus_incremental_merge` differential gate, pin this.
+    // shifted suffix pieces share their `Arc` backing (no per-node rewrite), the
+    // edited region becomes one re-lexed piece, and `cum` is rebuilt. No
+    // `source_nodes`/`pairs`/`diagnostics` table is re-materialised and no
+    // `RegionIndex` is rebuilt. The result's flattened tables and every query
+    // are byte-identical to a full parse's; the `PieceSeq ≡ contiguous`
+    // adversarial proptest over multi-edit splice runs and the
+    // `corpus_incremental_merge` differential test check this.
     let pieces = base.pieces.splice(
         region,
         &relexed.source_nodes,
@@ -1571,26 +1542,21 @@ mod tests {
 
     #[test]
     fn edit_inside_paragraph_shrinks_below_whole_doc() {
-        // Three blank-line-separated paragraphs, all plain text.
         let src = "あいうえお\n\nかきくけこ\n\nさしすせそ\n";
         let cached = output(src);
         let pieces = pieces_of(&cached);
         let len = u32::try_from(cached.sanitized.len()).unwrap();
-        // Edit inside the middle paragraph "かきくけこ".
         let mid = src.find("かきくけこ").unwrap();
         let edit = mid..mid + "かき".len();
         let region =
             minimal_balanced_region(&DiagBaseRef::from_cached(&cached, &pieces), edit.clone())
                 .expect("interior region");
-        // Strictly smaller than the whole document.
         assert!(
             region.start > 0 || region.end < len,
             "region {region:?} must be strictly smaller than 0..{len}"
         );
         assert_ne!(region, 0..len);
-        // Contains the edit.
         assert!(region.start as usize <= edit.start && region.end as usize >= edit.end);
-        // Both endpoints are safe cuts.
         assert_endpoint_safe(&cached, region.start);
         assert_endpoint_safe(&cached, region.end);
         let cuts = safe_cuts(&cached);
@@ -1688,7 +1654,7 @@ mod tests {
         let san = &cached.sanitized;
         assert!(!san.contains('\r'), "sanitized buffer drops CR");
         let len = u32::try_from(san.len()).unwrap();
-        // Edit the middle paragraph in SANITIZED coordinates.
+        // Edit the middle paragraph in sanitized coordinates.
         let mid = san.find("かきくけこ").unwrap();
         let edit = mid..mid + "かき".len();
         let region =
@@ -1732,12 +1698,7 @@ mod tests {
     }
 
     #[test]
-    fn boundary_landing_edits_return_empty_safe_regions() {
-        // A zero-width edit at a document end or exactly on an interior safe
-        // cut yields the minimal empty region pinned to that offset: a genuine
-        // cut, so the splice can re-lex the inserted text from a clean
-        // boundary. (Edits go through a variable to avoid the
-        // `reversed_empty_ranges` lint on literal equal-bound ranges.)
+    fn boundary_landing_edits_return_empty_cached_regions() {
         let src = "あいうえお\n\nかきくけこ\n\nさしすせそ\n";
         let cached = output(src);
         let pieces = pieces_of(&cached);
@@ -1770,8 +1731,6 @@ mod tests {
         );
     }
 
-    // ---- shared decline tests (diagnostics-only engine) ----
-
     /// Apply a single-region edit (`replacement` swapped for `edit`) to `san`.
     fn apply_edit(san: &str, edit: Range<usize>, replacement: &str) -> String {
         let mut out = String::with_capacity(san.len() + replacement.len());
@@ -1782,9 +1741,37 @@ mod tests {
     }
 
     #[test]
-    fn breaking_a_gaiji_declines() {
+    fn insertions_that_erase_region_boundaries_require_a_full_parse() {
+        for (source, at) in [
+            ("《あ》", 0),
+            ("前\n\n後", "前\n\n後".len()),
+            ("前\n\n《あ》", "前\n".len()),
+        ] {
+            let cached = output(source);
+            let changed = apply_edit(&cached.sanitized, at..at, "も");
+            let full = output(&changed);
+            assert_eq!(full.sanitized, changed);
+            if source == "《あ》" {
+                assert!(cached.source_nodes.is_empty());
+                assert_eq!(full.source_nodes.len(), 1);
+                assert!(matches!(
+                    full.source_nodes[0].node,
+                    NodeRef::Inline(Node::Ruby(_))
+                ));
+            }
+            let pieces = pieces_of(&cached);
+            let base = DiagBaseRef::from_cached(&cached, &pieces);
+            assert!(
+                reparse_incremental_diagnostics_only(&base, &changed.as_str(), at..at).is_none(),
+                "{source:?} at {at}",
+            );
+        }
+    }
+
+    #[test]
+    fn unresolvable_gaiji_edit_declines() {
         // A resolvable standalone gaiji in the middle paragraph; an edit that
-        // mangles its 面区点 tail makes the isolated re-lex emit a
+        // replaces its 面区点 tail makes the isolated re-lex emit a
         // whole-document-scoped UnresolvedGaiji, so the splice declines.
         let cached = output("前の段落\n\n※［＃ばける、第3水準1-15-94］\n\n後の段落\n");
         assert!(
@@ -1876,10 +1863,10 @@ mod tests {
     #[test]
     fn edit_inside_directive_close_declines() {
         // Editing inside a `［＃割り注終わり］` close keyword corrupts the
-        // directive; the matching open lives in the reused prefix so the region
-        // re-lex cannot see the breakage. `inside_directive` must decline even
-        // though the inserted byte carries no structure of its own. (Regression
-        // for the corpus divergence surfaced: 折口春洋/島の便り.txt.)
+        // directive; the matching open is in the reused prefix, outside the
+        // region re-lex input. `inside_directive` must decline even though the
+        // inserted byte contains no structure of its own. Corpus case:
+        // 折口春洋/島の便り.txt.
         let cached = output(
             "序文の段落です。\n\n本文［＃割り注］注記の文字［＃割り注終わり］続き\n\n末尾の段落。\n",
         );
@@ -1903,7 +1890,7 @@ mod tests {
 
     #[test]
     fn forward_reference_doc_declines_via_coupling() {
-        // A clean forward bouten reference (［＃「青空」に傍点］ pointing back at
+        // A resolved forward bouten reference (［＃「青空」に傍点］ referring to
         // the earlier 青空) is text-coupled: editing an unrelated paragraph could
         // still perturb the reference, so the splice declines even though the
         // edit itself is local.
@@ -1939,13 +1926,7 @@ mod tests {
     }
 
     #[test]
-    fn reclaimed_forward_bouten_doc_declines() {
-        // A *reclaimed* forward bouten (青空［＃「青空」に傍点］, target adjacent)
-        // is rendered self-contained (Direct), but its BoutenTargetAmbiguous
-        // diagnostic looks back over the whole prefix. Duplicating the target in
-        // an earlier region makes a full parse ambiguous while a naive splice
-        // keeps the cached unambiguous node, so the node must forbid region
-        // reuse. (Regression for the verify finding.)
+    fn reclaimed_forward_bouten_ignores_earlier_duplicates() {
         let cached = output("むかし。\n\n青空［＃「青空」に傍点］\n");
         let san = cached.sanitized.clone();
         assert!(
@@ -1956,21 +1937,17 @@ mod tests {
         let at = san.find("むかし").expect("first paragraph") + "むかし".len();
         let edit = at..at;
         let new_san = apply_edit(&san, edit.clone(), "青空");
-        // The duplicated target genuinely makes the full parse ambiguous.
         let full = Document::new(new_san.as_str()).lex();
         assert!(
-            full.diagnostics
-                .iter()
-                .any(|d| matches!(d, Diagnostic::BoutenTargetAmbiguous { .. })),
-            "the duplicated target must make the full parse ambiguous: {:?}",
+            full.diagnostics.is_empty(),
+            "an adjacent target remains definitive: {:?}",
             full.diagnostics,
         );
         let pieces = pieces_of(&cached);
         let base = DiagBaseRef::from_cached(&cached, &pieces);
-        assert!(
-            reparse_incremental_diagnostics_only(&base, &new_san.as_str(), edit).is_none(),
-            "a reclaimed forward bouten must forbid region reuse",
-        );
+        let splice = reparse_incremental_diagnostics_only(&base, &new_san.as_str(), edit)
+            .expect("an earlier duplicate cannot change an adjacent target");
+        assert!(splice.pieces.collect_diagnostics().is_empty());
     }
 
     /// Resolving a reference depends on source outside its marker region.
@@ -2001,10 +1978,9 @@ mod tests {
         );
     }
 
-    /// BREAK-2 guard (unit): a ruby whose base carries render-only forward
-    /// emphasis is `Direct` in bytes but render-coupled to a declined directive
-    /// elsewhere, so its region must not be reused. An un-decorated ruby stays
-    /// freely reusable.
+    /// A ruby whose base carries render-only forward emphasis is `Direct` in
+    /// bytes but render-coupled to a declined directive elsewhere, so its region
+    /// must not be reused. A ruby without base emphasis is reusable.
     #[test]
     fn ruby_base_emphasis_forbids_region_reuse() {
         use ab_aozora_syntax::ForwardAttr;
@@ -2016,12 +1992,12 @@ mod tests {
         let Node::Ruby(mut r) = a.ruby(base, reading) else {
             unreachable!("ruby() builds a Ruby node");
         };
-        // Un-decorated: Direct, freely reusable.
+        // Without base emphasis: Direct, reusable.
         assert!(
             !node_forbids_region_reuse(NodeRef::Inline(Node::Ruby(r))),
             "a plain ruby must stay freely reusable (Direct)",
         );
-        // Decorated: render-coupled, must forbid region reuse.
+        // With base emphasis: render-coupled, must forbid region reuse.
         r.base_emphasis = Some(ForwardAttr::Bold);
         assert!(
             node_forbids_region_reuse(NodeRef::Inline(Node::Ruby(r))),
@@ -2030,7 +2006,7 @@ mod tests {
         );
     }
 
-    /// BREAK-2 guard (end-to-end): a doc with a ruby-base forward emphasis
+    /// End-to-end: a doc with a ruby-base forward emphasis
     /// (`｜青梅《おうめ》…［＃「青梅」は罫囲み］`) carries a `base_emphasis` ruby whose
     /// render depends on the declined directive. A far-paragraph edit that does
     /// not intersect the ruby must not reuse the cached ruby (stale emphasis), so
@@ -2096,12 +2072,12 @@ mod tests {
     }
 }
 
-/// Property tests pinning every `RegionIndex` query byte-identical to the linear
-/// oracle it replaces, over randomly-assembled aozora-shaped documents (
-/// ). The oracles (`structurally_safe`, `candidate_boundaries`) and a
-/// whole-buffer reference region finder are the ground truth; the
-/// indexed/outward-scan production forms must match them exactly, which (with the
-/// corpus differential gate) is the byte-identity guarantee.
+/// Property tests that check every `RegionIndex` query byte-identical to its
+/// linear oracle over randomly-assembled aozora-shaped documents. The oracles
+/// (`structurally_safe`, `candidate_boundaries`) and a whole-buffer reference
+/// region finder are the reference; the indexed/outward-scan production forms
+/// must match them exactly. These tests and the corpus differential test check
+/// byte-identity.
 #[cfg(test)]
 mod oracle_proptests {
     use core::iter::once;
@@ -2139,8 +2115,8 @@ mod oracle_proptests {
         )
     }
 
-    /// The whole-buffer region finder, retained verbatim as the
-    /// reference the outward-scan [`minimal_balanced_region`] must match: all
+    /// The whole-buffer region finder, the reference that the outward-scan
+    /// [`minimal_balanced_region`] must match: all
     /// structurally-safe blank-line cuts (plus document ends), then the greatest
     /// cut `<= es` and least cut `>= ee`.
     fn reference_region(cached: &LexOutput, edit: Range<usize>) -> Option<Range<u32>> {
@@ -2170,9 +2146,9 @@ mod oracle_proptests {
         Some(region_start..region_end)
     }
 
-    /// The linear diagnostic-straddle predicate the prologue used before the
-    /// indexed probes: a cached diagnostic is bad iff it is neither fully before,
-    /// fully after, nor fully inside the region.
+    /// The linear diagnostic-straddle oracle for the indexed probes: a cached
+    /// diagnostic straddles iff it is neither fully before, fully after, nor
+    /// fully inside the region.
     fn any_diag_straddles(diags: &[Diagnostic], region: Range<u32>) -> bool {
         diags.iter().any(|d| {
             let span = d.span();
@@ -2210,7 +2186,7 @@ mod oracle_proptests {
 
     proptest! {
         /// `RegionIndex::structurally_safe` equals the linear `structurally_safe`
-        /// at *every* offset of the document.
+        /// at every offset of the document.
         #[test]
         fn structurally_safe_indexed_matches_oracle(doc in doc_strategy()) {
             let cached = output(&doc);
@@ -2272,9 +2248,9 @@ mod oracle_proptests {
             );
         }
 
-        /// The single-piece `PieceSeq` flag predicates equal the `any()` scans
-        /// they replace (the per-live-range `PieceFlags` over a multi-piece
-        /// sequence are pinned by `verify_seq_matches` in the splice proptests).
+        /// The single-piece `PieceSeq` flag predicates equal the corresponding
+        /// `any()` scans (`verify_seq_matches` in the splice proptests checks the
+        /// per-live-range `PieceFlags` over a multi-piece sequence).
         #[test]
         fn flags_match_any_scans(doc in doc_strategy()) {
             let cached = output(&doc);
@@ -2299,8 +2275,6 @@ mod oracle_proptests {
             );
         }
     }
-
-    // ---- PieceSeq ≡ contiguous (PR-1 merge gate) ----
 
     /// Assert two source-node tables agree on the store-free projection the
     /// region-find consumes: byte spans and the `BlockOpen`/`BlockClose`/`Inline`
@@ -2329,8 +2303,8 @@ mod oracle_proptests {
         }
     }
 
-    /// Diagnostics as a position-sorted multiset of debug strings, mirroring the
-    /// corpus differential gate's comparison.
+    /// Diagnostics as a position-sorted multiset of debug strings, the same
+    /// comparison the corpus differential test uses.
     fn sorted_debug(mut diags: Vec<Diagnostic>) -> Vec<String> {
         diags.sort_by(|a, b| {
             let (sa, sb) = (a.span(), b.span());
@@ -2358,7 +2332,7 @@ mod oracle_proptests {
         })
     }
 
-    /// Pin a `PieceSeq` byte-identical to a full re-parse `full`: flattened
+    /// Assert that a `PieceSeq` is byte-identical to a full re-parse `full`: flattened
     /// tables (node projection / pairs / diagnostics multiset), the sanitized
     /// total, and every region-find query at every offset against the linear
     /// oracle over the flattened tables.
@@ -2416,9 +2390,9 @@ mod oracle_proptests {
         out
     }
 
-    /// The mutable trio a multi-edit run threads through `try_safe_edit`: the
+    /// The mutable state a multi-edit run passes through `try_safe_edit`: the
     /// piece sequence under test, its current sanitized text, and the matching
-    /// full re-parse used to drive the prologue and pin the result.
+    /// full re-parse used as the prologue's input and as the expected result.
     struct EditState {
         seq: PieceSeq,
         current: String,
@@ -2426,7 +2400,7 @@ mod oracle_proptests {
     }
 
     /// Try one plain edit. On a prologue-admitted, sanitize-fixed-point edit,
-    /// splice the `PieceSeq`, advance the `EditState`, and pin the result against
+    /// splice the `PieceSeq`, advance the `EditState`, and check the result against
     /// a full re-parse. Returns whether the edit was applied.
     fn try_safe_edit(state: &mut EditState, start: usize, end: usize, repl: &str) -> bool {
         let new_text = apply_text_edit(&state.current, start, end, repl);
@@ -2434,7 +2408,7 @@ mod oracle_proptests {
         if full_new.sanitized != new_text {
             return false; // not a sanitize fixed point: skip
         }
-        // The prologue reads the *accumulated* sequence under test, faithful to
+        // The prologue reads the accumulated sequence under test, as in
         // production, where `base.pieces` is the maintained multi-piece sequence,
         // not a freshly-rebuilt single-piece one. `state.cached.sanitized` is the
         // matching full parse's buffer (== `state.current`).
@@ -2479,19 +2453,19 @@ mod oracle_proptests {
         }
 
         /// A run of safe edits splices the `PieceSeq` into a multi-piece state
-        /// that stays byte-identical to a full re-parse at every step: the
-        /// `PieceSeq ≡ contiguous` adversarial gate. The base
-        /// document carries containers / stray closes; the edits redistribute that
+        /// that is byte-identical to a full re-parse at every step: the
+        /// `PieceSeq ≡ contiguous` adversarial proptest. The base
+        /// document contains containers / stray closes; the edits distribute that
         /// structure across piece boundaries as they cut.
         ///
         /// A run whose edits all decline (no safe interior cut, or a
-        /// prologue-rejected edit) only re-verifies the single-piece base: sound
-        /// but vacuous. Non-vacuity is therefore *not* asserted here (a 0-admit
-        /// run is a legitimate input); it is guaranteed instead by the
-        /// deterministic [`pieceseq_two_paragraph_edits_build_multi_piece`] and
-        /// [`pieceseq_multi_piece_with_block_container_stays_identical`], which
-        /// assert both `try_safe_edit == true` and `pieces.len() > 1`, so a
-        /// regression that broke splice admittance fails loudly there.
+        /// prologue-rejected edit) re-verifies only the single-piece base. This
+        /// test therefore does not assert that any edit is admitted (a run with
+        /// no admitted edit is a valid input); the deterministic
+        /// [`pieceseq_two_paragraph_edits_build_multi_piece`] and
+        /// [`pieceseq_multi_piece_with_block_container_stays_identical`] assert
+        /// both `try_safe_edit == true` and `pieces.len() > 1`, so they fail if
+        /// the splice admits no edit.
         #[test]
         fn pieceseq_multi_edit_matches_full_parse(
             doc in doc_strategy(),
@@ -2556,9 +2530,9 @@ mod oracle_proptests {
         assert!(!try_safe_edit(&mut state, at, at, "も"));
     }
 
-    /// A deterministic multi-piece run (proptest may not always reach one):
-    /// two interior edits in different paragraphs cut the document into more
-    /// than one live piece, and every query still matches a full re-parse.
+    /// A deterministic multi-piece run (the proptest does not always produce
+    /// one): two interior edits in different paragraphs cut the document into
+    /// more than one live piece, and every query matches a full re-parse.
     #[test]
     fn pieceseq_two_paragraph_edits_build_multi_piece() {
         let cached = output("あいうえお\n\nかきくけこ\n\nさしすせそ\n\nたちつてと\n");
@@ -2595,16 +2569,16 @@ mod oracle_proptests {
         );
     }
 
-    /// A deterministic multi-piece run whose document carries a **balanced block
-    /// container** (`［＃ここから２字下げ］…［＃ここで字下げ終わり］`) in its own
+    /// A deterministic multi-piece run whose document carries a balanced block
+    /// container (`［＃ここから２字下げ］…［＃ここで字下げ終わり］`) in its own
     /// blank-line-bounded paragraph. Interior edits in the paragraphs flanking it
     /// cut the document into several live pieces, one of which holds the
     /// container's nonzero interior block depth. `verify_seq_matches` (run inside
-    /// `try_safe_edit`) then pins `structurally_safe` at every offset (including
+    /// `try_safe_edit`) then checks `structurally_safe` at every offset (including
     /// inside the container, where the depth is nonzero so no cut is safe)
-    /// byte-identical to a full re-parse. This deterministically exercises the
-    /// depth/offset error class a piece boundary could introduce, rather than
-    /// leaving the bracketed-multi-piece case to the proptest generator's chance.
+    /// byte-identical to a full re-parse. This test covers the depth/offset error
+    /// class that a piece boundary could introduce, which the proptest generator
+    /// does not reach on every run.
     #[test]
     fn pieceseq_multi_piece_with_block_container_stays_identical() {
         let cached = output(
@@ -2699,7 +2673,7 @@ mod oracle_proptests {
             "compact collapses to a single piece",
         );
         // Query-equivalent to a full re-parse, and hence to the pre-compact
-        // sequence, which `try_safe_edit` already pinned against the same parse.
+        // sequence, which `try_safe_edit` checked against the same parse.
         verify_seq_matches(&compacted, &state.cached);
     }
 }

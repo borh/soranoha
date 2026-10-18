@@ -2,9 +2,9 @@
 //!
 //! Every payload is `Copy`, and the variable-length pieces are `u32`
 //! handles into a flat [`NodeStore`] rather than `&'src str` borrows, so
-//! the whole tree carries no lifetime and **is** `Send + Sync`. The
-//! incremental (`PieceSeq`) cache and an out-of-process LSP consumer need
-//! exactly that: a representation they can own, cache, and move between
+//! the whole tree carries no lifetime and is `Send + Sync`. The
+//! incremental (`PieceSeq`) cache and an out-of-process LSP consumer
+//! require a representation they can own, cache, and move between
 //! threads.
 //!
 //! One variant per node. Variable-length payloads use `u32` handles instead of
@@ -20,13 +20,12 @@
 //! owned wrapper. [`LexOutput`] is the lexer's output, carrying a
 //! [`NodeStore`] that owns the variable-length payloads.
 //!
-//! # Status
-//!
-//! This is the **sole** AST representation: the lex pipeline's classify stage
-//! builds it directly via [`Allocator`](crate::alloc::Allocator)
-//! and the fold records it into an [`LexOutput`] that every consumer reads.
+//! The lex pipeline's classify stage builds this AST directly via
+//! [`Allocator`](crate::alloc::Allocator), and the fold records it into a
+//! [`LexOutput`] that every consumer reads.
 
 mod classified_source;
+mod formatting_instruction;
 mod intern;
 mod output;
 mod payload;
@@ -37,17 +36,23 @@ pub use classified_source::{
     ClassifiedSourceDisposition, ClassifiedSourceEvidenceClass, ClassifiedSourceFact,
     ClassifiedSourceRole, ConstructId, canonicalize_classified_source_facts,
 };
+pub use formatting_instruction::{
+    FormattingEffect, FormattingInstruction, FormattingOperation, FormattingPlacement,
+    FormattingPredecessor, FormattingRuleStyle, FormattingSelection, FormattingSelector,
+    HeadingTypography, KuntenExclusion, KuntenPolicy, KuntenScope, LineStartAlignment,
+};
 pub use intern::{InternStats, StrId, StrInterner};
 pub use output::{LexOutput, SourceNode};
 pub use payload::{
-    AngleQuote, Content, Directive, ForwardFormat, Gaiji, GaijiCanonicalOwned, Heading,
-    HeadingHint, Illustration, IterationMark, Kunten, KuntenKind, MarginNote, Node, NonEmptySpan,
-    Ruby, Segment, TranscribedNote, TranscribedNotes, Warichu,
+    AngleQuote, Content, Directive, DirectivePairPayload, ForwardFormat, Gaiji,
+    GaijiCanonicalOwned, GaijiMarkerPlacement, Heading, HeadingHint, Illustration, IterationMark,
+    Kunten, KuntenKind, MarginNote, MarginNotePair, Node, NonEmptySpan, Ruby, Segment,
+    TranscribedNote, TranscribedNotes, Warichu,
 };
 pub use registry::{ContainerEnd, ContainerPair, NodeRef, Registry};
 pub use store::{
-    ContentRange, ForwardAttrRange, ForwardAttrs, IllustrationId, NodeStore, PartialLayoutId,
-    SegRange, TranscribedNotesId,
+    ContentRange, FormattingInstructionId, ForwardAttrRange, ForwardAttrs, IllustrationId,
+    MarginNotePairId, NodeStore, PartialLayoutId, SegRange, TranscribedNotesId,
 };
 
 #[cfg(test)]
@@ -55,7 +60,6 @@ mod tests {
     use super::*;
     use crate::RubySide;
 
-    // UNIT TEST 1: the Send + Sync property holds for the owned output.
     #[test]
     fn lex_output_is_send_and_sync() {
         const fn assert_send_sync<T: Send + Sync>() {}
@@ -64,15 +68,15 @@ mod tests {
         assert_send_sync::<Registry>();
     }
 
-    // UNIT TEST 3: build a tiny LexOutput by hand for a ruby node
-    // (base "日本" reading "にほん") via the store API, then resolve the
-    // StrIds / ranges back and assert the structure.
+    // Builds a LexOutput by hand for a ruby node (base "日本", reading
+    // "にほん") via the store API, then resolves the StrIds and ranges and
+    // checks the structure.
     #[test]
     fn hand_built_ruby_output_resolves_back() {
         let mut store = NodeStore::new();
 
-        // Intern the base + reading and lay them down as single-element
-        // content runs (a plain ruby base / reading is one `Plain` content).
+        // Intern the base and reading and store each as a single-element
+        // content run (a plain ruby base / reading is one `Plain` content).
         let base_id = store.intern("日本");
         let reading_id = store.intern("にほん");
         let base = store.push_contents(&[Content::Plain(base_id)]);

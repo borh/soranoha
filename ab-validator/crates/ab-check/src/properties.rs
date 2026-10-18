@@ -139,12 +139,12 @@ impl Property for RubyCompleteness {
 
 #[must_use]
 pub fn body_text(text: &str) -> &str {
-    // The parser's own boundary authority: the header is cut only when
-    // the first two dash-runs fence the editorial legend (dash-runs used
+    // Uses the parser's body-boundary function: the header is cut only when
+    // the first two dash-runs enclose the editorial legend (dash-runs used
     // as scene/poem dividers leave the body uncut), and the tail is the
     // line-anchored 底本： trailer (mid-line 翻訳の底本： is body text).
-    // Sharing the one implementation keeps this comparison source from
-    // drifting against the projection the parser actually emitted.
+    // Calling the same implementation gives this comparison source the same
+    // body boundaries as the projection the parser emitted.
     let (range, _tail_start) = ab_source_syntax::aozora_body_range(text);
     &text[range]
 }
@@ -235,8 +235,8 @@ fn violation(
 
 #[must_use]
 pub fn source_visible_text(txt: &str) -> String {
-    // Compatibility wrapper for existing callers. New code should use
-    // source_projection::comparison_lossy_body so the lossy semantics are named.
+    // Wrapper for existing callers. source_projection::comparison_lossy_body
+    // states the lossy semantics in its name; new callers use it directly.
     source_projection::comparison_lossy_body(txt)
 }
 
@@ -264,7 +264,7 @@ mod tests {
     use super::*;
 
     /// `翻訳の底本：` mid-body (translated works list their translation
-    /// source inline) must not truncate the body: only a line that STARTS
+    /// source inline) does not truncate the body: only a line that starts
     /// with `底本：`/`底本:` is the terminal-provenance trailer.
     #[test]
     fn body_text_cuts_only_at_line_start_teihon() {
@@ -276,10 +276,10 @@ mod tests {
         assert!(!body.contains("「全集」"));
     }
 
-    /// body_text is the parser's own boundary authority
+    /// body_text calls the parser's body-boundary function
     /// (`ab_source_syntax::aozora_body_range`): dash-runs used as
-    /// scene/poem dividers carry no legend between the first two, so the
-    /// header cut must not fire and the whole source stays comparable.
+    /// scene/poem dividers contain no legend between the first two, so the
+    /// header is not cut and the whole source stays comparable.
     #[test]
     fn body_text_keeps_content_dash_runs_uncut() {
         let text = "小熊秀雄全集-1\n短歌集\n\n第一歌\n--------------------\n\

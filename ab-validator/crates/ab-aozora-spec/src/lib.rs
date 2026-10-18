@@ -4,31 +4,25 @@
 
 //! Aozora Bunko notation specification crate.
 //!
-//! This crate is the source of truth for types shared across crates:
+//! This crate defines the types shared across crates:
 //!
 //! - **PUA sentinel codepoints**: the four `U+E001..U+E004` markers the
 //!   lexer injects into normalized text (see [`sentinels`]).
 //! - **[`Span`]**: `(u32, u32)` byte-range over a UTF-8 source.
 //! - **[`TriggerKind`]**: the set of Aozora notation marker characters
-//!   (`｜《》［］＃※〔〕「」`) plus the const-PHF byte-sequence lookup
-//!   table that maps a UTF-8 trigger byte sequence to its kind.
+//!   (`｜《》≪≫［］＃※〔〕「」`) plus [`classify_trigger_bytes`], which
+//!   maps a UTF-8 trigger byte sequence to its kind.
 //! - **[`PairKind`]**: categories of balanced open/close delimiters.
 //! - **[`Diagnostic`]**: non-fatal observations emitted by pipeline stages.
 //!
-//! ## Why a separate crate
+//! ## Dependency boundary
 //!
-//! Pre-0.2 these types lived scattered between `aozora-syntax` (`Span`)
-//! and `aozora-pipeline` (`Diagnostic`, sentinels, `TriggerKind`,
-//! `PairKind`). The result: any crate that wanted a [`Diagnostic`] had
-//! to depend on the full lexer, which transitively dragged in the
-//! whole pipeline (sanitize → tokenize → pair → classify). The new
-//! layered architecture requires `aozora-syntax`, `aozora-scan`,
-//! `aozora-pipeline`, `aozora-render`, and `aozora` itself to all
-//! reference these shared types without depending on the engine.
-//!
-//! Concretely, this crate has **no internal dependency** on any other
-//! `aozora-*` crate, only on `miette`/`thiserror`. Every other crate
-//! may depend on `aozora-spec` and re-export from it.
+//! `ab-aozora-syntax`, `ab-aozora-pipeline`, `ab-aozora-render` and
+//! `ab-aozora-facade` reference these shared types without depending on the
+//! lexer, which depends on the whole pipeline (sanitize → tokenize →
+//! pair → classify). This crate therefore depends on no other
+//! `ab-aozora-*` crate, only on `miette`/`thiserror`. Every other crate
+//! may depend on `ab-aozora-spec` and re-export from it.
 
 #![forbid(unsafe_code)]
 

@@ -7,11 +7,11 @@
 //!
 //! Matching fingerprints all three bytes of each trigram rather than
 //! filtering on the leading byte. Six of the triggers lead with `0xE3`, and
-//! so does every kana codepoint, so a leading-byte filter would nominate
-//! most of a Japanese text as a candidate. The patterns come from
+//! so does every kana codepoint, so a leading-byte filter would select
+//! most of a Japanese text as candidates. The patterns come from
 //! [`ALL_TRIGGER_TRIGRAMS`], the same constant
 //! [`classify_trigger_bytes`] is pinned against, so the scanner and the
-//! classifier cannot disagree about what counts as a trigger.
+//! classifier use one trigger set.
 //!
 //! [`naive_scan_offsets`] classifies the window at every byte position
 //! instead. It is the independent reference the automaton is differentially
@@ -37,7 +37,7 @@ fn automaton() -> &'static AhoCorasick {
     })
 }
 
-/// Build the trigger automaton now rather than inside the first scan.
+/// Build the trigger automaton before the first scan.
 /// Idempotent and sub-microsecond after the first call.
 pub(crate) fn prewarm() {
     let _ = automaton();
@@ -68,7 +68,7 @@ pub(crate) fn scan_offsets(source: &str) -> Vec<u32> {
 ///
 /// This is the independent oracle for [`scan_offsets`], not a production
 /// path: the two share only the trigger set, so a fault in the automaton's
-/// construction or in its match handling shows up as a disagreement. It is
+/// construction or in its match handling produces a disagreement. It is
 /// `pub` (though hidden) because the pipeline-level scan properties in
 /// `tests/property_scan_equiv.rs` need the same oracle from outside the
 /// crate.
@@ -113,9 +113,9 @@ mod tests {
         );
     }
 
-    // Hand-curated regression anchors: one per trigger kind plus the double
-    // variants. These catch the obvious regressions even when the proptests
-    // below run with a reduced case count.
+    // Fixed regression inputs: one per trigger kind plus the double
+    // variants. They detect regressions when the proptests below run with
+    // a reduced case count.
 
     #[test]
     fn empty_input_yields_no_offsets() {
@@ -172,15 +172,15 @@ mod tests {
     proptest! {
         #![proptest_config(default_config())]
 
-        /// Agreement on the workhorse `aozora_fragment` distribution.
+        /// Agreement on the `aozora_fragment` distribution.
         #[test]
         fn scan_matches_naive_on_aozora_fragment(s in aozora_fragment(120)) {
             assert_scan_matches_naive(&s);
         }
 
         /// Pathological and unbalanced Aozora: the same agreement property
-        /// over inputs the lex pipeline rejects. The scanner does not care
-        /// about well-formedness, only about trigger-byte positions.
+        /// over inputs the lex pipeline rejects. The scanner ignores
+        /// well-formedness and reports trigger-byte positions only.
         #[test]
         fn scan_matches_naive_on_pathological_aozora(s in pathological_aozora(120)) {
             assert_scan_matches_naive(&s);

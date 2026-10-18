@@ -3,11 +3,11 @@
 //!
 //! The serialise path round-trips a parsed tree back to Aozora source
 //! text. The natural `parse(serialize(parse(s))) == parse(s)` statement
-//! requires AST equality; here we use the weaker but easier-to-verify
-//! property that re-parsing and re-serialising must converge to a
-//! fixed point. If the serialiser ever introduces non-canonical
+//! requires AST equality; this file checks the weaker property, which
+//! needs no AST comparison, that re-parsing and re-serialising converge
+//! to a fixed point. If the serialiser introduces non-canonical
 //! whitespace or character variants that the parser strips, the
-//! second pass would *change* the bytes, and the property fails.
+//! second pass changes the bytes, and the property fails.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_render::serialize;
@@ -30,10 +30,6 @@ fn assert_serialise_is_idempotent(source: &str) {
          after 2nd: {second:?}"
     );
 }
-
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
 
 #[test]
 fn empty_input_is_idempotent() {
@@ -65,9 +61,9 @@ proptest! {
     #![proptest_config(default_config())]
 
     /// `serialize ∘ parse ∘ serialize ∘ parse = serialize ∘ parse` over
-    /// the workhorse generator. A divergence between passes means the
-    /// serialise output is *not* a parser fixed point — a quiet bug
-    /// that would silently mutate documents on every round-trip.
+    /// the Aozora-fragment generator. A divergence between passes means
+    /// the serialise output is not a parser fixed point, and each round
+    /// trip would alter the document.
     #[test]
     fn aozora_fragment_is_idempotent(s in aozora_fragment(120)) {
         assert_serialise_is_idempotent(&s);

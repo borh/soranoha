@@ -28,15 +28,22 @@ pub(crate) fn parser_ir_node_visible_text(node: &Value) -> Result<String> {
     }
     let node_type = node_type(node);
     let text = match node_type {
-        "text" | "iteration-mark" | "supplied-diacritic" | "quote" | "emphasis" | "layout-span"
-        | "heading" | "source-note" => node.get("text").and_then(Value::as_str).unwrap_or(""),
+        "text" | "iteration-mark" | "supplied-diacritic" | "accent" | "quote" | "emphasis"
+        | "layout-span" | "heading" | "source-note" => {
+            node.get("text").and_then(Value::as_str).unwrap_or("")
+        }
         "ruby" => node
             .pointer("/ruby/base")
             .and_then(Value::as_str)
             .unwrap_or(""),
         "gaiji" => unicode_or_placeholder(node.pointer("/gaiji/unicode").and_then(Value::as_str)),
         "line-break" => "\n",
-        "page-break" | "image" | "editor-note" | "kunten" | "indentation" => "",
+        "page-break"
+        | "image"
+        | "editor-note"
+        | "formatting-instruction"
+        | "kunten"
+        | "indentation" => "",
         other => bail!("unsupported parser-IR node type for visible-text projection: {other}"),
     };
     Ok(text.to_owned())

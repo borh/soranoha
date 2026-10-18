@@ -4,9 +4,9 @@
 //! `Document` owns the source buffer; [`Document::parse`] returns a
 //! [`Tree<'_>`] whose `'a` lifetime tracks only that `&self` source borrow —
 //! the AST data itself is owned, lifetime-free, and `Send + Sync`
-//! (an `LexOutput`). Owning source removes the self-referential-struct
-//! problem that would otherwise plague driver wrappers (FFI/WASM/Py): callers
-//! can hold a `Document` inside any wrapper without juggling source lifetimes.
+//! (an `LexOutput`). Because `Document` owns its source, a binding
+//! (FFI/WASM/Py) can hold a `Document` without a self-referential struct or a
+//! separate source lifetime.
 //!
 //! The owned AST stores interned strings and node payloads in a flat
 //! `NodeStore` (the owned `StrInterner` deduplicates repeated string content);
@@ -29,32 +29,27 @@ use ab_aozora_syntax::ast::ContainerPair;
 /// [`Tree::diagnostics`] slice retains every entry, drops library-internal
 /// consistency check failures, or short-circuits after the first source-side error.
 ///
-/// Marked `#[non_exhaustive]` so future policies (such as severity-only filters)
-/// can be added in minor releases.
+/// `#[non_exhaustive]`: a minor release may add a policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum DiagnosticPolicy {
     /// Default. Every diagnostic the lexer emits surfaces in the
     /// returned tree, with no filtering or ordering changes. Editor
-    /// integrations that decorate the buffer typically want this.
+    /// integrations that decorate the buffer typically use this.
     #[default]
     CollectAll,
     /// Drop diagnostics whose [`Diagnostic::source`] is
     /// [`DiagnosticSource::Internal`](ab_aozora_spec::DiagnosticSource::Internal).
-    /// Internal errors (such as the four legacy internal consistency checks) are
-    /// excluded from the result; CLI and batch consumers that prefer a
-    /// terser stream can opt in.
+    /// Internal errors (such as the four internal consistency checks) are
+    /// excluded from the result; CLI and batch consumers select this for a
+    /// shorter stream.
     DropInternal,
 }
 
 /// Builder for the [`Document::parse`] entry point.
 ///
-/// [`ParseOptions`] is the single tunable surface for the diagnostic policy.
+/// [`ParseOptions`] holds the diagnostic policy.
 /// [`Document::new`] is equivalent to `ParseOptions::new().build(source)`.
-///
-/// The builder methods consume `self` and return the next stage so
-/// the chain reads top-to-bottom and so unused options never leave a
-/// dangling builder around.
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]
 pub struct ParseOptions {
@@ -117,26 +112,24 @@ impl Document {
 
     /// Apply an in-place text edit and return a fresh [`Document`].
     ///
-    /// `span` is a byte range in the *current* source (`self.source`);
+    /// `span` is a byte range in the current source (`self.source`);
     /// `replacement` is the new text to splice in. The result is a
     /// new `Document` whose source equals
     /// `self.source[..span.start] + replacement + self.source[span.end..]`.
-    /// The arena is rebuilt — incremental re-parse over the unchanged
-    /// region is a future improvement (see the architecture handbook
-    /// chapter on incremental parse).
+    /// [`Document::parse`] reparses the result in full; this method does not
+    /// reuse the unchanged region (the architecture handbook chapter on
+    /// incremental parse describes the incremental path).
     ///
-    /// The signature is the supported entry point for editor surfaces
-    /// implementing `textDocument/didChange`. Even with a full reparse
-    /// inside, callers get a stable API today and a transparent
-    /// upgrade path to subtree-aware reuse later.
+    /// This is the supported entry point for editor integrations
+    /// implementing `textDocument/didChange`.
     ///
     /// # Panics
     ///
     /// Panics if `span.start > span.end`, if `span.end > source.len()`,
     /// or if `span.start` / `span.end` does not lie on a UTF-8
-    /// codepoint boundary in `self.source`. These are programmer
-    /// errors — editor integrations should clamp the span via the
-    /// existing `ab_aozora_facade::Span` constructor's bounds checking.
+    /// codepoint boundary in `self.source`. These are caller
+    /// errors; editor integrations should clamp the span with the
+    /// bounds checking of the `ab_aozora_facade::Span` constructor.
     #[must_use]
     pub fn edit(&self, span: ab_aozora_spec::Span, replacement: &str) -> Self {
         let start = span.start as usize;
@@ -147,9 +140,8 @@ impl Document {
             "edit: span end ({end}) past source length ({len})",
             len = self.source.len(),
         );
-        // Boundary-validate by slicing — `&str` indexing panics on
-        // mid-codepoint, which is the exact error mode we want to
-        // surface to the caller as a precondition violation.
+        // `&str` indexing panics on an offset inside a codepoint, which
+        // reports a violation of the documented UTF-8 boundary precondition.
         let prefix = &self.source[..start];
         let suffix = &self.source[end..];
 
@@ -173,15 +165,15 @@ impl Document {
     /// `region` must come from this document's
     /// [`Tree::regions`](crate::Tree::regions) /
     /// [`Tree::region_at`](crate::Tree::region_at); `replacement`
-    /// is the new source for the region's own bytes. Unlike [`Self::edit`] —
-    /// which takes a raw byte span and trusts the caller — this routes through
+    /// is the new source for the region's own bytes. Unlike [`Self::edit`],
+    /// which takes a raw byte span without checking it, this calls
     /// [`Tree::splice`](crate::Tree::splice): a
     /// [`Coupled`](crate::SpliceSafety::Coupled) region's partner (a forward
     /// reference's upstream literal, a container's matching close) is derived
-    /// and the edit is verified by re-parse, so the result cannot silently
-    /// desync.
+    /// and the edit is verified by re-parse, so the result cannot leave a
+    /// coupled partner inconsistent with the edit.
     ///
-    /// The returned document's source is the **sanitized**-then-spliced text:
+    /// The returned document's source is the sanitized-then-spliced text:
     /// byte-identical to [`Self::edit`] on inputs that triggered no sanitize
     /// rewrite, and equal to `splice + Document::new` otherwise (a
     /// sanitized-coordinate region cannot be applied to un-sanitized bytes).
@@ -206,9 +198,9 @@ impl Document {
     /// Parse the document, returning a [`Tree<'_>`] view bound to `&self`'s
     /// lifetime (only its `source` borrow; the AST data is owned).
     ///
-    /// Delegates to [`Self::lex`] — the default parse now produces the
-    /// owned, lifetime-free representation — and wraps it with the source
-    /// borrow so the editor-facing [`Tree`] surface keeps the same shape.
+    /// Delegates to [`Self::lex`], which produces the owned, lifetime-free
+    /// representation, and pairs the result with the source borrow in a
+    /// [`Tree`].
     #[must_use]
     pub fn parse(&self) -> Tree<'_> {
         Tree {
@@ -224,8 +216,8 @@ impl Document {
     /// is `Send + Sync`. Applies the same [`DiagnosticPolicy`] filtering as
     /// [`Self::parse`].
     ///
-    /// This is the entry point the incremental-reparse LSP consumer holds
-    /// across edits; renderers reach it through `ab_aozora_render`'s owned paths
+    /// The incremental-reparse LSP consumer retains its result across edits;
+    /// renderers consume it through `ab_aozora_render`'s owned paths
     /// (`serialize` / `render_html`).
     #[must_use]
     pub fn lex(&self) -> LexOutput {
@@ -249,11 +241,11 @@ impl fmt::Debug for Document {
 
 /// View into a parsed Aozora document.
 ///
-/// Wraps an owned, lifetime-free [`LexOutput`] (the `'a` lifetime now
-/// tracks only the `source` borrow). The output may be **owned** by this tree
-/// (the usual [`Document::parse`] case) or **borrowed** from a longer-lived
+/// Wraps an owned, lifetime-free [`LexOutput`] (the `'a` lifetime
+/// tracks only the `source` borrow). The output may be owned by this tree
+/// (the usual [`Document::parse`] case) or borrowed from a longer-lived
 /// holder (via [`Tree::view`], used by caches such as the LSP `ParseCache`
-/// that retain the owned output and want tree access without re-parsing).
+/// that retain the owned output and read it as a tree without re-parsing).
 /// Renderer methods dispatch to `ab_aozora_render`'s owned-AST implementations;
 /// the side-table accessors return owned types (`SourceNode` /
 /// `NodeRef`) whose payload text resolves through the output's
@@ -278,7 +270,7 @@ enum TreeInner<'a> {
 impl<'a> Tree<'a> {
     /// Build a [`Tree`] view that borrows an already-parsed [`LexOutput`].
     /// Used by long-lived caches (e.g. the LSP `ParseCache`) that retain the
-    /// owned output and want tree access without re-parsing.
+    /// owned output and read it as a tree without re-parsing.
     #[must_use]
     pub fn view(source: &'a str, output: &'a LexOutput) -> Self {
         Self {
@@ -309,11 +301,10 @@ impl<'a> Tree<'a> {
 
     /// Resolved (open, close) delimiter pairs as observed by the pair stage.
     /// One entry per matched pair, in close order. Unmatched closes
-    /// and unclosed opens are excluded — they have no partner span and
-    /// would only confuse editor surfaces.
+    /// and unclosed opens are excluded because they have no partner span.
     ///
     /// Spans use the same coordinate system as
-    /// [`Self::diagnostics`]: byte offsets in the *sanitized* source
+    /// [`Self::diagnostics`]: byte offsets in the sanitized source
     /// (which equals the original source on every input that did not
     /// trigger BOM/CRLF/accent rewriting in the sanitize stage). Editor-facing
     /// LSP requests like `textDocument/linkedEditingRange` and
@@ -336,9 +327,9 @@ impl<'a> Tree<'a> {
     /// Returns `None` if the offset falls inside a `SpanKind::Plain`
     /// run between Aozora constructs.
     ///
-    /// This is the canonical offset→node lookup: editor and LSP surfaces
-    /// work in source coordinates, so this is the position query to reach
-    /// for (the normalized-coordinate registry is a low-level internal).
+    /// This is the canonical offset→node lookup: editor and LSP code
+    /// works in source coordinates and uses this query (the
+    /// normalized-coordinate registry is internal).
     ///
     /// `O(log n)` over the source-keyed side-table.
     #[must_use]
@@ -351,9 +342,9 @@ impl<'a> Tree<'a> {
     ///
     /// The normalized coordinate space is a low-level implementation
     /// detail with no external consumer. Source-coordinate lookups should
-    /// use [`Self::node_at_source`]; a consumer that genuinely needs a
-    /// normalized-offset lookup (e.g. the afm integration) should reach
-    /// the `registry` through [`Self::lex_output`] directly.
+    /// use [`Self::node_at_source`]; a consumer that requires a
+    /// normalized-offset lookup (e.g. the afm integration) should read
+    /// the `registry` through [`Self::lex_output`].
     #[doc(hidden)]
     #[deprecated(note = "use lex_output().registry.node_at() for normalized-offset lookups")]
     #[must_use]
@@ -362,20 +353,20 @@ impl<'a> Tree<'a> {
     }
 
     /// Borrow the source-keyed side table directly. Sorted by
-    /// `source_span.start`; useful for editor surfaces that want to
-    /// iterate every classified node (semantic tokens, document
-    /// symbols, …).
+    /// `source_span.start`. Editor features that iterate every
+    /// classified node (semantic tokens, document symbols, …) read it.
     ///
     /// **Host literal contexts.** A host that embeds aozora into a larger
     /// grammar (e.g. `CommonMark` via comrak) collapses each notation into a
-    /// PUA sentinel before its own parse. When the host routes a sentinel
-    /// into a *literal* field — a code span `` `…` `` or a link/image
-    /// destination — the notation must appear as its **original source**, not
-    /// be interpreted. Such a host must resolve *every* sentinel it emits
+    /// PUA sentinel before its own parse. When the host places a sentinel
+    /// in a literal field — a code span `` `…` `` or a link/image
+    /// destination — the notation must appear as its original source, not
+    /// be interpreted. Such a host must resolve every sentinel it emits
     /// (including ones in literal regions) and recover the original text from
     /// `SourceNode::source_span` + [`Span::slice`](crate::Span::slice);
-    /// resolving only "normal"-text sentinels leaks the raw sentinel and
-    /// desyncs the registry cursor. See the *Notations in host literal
+    /// a host that resolves only "normal"-text sentinels leaves the raw
+    /// sentinel in its output and its registry cursor out of step with the
+    /// sentinels. See the *Notations in host literal
     /// contexts* recipe in the handbook.
     #[must_use]
     pub fn source_nodes(&self) -> &[SourceNode] {
@@ -384,7 +375,7 @@ impl<'a> Tree<'a> {
 
     /// The sanitized source buffer — the exact bytes the lexer
     /// classified, after the sanitize stage (BOM-strip, CRLF→LF,
-    /// `〔...〕` accent decomposition, and decorative-rule isolation).
+    /// decorative-rule isolation, and `〔...〕` accent decomposition).
     ///
     /// This is the coordinate space every `source_span` on
     /// [`Self::source_nodes`] / [`Self::pairs`] / [`Self::diagnostics`]
@@ -401,10 +392,9 @@ impl<'a> Tree<'a> {
     ///
     /// One entry per balanced
     /// `［＃ここから…］`/`［＃ここで…終わり］` pair, in close order.
-    /// Editor surfaces can ask "where is the close for this open?"
-    /// directly off this slice; renderers that want to recurse
-    /// through container bodies use the open/close offsets to slice
-    /// the normalized text.
+    /// Editor features look up the close of an open in this slice;
+    /// renderers that recurse through container bodies use the
+    /// open/close offsets to slice the normalized text.
     ///
     /// Coordinates are [`NormalizedOffset`] — they index the
     /// PUA-rewritten text, not the original source.
@@ -427,14 +417,14 @@ impl<'a> Tree<'a> {
     /// renders as an inert `<span class="aozora-directive" hidden>`, so the
     /// default render never depends on the notation-hygiene catalogue.
     ///
-    /// With `directives` not `Off`, verified near-misses (per the single
-    /// `ab_aozora_syntax::lint::canonical_directive` authority — plus, at the
+    /// With `directives` not `Off`, verified near-misses (as determined by
+    /// `ab_aozora_syntax::lint::canonical_directive`, plus, at the
     /// `Degraded` level, the lossy / judgment `ab_aozora_syntax::degraded`
-    /// reductions — reached transitively through the formatter rewrite) render
-    /// as if they were their canonical spelling. This is the opt-in, read-only
-    /// rendering mode: it reuses the
-    /// formatter rewrite as an internal, throwaway step feeding a reparse, and
-    /// never mutates this document's source or the default parse/render.
+    /// reductions, both applied through the formatter rewrite) render
+    /// as their canonical spelling. This rendering mode is opt-in and
+    /// read-only: it applies the formatter rewrite to a temporary copy,
+    /// reparses that copy, and does not modify this document's source or
+    /// the default parse/render.
     #[must_use]
     pub fn to_html_with(&self, opts: RenderOptions) -> String {
         match opts.directives {
@@ -510,7 +500,6 @@ mod tests {
 
     #[test]
     fn edit_splices_source_at_span() {
-        // Replace "world" with "Aozora" in "hello world!".
         let d = Document::new("hello world!");
         let span = ab_aozora_spec::Span::new(6, 11);
         let edited = d.edit(span, "Aozora");
@@ -520,10 +509,8 @@ mod tests {
     #[test]
     fn edit_at_start_and_end_boundaries() {
         let d = Document::new("middle");
-        // Insert at start (zero-length span at offset 0).
         let head = d.edit(ab_aozora_spec::Span::new(0, 0), "PRE-");
         assert_eq!(head.source(), "PRE-middle");
-        // Append at end (zero-length span at len()).
         let len = u32::try_from(d.source().len()).expect("test source fits u32");
         let tail = d.edit(ab_aozora_spec::Span::new(len, len), "-POST");
         assert_eq!(tail.source(), "middle-POST");
@@ -532,9 +519,9 @@ mod tests {
     #[test]
     fn edit_equivalence_full_reparse() {
         // The edited document parses to the same Tree shape as
-        // re-parsing the spliced source from scratch — this is the
-        // observable property `Document::edit` ships under, which the
-        // incremental engine preserves.
+        // re-parsing the spliced source from scratch. This is the
+        // contract of `Document::edit`, which the incremental engine
+        // also satisfies.
         let original = Document::new("｜青梅《おうめ》です。");
         // Replace 《おうめ》 with 《せいばい》.
         let span_start = original.source().find('《').expect("《 present");
@@ -580,7 +567,6 @@ mod tests {
 
     #[test]
     fn pairs_records_simple_ruby() {
-        // 《 … 》 produces one Ruby pair.
         let d = Document::new("｜青梅《おうめ》");
         let t = d.parse();
         let pairs = t.pairs();
@@ -597,19 +583,18 @@ mod tests {
 
     #[test]
     fn pairs_records_multiple_brackets_in_close_order() {
-        // Nested brackets — inner closes first.
         let d = Document::new("［＃外［＃内］終］");
         let t = d.parse();
         let pairs = t.pairs();
         assert_eq!(pairs.len(), 2);
-        // Inner pair closes first; its open must come AFTER the outer's open.
+        // The inner of two nested pairs closes first; its open comes after the outer's.
         assert!(pairs[0].open.start > pairs[1].open.start);
         assert!(pairs[0].close.start < pairs[1].close.start);
     }
 
     #[test]
     fn pairs_excludes_unclosed_open() {
-        // No matching `］`. Diagnostic fires; pairs stays empty.
+        // No matching `］`: the parse emits a diagnostic and no pair.
         let d = Document::new("［＃orphan");
         let t = d.parse();
         assert!(t.pairs().is_empty());
@@ -629,7 +614,7 @@ mod tests {
         let src = "前｜青梅《おうめ》後";
         let d = Document::new(src);
         let t = d.parse();
-        // Find the byte offset of `｜` — that's where the ruby span starts.
+        // The ruby span starts at the byte offset of `｜`.
         let bar_off =
             u32::try_from(src.find('｜').expect("source contains ｜")).expect("offset fits in u32");
         let entry = t
@@ -663,8 +648,6 @@ mod tests {
 
     #[test]
     fn parse_options_default_matches_document_new() {
-        // ParseOptions::new().build(s) must produce the same tree as
-        // Document::new(s) — Document::new is a thin wrapper.
         let src = "｜青梅《おうめ》";
         let via_new = Document::new(src);
         let via_options = ParseOptions::new().build(src);
@@ -673,10 +656,10 @@ mod tests {
 
     #[test]
     fn parse_options_drop_internal_filters_internal_diagnostics() {
-        // DropInternal hides Diagnostic::Internal entries. Production
-        // parses on well-formed input emit none, so we cross-check
-        // CollectAll/DropInternal yield the same `len()` for clean
-        // input — and the policy plumbing exists.
+        // DropInternal removes diagnostics whose source is Internal. A
+        // parse of well-formed input emits none, so this checks only that
+        // CollectAll and DropInternal yield the same `len()` on clean
+        // input and that both policies can be configured.
         let doc_collect = Document::options()
             .diagnostic_policy(DiagnosticPolicy::CollectAll)
             .build("plain text");
@@ -705,7 +688,7 @@ mod tests {
     #[test]
     fn sanitized_plain_only() {
         // A plain run with no Aozora construct: source_nodes is empty,
-        // so the buffer must still be recovered intact.
+        // and the sanitized buffer must still equal the sanitize output.
         assert_source_and_sanitized_buffers("ただの平文です。\n二行目。\n");
     }
 
@@ -728,7 +711,7 @@ mod tests {
     #[test]
     fn sanitized_consecutive_nodes_no_gap() {
         // Two ruby runs back-to-back: adjacent source spans with no
-        // intervening plain text. Locks that touching nodes round-trip.
+        // intervening plain text. Checks that adjacent nodes round-trip.
         assert_source_and_sanitized_buffers("｜青梅《おうめ》｜街道《かいどう》");
     }
 
@@ -741,7 +724,7 @@ mod tests {
 
     #[test]
     fn sanitized_trailing_node_no_tail_gap() {
-        // Construct flush against the end of the buffer (no trailing
+        // Construct ending at the end of the buffer (no trailing
         // plain run). Exercises the tail-of-buffer boundary.
         assert_source_and_sanitized_buffers("平文のち｜青梅《おうめ》");
     }

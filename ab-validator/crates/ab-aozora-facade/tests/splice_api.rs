@@ -1,7 +1,6 @@
-//! Black-box coverage of the public minimal-diff splice surface,
-//! exercised through the `aozora` front door exactly as an editor
-//! integration would — proving the re-exports are usable from outside
-//! the crate.
+//! Black-box tests of the public minimal-diff splice API through the `aozora`
+//! facade, called as an editor integration calls it, which checks that the
+//! re-exports are usable from outside the crate.
 
 use ab_aozora_facade::{CoupledKind, Document, RegionRole, SpliceError, SpliceSafety};
 
@@ -22,7 +21,7 @@ fn regions_cover_the_whole_source() {
         .collect();
     assert_eq!(rebuilt, sanitized);
 
-    // At least the ruby and the reclaimed forward surface as classified roles.
+    // The ruby and the reclaimed forward reference appear with classified roles.
     assert!(regions.iter().any(|r| r.role == RegionRole::Ruby));
     assert!(
         regions
@@ -44,7 +43,7 @@ fn reclaimed_forward_is_direct_minimal_diff() {
         .expect("a reclaimed forward bouten");
     assert_eq!(region.safety, SpliceSafety::Direct);
 
-    // The whole construct (literal + bracket) is owned by the region, so a
+    // The region contains the whole construct (literal and bracket), so a
     // direct byte replacement is a complete edit.
     let spliced = tree
         .splice(region, "海［＃「海」に傍点］")
@@ -68,15 +67,15 @@ fn referenced_forward_is_coupled() {
         SpliceSafety::Coupled(CoupledKind::ForwardReference)
     );
 
-    // An attribute-only change keeps the target, so the forward re-forms and
-    // the edit is accepted (a single-region edit).
+    // An attribute-only change keeps the target, so the forward reference
+    // resolves again and the single-region edit is accepted.
     let spliced = tree
         .splice(region, "［＃「青空」に傍線］")
         .expect("attribute-only change is coherent");
     assert_eq!(spliced, "青空がひろがる、その［＃「青空」に傍線］");
 
     // A target-text change is a coupled edit: both the bracket and the unique
-    // upstream literal are rewritten so the reference stays in sync.
+    // preceding literal are rewritten so that the reference still resolves.
     let coupled = tree
         .splice(region, "［＃「海」に傍点］")
         .expect("target change is a coupled edit");
@@ -85,8 +84,8 @@ fn referenced_forward_is_coupled() {
 
 #[test]
 fn ruby_base_forward_target_change_is_irreducible() {
-    // The referent literal lives inside a ruby base, not a plain run, so a
-    // target change cannot be carved out — declined as unverifiable.
+    // The referent literal is inside a ruby base, not a plain run, so the
+    // splice cannot isolate a target change and returns `Unverifiable`.
     let src = "｜我《われ》は［＃「我」に傍点］";
     let doc = Document::new(src);
     let tree = doc.parse();
@@ -95,7 +94,7 @@ fn ruby_base_forward_target_change_is_irreducible() {
         .into_iter()
         .find(|r| r.role == RegionRole::ForwardReferenced)
     else {
-        return; // classifier may treat this shape differently; nothing to assert
+        return; // no `ForwardReferenced` region for this shape; nothing to assert
     };
     let err = tree
         .splice(region, "［＃「彼」に傍点］")
@@ -105,10 +104,10 @@ fn ruby_base_forward_target_change_is_irreducible() {
 
 #[test]
 fn ruby_base_forward_attribute_change_is_coherent() {
-    // The referent lives inside a ruby base, so a *target* change is
-    // irreducible — but an attribute-only change (傍点→傍線) keeps the node's
-    // own target and is verified in a scoped `<target><replacement>` context,
-    // never touching the ruby base. It must be accepted.
+    // The referent is inside a ruby base, so a target change is irreducible;
+    // an attribute-only change (傍点→傍線) keeps the node's target and is
+    // verified in a scoped `<target><replacement>` context that excludes the
+    // ruby base, so the splice accepts it.
     let src = "｜我《われ》は［＃「我」に傍点］";
     let doc = Document::new(src);
     let tree = doc.parse();
@@ -117,12 +116,12 @@ fn ruby_base_forward_attribute_change_is_coherent() {
         .into_iter()
         .find(|r| r.role == RegionRole::ForwardReferenced)
     else {
-        return; // classifier may treat this shape differently; nothing to assert
+        return; // no `ForwardReferenced` region for this shape; nothing to assert
     };
     let spliced = tree
         .splice(region, "［＃「我」に傍線］")
         .expect("attribute-only change on a ruby-base forward is coherent");
-    // Only the bracket changed; the ruby reading and base survive sanitized.
+    // Only the bracket changes; the sanitized ruby reading and base remain.
     assert!(spliced.contains("われ"));
     assert!(spliced.contains("傍線"));
     assert!(!spliced.contains("傍点"));
@@ -130,8 +129,9 @@ fn ruby_base_forward_attribute_change_is_coherent() {
 
 #[test]
 fn multi_target_forward_is_coupled_and_identity_safe() {
-    // A disjoint target list is source-owned but cannot be replaced by an
-    // unassociated scalar target. Identity editing retains all selected spans.
+    // A disjoint target list is source-owned, but a splice cannot replace it
+    // with an unassociated scalar target; an identity splice retains all
+    // selected spans.
     let src = "AとB［＃「A」「B」に傍点］";
     let doc = Document::new(src);
     let tree = doc.parse();
@@ -160,7 +160,7 @@ fn multi_target_forward_is_coupled_and_identity_safe() {
 fn heading_hint_target_change_syncs() {
     // A forward heading hint requires its target to be preceded by a matching
     // run; that run is the coupled partner. Changing the title rewrites both
-    // the directive and the upstream run so the hint stays resolvable.
+    // the directive and the preceding run so that the hint still resolves.
     let src = "第一篇［＃「第一篇」は大見出し］";
     let doc = Document::new(src);
     let tree = doc.parse();
@@ -182,7 +182,7 @@ fn heading_hint_target_change_syncs() {
     );
     tree.splice(region, "")
         .expect("deleting the directive is coherent");
-    // A coupled title change rewrites the upstream run too.
+    // A coupled title change also rewrites the preceding run.
     let spliced = tree
         .splice(region, "［＃「序章」は大見出し］")
         .expect("title change is a coupled edit");
@@ -191,10 +191,10 @@ fn heading_hint_target_change_syncs() {
 
 #[test]
 fn margin_note_base_change_is_coherent() {
-    // A side note (注記) reclaims the base run it annotates into its own region
+    // The region of a side note (注記) includes the base run it annotates
     // (`未来［＃…］`, base 未来 included), so a base change is a single-region
-    // replacement carrying the new base, verified in family — never touching
-    // surrounding text. Bytes outside the region stay identical.
+    // replacement containing the new base, verified within its family; bytes
+    // outside the region are unchanged.
     let src = "未来［＃「未来」の左に「みらい」の注記］を見る。";
     let doc = Document::new(src);
     let tree = doc.parse();

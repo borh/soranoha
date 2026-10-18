@@ -1,4 +1,4 @@
-//! Target-associated diacritics survive conversion as source realizations.
+//! Target-associated diacritics are retained through conversion as source realizations.
 
 use std::path::Path;
 
@@ -44,4 +44,69 @@ fn supplied_diacritics_preserve_composition_and_source() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn detached_quoted_dot_note_preserves_target_and_marker() {
+    let marker = "［＃「t」は下点付き、182-6］";
+    let source = format!("題\n作者\n\n鳥のアラビア語 tair. {marker}咽喉\n\n底本：本\n");
+    let aat: Value =
+        serde_json::from_slice(&ab_aat::aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let result = ab_aat_to_parser_ir::convert(ConversionRequest {
+        aat,
+        mapping: MappingDocument::from_path(&repo.join("data/aat-to-parser-ir-mapping-v2.json"))
+            .unwrap(),
+        schemas: SchemaSet::for_aat_version(2).unwrap(),
+        options: ConversionOptions::default(),
+    })
+    .unwrap();
+    let accent = result.parser_ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["type"] == "supplied-diacritic")
+        .unwrap();
+    let target = source.find("tair").unwrap();
+    let annotation = source.find(marker).unwrap();
+    assert_eq!(accent["text"], "ṭair");
+    assert_eq!(accent["source"], "tair");
+    assert_eq!(accent["source_span"]["start"], target);
+    assert_eq!(accent["source_span"]["end"], target + 4);
+    assert_eq!(accent["annotation_span"]["start"], annotation);
+    assert_eq!(accent["annotation_span"]["end"], annotation + marker.len());
+    assert_eq!(
+        result.parser_ir["interpretation_problems"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn encoded_accents_preserve_spelling_code_and_delimiters() {
+    let source = "繁雑な日本の 〔e'tiquette〕 も、";
+    let aat: Value =
+        serde_json::from_slice(&ab_aat::aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let result = ab_aat_to_parser_ir::convert(ConversionRequest {
+        aat,
+        mapping: MappingDocument::from_path(&repo.join("data/aat-to-parser-ir-mapping-v2.json"))
+            .unwrap(),
+        schemas: SchemaSet::for_aat_version(2).unwrap(),
+        options: ConversionOptions::default(),
+    })
+    .unwrap();
+    let accent = result.parser_ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["type"] == "accent")
+        .unwrap();
+    assert_eq!(accent["text"], "é");
+    assert_eq!(accent["code"], "1-09-63");
+    assert_eq!(accent["source_spelling"], "e'");
+    assert_eq!(accent["source_span"]["start"], 22);
+    assert_eq!(accent["source_span"]["end"], 24);
+    assert_eq!(accent["interpretation_marker_spans"][0]["start"], 19);
+    assert_eq!(accent["interpretation_marker_spans"][1]["end"], 35);
+    assert_eq!(result.divergence_bundle["summary"]["LOSS"], 0);
 }

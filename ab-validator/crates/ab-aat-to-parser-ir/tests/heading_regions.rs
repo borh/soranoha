@@ -6,7 +6,7 @@ use ab_aat_to_parser_ir::{ConversionOptions, ConversionRequest, MappingDocument,
 use serde_json::Value;
 
 #[test]
-fn source_heading_regions_survive_validated_conversion() {
+fn source_heading_regions_are_retained_through_validated_conversion() {
     for prefix in ["", "同行", "窓"] {
         let source = format!(
             "題\n作者\n\n前［＃{prefix}中見出し］漢字《かんじ》［＃{prefix}中見出し終わり］後\n\n底本：本\n"

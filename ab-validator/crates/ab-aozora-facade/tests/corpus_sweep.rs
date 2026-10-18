@@ -1,14 +1,13 @@
-//! Walks `AOZORA_CORPUS_ROOT` and verifies every document parses
-//! cleanly and round-trips through `parse ∘ serialize` (the I3
-//! fixed-point invariant).
+//! Walks `AOZORA_CORPUS_ROOT` and checks that every document parses and
+//! round-trips through `parse ∘ serialize` (the I3 fixed-point invariant).
 //!
-//! Skipped silently when `AOZORA_CORPUS_ROOT` is unset; never
-//! hard-fails on missing corpus.
+//! The test is skipped when `AOZORA_CORPUS_ROOT` is unset and does not fail on a
+//! missing corpus.
 //!
-//! A small **shrink-only allowlist** (`corpus/roundtrip-allowlist.json`)
-//! records the documents whose canonical serialize is not yet a fixed
-//! point. The test fails if an unlisted document diverges or a listed
-//! document starts round-tripping, requiring removal of obsolete entries.
+//! The shrink-only allowlist `corpus/roundtrip-allowlist.json` lists the
+//! documents whose canonical serialization is not a fixed point. The test fails
+//! if an unlisted document diverges or a listed document round-trips; in the
+//! second case the entry must be removed.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -28,8 +27,8 @@ fn corpus_round_trip_is_a_fixed_point() {
 
     let mut count: usize = 0;
     let mut sjis_decoded: usize = 0;
-    // Collect *every* divergence rather than failing on the first, so a
-    // single run surfaces the whole set and the allowlist can be diffed.
+    // All divergences are collected, so one run reports the complete set for
+    // comparison with the allowlist.
     let mut diverged: Vec<(String, String)> = Vec::new();
     let mut diverged_labels: BTreeSet<String> = BTreeSet::new();
 
@@ -65,15 +64,15 @@ fn corpus_round_trip_is_a_fixed_point() {
         "corpus sweep: {count} docs walked ({sjis_decoded} decoded from Shift_JIS, the rest already UTF-8)"
     );
 
-    // Un-listed divergences are hard failures.
+    // Unlisted divergences fail the test.
     let mut unexpected: Vec<&(String, String)> = diverged
         .iter()
         .filter(|(label, _)| !allow.contains(label))
         .collect();
     unexpected.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Listed-but-now-passing entries mean the allowlist has stale rows
-    // that must be removed (the list is shrink-only).
+    // A listed document that round-trips is a stale entry, reported for removal
+    // because the list is shrink-only.
     let stale: Vec<&String> = allow
         .iter()
         .filter(|label| !diverged_labels.contains(*label))
@@ -111,8 +110,9 @@ fn corpus_round_trip_is_a_fixed_point() {
     );
 }
 
-/// Load the shrink-only allowlist of doc labels permitted to diverge.
-/// Missing or empty file ⇒ no allowance (every doc must round-trip).
+/// Returns the labels of documents permitted to diverge, from the shrink-only
+/// allowlist. A missing or empty file yields an empty set, so every document
+/// must round-trip.
 fn load_allowlist() -> BTreeSet<String> {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -121,8 +121,8 @@ fn load_allowlist() -> BTreeSet<String> {
     let Ok(text) = read_to_string(path) else {
         return BTreeSet::new();
     };
-    // Tiny hand-parse to avoid a serde dep in this test: collect every
-    // JSON string that sits inside the `"allow"` array.
+    // A hand parse, which avoids a serde dependency in this test, collects every
+    // JSON string inside the `"allow"` array.
     let Some(start) = text.find("\"allow\"") else {
         return BTreeSet::new();
     };
@@ -142,8 +142,8 @@ fn load_allowlist() -> BTreeSet<String> {
         .collect()
 }
 
-/// A compact `…before│after…` window around the first byte where two
-/// serializations diverge — enough to identify the offending construct.
+/// Returns a `…before│after…` window around the first byte at which two
+/// serializations differ, which identifies the diverging construct.
 fn first_diff_hint(a: &str, b: &str) -> String {
     let at = a
         .bytes()

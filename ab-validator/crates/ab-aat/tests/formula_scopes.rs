@@ -41,7 +41,7 @@ fn supplied_formula_closer_does_not_certify_a_plain_indent_scope() {
 }
 
 #[test]
-fn formula_purpose_does_not_hide_missing_scope_end_or_unknown_clauses() {
+fn formula_purpose_reports_missing_scope_end_and_unknown_clauses() {
     for source in [
         "［＃ここから５字下げ、ここから数式］\nx = 1",
         "［＃ここから５字下げ、ここから数式、未対応の指定］\nx = 1\n［＃ここで字下げ終わり、ここで数式終わり］",
@@ -60,7 +60,7 @@ fn formula_purpose_does_not_hide_missing_scope_end_or_unknown_clauses() {
 }
 
 #[test]
-fn formula_scope_survives_independent_indentation_replacement() {
+fn formula_scope_is_retained_across_independent_indentation_replacement() {
     let source = "［＃ここから５字下げ、ここから数式］\na = 1\n［＃ここから３字下げ］\nb = 2\n［＃ここから５字下げ］\nc = 3\n［＃ここで字下げ終わり、ここで数式終わり］";
     let aat = parse(source);
     let formula = &aat["blocks"][0];

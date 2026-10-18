@@ -47,15 +47,14 @@ pub struct SplitOptions {
 /// Boundaries: `。`, `！`, `？`, `!`, `?`, `.`, `．`.
 ///
 /// Adjacent terminals are kept together (e.g. `本当！？` is one sentence).
-/// Improved rules over the legacy splitter: CJK numbered lists (`１．`) do not
-/// split; `！`/`？` followed by Japanese continuation marks (`笑`, small kana)
-/// stay together; `closing_bracket_ahead` scans with bracket-depth tracking so
-/// a terminal before a closing bracket suppresses only when a bracket actually
-/// follows (not infinitely ahead); Western closing quotes also suppress; `。`
-/// at end-of-input always splits while other terminals at end-of-input stay
-/// attached.
+/// CJK numbered lists (`１．`) do not split; `！`/`？` followed by Japanese
+/// continuation marks (`笑`, small kana) stay together;
+/// `closing_bracket_ahead` tracks bracket depth so a terminal before a closing
+/// bracket suppresses a split only when that bracket follows on the current
+/// line; Western closing quotes also suppress; `。` at end-of-input always
+/// splits while other terminals at end-of-input stay attached.
 ///
-/// Newlines are NOT sentence boundaries (they are paragraph breaks).
+/// Newlines are not sentence boundaries (they are paragraph breaks).
 pub fn split_sentences_with_options<'a>(
     input: &'a str,
     opts: &SplitOptions,
@@ -137,9 +136,8 @@ pub fn split_sentences(input: &str) -> Vec<SentenceSpan<'_>> {
     split_sentences_with_options(input, &SplitOptions::default())
 }
 
-/// Legacy entry point preserved for existing call sites (ab-ortho-detect).
-/// Delegates to [`split_sentences_with_options`] with default
-/// options, so the improved v2 rules propagate to all consumers.
+/// Equivalent to [`split_sentences`]: delegates to
+/// [`split_sentences_with_options`] with default options.
 pub fn sentence_split(text: &str) -> Vec<SentenceSpan<'_>> {
     split_sentences_with_options(text, &SplitOptions::default())
 }
@@ -431,8 +429,8 @@ mod sentence_split_tests {
 
     #[test]
     fn split_sentences_suppress_mode_splits_before_close() {
-        // Re-splitting inside a known quote region: the closing 」 no longer
-        // suppresses the inner 。 boundary.
+        // Re-splitting inside a known quote region: the closing 」 does not
+        // suppress the inner 。 boundary.
         let text = "もう少しすると、綺麗ですよ。この木が埋まるようになります」";
         let opts = SplitOptions {
             suppress_closing_bracket_check: true,
@@ -451,8 +449,8 @@ mod sentence_split_tests {
     }
 
     #[test]
-    fn split_sentences_matches_legacy_wrapper() {
-        // The legacy entry point is a pure delegator to the v2 splitter.
+    fn split_sentences_matches_sentence_split() {
+        // `sentence_split` delegates to `split_sentences`.
         let cases = [
             "吾輩は猫である。名前はまだ無い。",
             "本当！？そう！！！",

@@ -51,7 +51,7 @@ pub enum ClassifiedSourceEvidenceClass {
     UnknownDirective,
 }
 
-/// Construct identifiers named by the approved ab-aozora v1 policy.
+/// Construct identifiers listed in the approved ab-aozora v1 policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum ConstructId {
@@ -67,6 +67,7 @@ pub enum ConstructId {
     AlignEnd,
     Center,
     WarichuOpen,
+    WarigakiOpen,
     FramedOpen,
     LineGothic,
     LineFontSize,
@@ -87,11 +88,18 @@ pub enum ConstructId {
     BaseTextVariant,
     InvalidRubySpan,
     WarichuClose,
+    WarigakiClose,
     EmptyDirective,
     EditorNote,
     TranscriptionNote,
+    UncertainCorrection,
+    SourceLegibilityNote,
+    PageSideNote,
+    IndentationQuestion,
     OmissionNote,
     IncompletenessNote,
+    TranslationNote,
+    RubyReadingAnnotation,
     ExplanationNote,
     ExternalTableReference,
     FigureInsertion,
@@ -116,7 +124,7 @@ pub struct ClassifiedSourceFact {
 }
 
 impl ClassifiedSourceFact {
-    /// Whether this fact recognizes the named source role semantically.
+    /// Whether this fact recognizes its source role semantically.
     #[must_use]
     pub const fn is_semantic(self) -> bool {
         !matches!(

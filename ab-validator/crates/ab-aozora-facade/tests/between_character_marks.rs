@@ -1,12 +1,13 @@
-//! A mark the source places at a junction belongs to neither run it sits between.
+//! A mark placed at the junction of two runs attaches to the junction, not to
+//! either run.
 use ab_aozora_facade::syntax::{MarginNoteKind, MarkAnchor};
 use ab_aozora_facade::{Content, Document, Node, NodeRef};
 
-/// Each junction mark as `(left run, right run, mark)`.
+/// Returns each junction mark as `(left run, right run, mark)`.
 ///
-/// The two runs are read separately because the point of the marker is that it
-/// sits between them: a single joined string would still pass if the parser
-/// had quietly adopted the pair as one target.
+/// The two runs are returned separately because a single joined string would
+/// also match when the parser attaches the mark to the joined pair as one
+/// target.
 fn between_marks(source: &str) -> Vec<(String, String, String)> {
     let document = Document::new(source);
     let tree = document.parse();
@@ -34,8 +35,8 @@ fn between_marks(source: &str) -> Vec<(String, String, String)> {
             ))
         })
         .collect();
-    // A marker the source wrote as a pair must come back as the pair it was
-    // written as, not as a note on the run the two make together.
+    // Serialization reproduces the pair form of the marker, not a note on the
+    // joined run.
     assert_eq!(tree.to_source(), source, "{source}");
     found
 }
@@ -50,8 +51,8 @@ fn a_junction_mark_keeps_both_runs_it_sits_between() {
 
 #[test]
 fn consecutive_junction_marks_each_take_the_run_before_them() {
-    // The corpus line that motivates this reads three of them in a row, so
-    // each one has to claim only the pair it names.
+    // The corpus line this case reproduces has three junction marks in a row;
+    // each mark applies only to the pair it quotes.
     assert_eq!(
         between_marks(
             "自然［＃「自」と「然」の間に白三角傍点］はう［＃「は」と「う」の間に白三角傍点］たふ［＃「た」と「ふ」の間に白三角傍点］"
@@ -67,16 +68,16 @@ fn consecutive_junction_marks_each_take_the_run_before_them() {
 #[test]
 fn runs_that_do_not_meet_locate_no_junction() {
     for source in [
-        // Something stands between them, so there is no one place to put the
-        // mark and no reason to prefer either gap.
+        // Another character separates the quoted runs, so the source has two
+        // gaps and no single junction.
         "自X然［＃「自」と「然」の間に白三角傍点］",
-        // The pair is not the run the marker follows.
+        // The quoted pair is not the text immediately before the marker.
         "自然他［＃「自」と「然」の間に白三角傍点］",
-        // Named in an order the text does not have.
+        // The runs are quoted in the reverse of their text order.
         "然自［＃「自」と「然」の間に白三角傍点］",
-        // Three runs have two junctions, and the marker names neither.
+        // Three runs have two junctions, and the marker identifies neither.
         "自然は［＃「自」と「然」と「は」の間に白三角傍点］",
-        // Not a mark this vocabulary knows.
+        // The mark is outside the supplied-mark vocabulary.
         "自然［＃「自」と「然」の間に何か］",
     ] {
         assert!(between_marks(source).is_empty(), "{source}");

@@ -1,13 +1,13 @@
 //! Byte-range span over a UTF-8 source buffer.
 //!
-//! `u32` (rather than `usize`) caps the addressable source at 4 GiB,
-//! which is roughly 4 000× the largest plausible Aozora Bunko work, and
-//! halves span size on 64-bit targets, which compounds across the
-//! thousands of nodes a long novel produces.
+//! `u32` (rather than `usize`) limits the addressable source to 4 GiB,
+//! roughly 4 000× the largest plausible Aozora Bunko work, and halves
+//! the size of each of the thousands of spans a long novel produces on
+//! 64-bit targets.
 
-/// Byte-range span. Both endpoints are guaranteed to fall on UTF-8
-/// character boundaries when produced by the parser; callers can
-/// safely slice the source with them.
+/// Byte-range span. Both endpoints of a parser-produced span fall on
+/// UTF-8 character boundaries, so slicing the source with them does
+/// not panic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
@@ -52,8 +52,8 @@ impl Span {
     /// # Panics
     ///
     /// Panics if `self` does not align to UTF-8 char boundaries in
-    /// `source`. Parser-produced spans always do; a panic here signals
-    /// a bug upstream.
+    /// `source`. Parser-produced spans always align; a panic indicates
+    /// a defect in the code that produced the span.
     #[must_use]
     pub fn slice(self, source: &str) -> &str {
         let start = self.start as usize;
@@ -83,8 +83,9 @@ impl Span {
     }
 }
 
-/// Add `by` to `endpoint`, saturating into the `u32` range. `const`-safe
-/// (no `Ord::clamp`, which is not yet const-stable).
+/// Add `by` to `endpoint`, saturating into the `u32` range. The body
+/// avoids `Ord::clamp`, which is not const-stable, so the function
+/// remains `const`.
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -142,8 +143,8 @@ mod tests {
     #[should_panic(expected = "span must align to UTF-8 char boundaries")]
     fn slice_panics_on_misaligned_boundary() {
         let src = "青空"; // 6 bytes total, 0..3 = 青, 3..6 = 空
-        // The slice is `#[must_use]` but the body is the panic, not
-        // the return value; assign to a typed binding to consume it.
+        // `slice` is `#[must_use]`; the test checks the panic, and the
+        // typed binding consumes the return value.
         let _slice: &str = Span::new(1, 4).slice(src);
     }
 
@@ -164,8 +165,6 @@ mod tests {
 
     #[test]
     fn span_is_8_bytes_on_64_bit_target() {
-        // The whole point of u32 endpoints (vs usize) is the size win
-        // on 64-bit targets; pin it so a future change has to think.
         use core::mem::size_of;
         assert_eq!(size_of::<Span>(), 8);
     }

@@ -364,10 +364,10 @@ fn collect_json_files(dir: &Path) -> Result<Vec<PathBuf>> {
             let entry_path = entry.path();
             // Follow symlinks: corpus subsets (e.g. calib-*) are directories of
             // symlinks into the main corpus. `DirEntry::file_type` reports the link
-            // itself, not its target, so using it here would silently skip every
-            // symlinked AAT and audit as "0 files". `fs::metadata` resolves the
-            // target. A broken symlink resolves to an error; skip it rather than
-            // aborting the whole audit (the empty-input guard still catches a
+            // itself, not its target, so using it here would skip every
+            // symlinked AAT and audit "0 files". `fs::metadata` resolves the
+            // target. A broken symlink resolves to an error and is skipped
+            // without aborting the audit (the empty-input guard still rejects a
             // directory that collects nothing).
             let Ok(metadata) = fs::metadata(&entry_path) else {
                 continue;
@@ -399,13 +399,12 @@ fn audit_file(
     let (raw_nodes, outcome) = match read_json(&file.path) {
         Ok(aat) => {
             let raw_nodes = summarize_raw_nodes(&aat);
-            // Corpus-scan resilience: a latent bug in conversion/sentence-projection
-            // that panics on one edge-case file (e.g. an inconsistent node span in a
-            // repinned dump) must not abort the whole audit. Catch the panic and
-            // record it as a per-file failure, exactly as a returned Err would be.
-            // The unit tests call convert() directly (outside this guard), so
-            // panic-shaped regressions still surface there — only the corpus scan is
-            // made fault-tolerant.
+            // A panic in conversion/sentence-projection on one edge-case file (e.g.
+            // an inconsistent node span in a repinned dump) does not abort the
+            // audit: the panic is caught and recorded as a per-file failure, as a
+            // returned Err would be. The unit tests call convert() directly
+            // (outside this guard), so a panic still fails them; only the corpus
+            // scan catches panics.
             let converted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 converter.convert(
                     aat,
@@ -447,8 +446,8 @@ fn audit_file(
     }
 }
 
-/// Best-effort extraction of a panic payload's message (the string passed to
-/// `panic!` / produced by `unwrap`/slice/index panics).
+/// Extracts a panic payload's message when the payload is a string (the string
+/// passed to `panic!` / produced by `unwrap`/slice/index panics).
 fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = panic.downcast_ref::<&str>() {
         (*s).to_owned()
@@ -1299,8 +1298,8 @@ mod audit_tests {
 
     #[test]
     fn collect_inputs_errors_on_directory_with_no_aat_files() {
-        // A directory that collects zero files must fail loudly rather than
-        // producing a silent "0 succeeded, 0 failed" success.
+        // A directory that collects zero files must return an error rather
+        // than report "0 succeeded, 0 failed" as success.
         let empty = tempfile::tempdir().unwrap();
         let error = collect_inputs(&[empty.path().to_path_buf()])
             .unwrap_err()

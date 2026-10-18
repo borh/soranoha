@@ -99,9 +99,8 @@ fn cascade_accepts_full_katakana_prose() {
     // "吾輩ハ猫デアル果テ" (no trailing terminal) is 9 chars: 5 katakana
     // (ハデアルテ) + 4 kanji (吾輩猫果), ratio ≈ 0.556 > 0.5, uniqueness 1.0,
     // no runs/bigram patterns, ≥8 chars, ends in non-terminal テ.
-    // (The plan's draft with a trailing 。yielded 10 chars and ratio 0.5 == threshold,
-    // which the cascade rejects at `katakana_ratio <= 0.5`; we omit the 。to match
-    // the documented character analysis and to stay self-consistent.)
+    // (With a trailing 。 the sentence has 10 chars and ratio 0.5 == threshold,
+    // which the cascade rejects at `katakana_ratio <= 0.5`, so the 。 is omitted.)
     let sentences = ab_plaintext::sentence_split("吾輩ハ猫デアル果テ");
     let annotations = detector.detect(&sentences);
     assert_eq!(annotations.len(), 1);
@@ -124,11 +123,11 @@ fn detect_and_normalize_katakana_prose() {
     // uses pre-war katakana orthography for particles/copulas (ハ→は, ニ→に,
     // ッ→っ, テ→て, シ→し, イ→い, マ→ま, タ→た, ヨ→よ) and is katakana-dominant:
     // 11 katakana / 21 chars ≈ 0.524 > 0.5, all-distinct (unique ratio 19/21),
-    // no char runs, no bigram repeats. (The plan's draft sentence
-    // `私ハ毎日学校ヘ行ク。` has katakana ratio 3/10 = 0.3 and is rejected by
-    // the cascade regardless of tokenizer; we substitute one that exercises
-    // both the cascade acceptance and the proper-noun guard against `学校`,
-    // which is `普通名詞`, not `固有名詞`, under Unidic-CWJ.)
+    // no char runs, no bigram repeats. The sentence tests both the cascade
+    // acceptance and the proper-noun guard against `学校`, which is
+    // `普通名詞`, not `固有名詞`, under Unidic-CWJ. (`私ハ毎日学校ヘ行ク。` has
+    // katakana ratio 3/10 = 0.3 and is rejected by the cascade regardless of
+    // tokenizer.)
     let text = "吾輩は猫である。名前はまだ無い。私ハ学校ニ毎日通ッテ、勉強シテイマシタヨ。";
     let sentences = ab_plaintext::sentence_split(text);
     let annotations = detector.detect(&sentences);

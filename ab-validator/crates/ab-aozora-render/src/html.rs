@@ -5,12 +5,11 @@
 //! [`Registry`](ab_aozora_syntax::ast::Registry) and resolving its
 //! interned payloads against the [`NodeStore`].
 //!
-//! The block-structure machinery (`RenderState`'s paragraph / container logic)
-//! and the plain-run escaper (`escape_text_chunk`) are **reused** from
-//! `crate::spelling::html` — they read only `Copy` `RegionFormat` / `RegionClose` /
-//! `bool` scalars, so container HTML has a single authority. Only the
-//! AST-reading per-node emitters live in the private `render_node`
-//! module.
+//! The block-structure functions (`RenderState`'s paragraph / container logic)
+//! and the plain-run escaper (`escape_text_chunk`) come from
+//! `crate::spelling::html`; they read only `Copy` `RegionFormat` / `RegionClose` /
+//! `bool` scalars, so container HTML is generated in one place. The private
+//! `render_node` module contains only the per-node emitters that read the AST.
 
 use ab_aozora_spec::NormalizedOffset;
 use core::{cmp::Reverse, fmt, mem::discriminant};
@@ -26,17 +25,17 @@ use crate::walk::{SentinelKind, WalkSink, walk};
 
 /// Options controlling the opt-in HTML render path.
 ///
-/// The default (`directives: Off`) is the byte-identical, non-judgemental
-/// render: an `Unknown` directive body the parser did not recognise renders as
-/// an inert `<span class="aozora-directive" hidden>`, so output never depends on
-/// the notation-hygiene catalogue.
+/// The default (`directives: Off`) render is byte-identical and applies no
+/// catalogue judgement: an `Unknown` directive body the parser did not
+/// recognise renders as an inert `<span class="aozora-directive" hidden>`, so
+/// output does not depend on the notation-hygiene catalogue.
 ///
-/// Opting in ([`render_html_normalized`]) reinterprets near-misses as their
-/// canonical spelling, resolved transitively through the formatter rewrite
-/// rather than duplicating the catalog. Consequently, a known 揺れ renders as an
-/// active HTML element instead of a hidden directive span. `Canonical` consults
-/// Tier1 only (`render --normalize`), whereas `Degraded` also reduces lossy or
-/// judgment-based Tier2 forms (`render --degraded`).
+/// [`render_html_normalized`] rewrites near-misses to their canonical spelling
+/// through the formatter rewrite, which reads the catalogue; this module holds
+/// no copy of it. A known 揺れ then renders as an active HTML element instead
+/// of a hidden directive span. `Canonical` applies Tier1 only
+/// (`render --normalize`); `Degraded` also reduces lossy or judgment-based
+/// Tier2 forms (`render --degraded`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RenderOptions {
     /// Which notation-hygiene tiers to apply to `DirectiveKind::Unknown`
@@ -44,19 +43,19 @@ pub struct RenderOptions {
     pub directives: DirectiveNormalization,
 }
 
-/// Render an [`LexOutput`] into HTML **after** normalising its `Unknown`
+/// Render an [`LexOutput`] into HTML after normalising its `Unknown`
 /// directive near-misses at the given [`DirectiveNormalization`] level.
 ///
-/// This is the opt-in twin of [`render_html`]: it first re-serialises the tree
-/// through the formatter rewrite (the single catalogue authority, reached
-/// transitively — no catalogue copy lives here), then re-parses that ephemeral
-/// canonical source and renders it. The rewrite is an internal, throwaway step:
-/// neither the caller's source nor the default parse/render is mutated. A body
-/// with no catalogue entry is left verbatim, so it still renders as before.
+/// The function serializes the tree through the formatter rewrite, which
+/// applies the notation-hygiene catalogue, re-parses the resulting canonical
+/// source, and renders it with [`render_html`]. The rewritten source is a
+/// temporary buffer: neither the caller's source nor `out` is modified. A body
+/// with no catalogue entry is copied verbatim and renders as it does under
+/// [`render_html`].
 ///
-/// `level` is `Canonical` (Tier1) or `Degraded` (Tier1 + Tier2). `Degraded` is
-/// the sole construction site of that level, so the lossy / judgment Tier2
-/// reductions can reach only this throwaway render buffer — never source.
+/// `level` is `Canonical` (Tier1) or `Degraded` (Tier1 + Tier2). Only this
+/// render path accepts `Degraded`, so the lossy / judgment Tier2 reductions
+/// apply only to the temporary render buffer and never to serialized source.
 #[must_use]
 pub fn render_html_normalized(out: &LexOutput, level: DirectiveNormalization) -> String {
     let normalized = serialize_with(out, SerializeOptions { directives: level });
@@ -65,13 +64,13 @@ pub fn render_html_normalized(out: &LexOutput, level: DirectiveNormalization) ->
 
 /// Render an [`LexOutput`] into a fresh `String`.
 ///
-/// Allocates roughly `2 × normalized.len()` upfront. For streaming consumers
-/// prefer [`render_html_into`] to avoid the intermediate `String`.
+/// Allocates roughly `2 × normalized.len()` upfront. [`render_html_into`]
+/// writes to a caller-supplied writer without the intermediate `String`.
 ///
 /// # Panics
 ///
-/// Does not panic in normal use: `String` cannot fail as a [`fmt::Write`]
-/// sink. The internal `expect` covers the trivially unreachable case.
+/// Does not panic: writing to a `String` through [`fmt::Write`] cannot fail,
+/// and the internal `expect` covers that unreachable error.
 #[must_use]
 pub fn render_html(out: &LexOutput) -> String {
     let mut s = String::with_capacity(out.normalized.len().saturating_mul(2));
@@ -87,8 +86,8 @@ pub fn render_html(out: &LexOutput) -> String {
 ///
 /// # Panics
 ///
-/// Panics if the normalized text exceeds `u32::MAX` bytes — inherited from the
-/// lexer's `Span` width contract; in practice unreachable.
+/// Panics if the normalized text exceeds `u32::MAX` bytes, the width of the
+/// lexer's `Span` offsets; the sanitize stage caps input below that length.
 pub fn render_html_into<W: fmt::Write>(out: &LexOutput, writer: &mut W) -> fmt::Result {
     let (scope_opens, scope_closes) = independent_scope_events(out);
     let mut sink = HtmlSink {
@@ -168,10 +167,10 @@ fn independent_scope_events(
     (opens, closes)
 }
 
-/// [`WalkSink`] that emits semantic HTML5 from the AST, threading the
-/// [`NodeStore`] (the resolve authority) into every AST emitter and reusing
-/// `crate::spelling::html`'s [`RenderState`] for all block / paragraph / container
-/// structure.
+/// [`WalkSink`] that emits semantic HTML5 from the AST. It passes the
+/// [`NodeStore`], which resolves interned payloads, to every AST emitter and
+/// uses `crate::spelling::html`'s [`RenderState`] for all block / paragraph /
+/// container structure.
 struct HtmlSink<'a, W: fmt::Write> {
     scope_opens: BTreeMap<NormalizedOffset, Vec<RegionFormat>>,
     scope_closes: BTreeMap<NormalizedOffset, Vec<RegionClose>>,
@@ -225,13 +224,12 @@ impl<W: fmt::Write> WalkSink for HtmlSink<'_, W> {
         match (kind, node) {
             (SentinelKind::Inline, NodeRef::Inline(n)) => {
                 self.state.ensure_in_paragraph(self.out)?;
-                // Inline warichu open / close are structural, not per-node:
-                // their span must stay balanced across paragraph boundaries, so
-                // `RenderState` owns the depth counter (mirroring container
-                // balance) rather than the AST emitter writing the tags
-                // unconditionally. Every other inline node renders as
-                // before. Check `kind` through a borrow, then move `n` into
-                // `render` on the fall-through.
+                // `RenderState` writes the inline warichu open / close tags and
+                // keeps their depth counter, as it does for containers, so the
+                // warichu span stays balanced across paragraph boundaries.
+                // Every other inline node goes to `render`; the match borrows
+                // `n` to read `kind` and moves `n` into `render` in the
+                // fall-through arm.
                 match &n {
                     Node::Directive(a) if a.kind == DirectiveKind::WarichuOpen => {
                         self.state.open_warichu(self.out)
@@ -252,12 +250,13 @@ impl<W: fmt::Write> WalkSink for HtmlSink<'_, W> {
                 self.state.open_container(open, self.out)
             }
             (SentinelKind::BlockClose, NodeRef::BlockClose(close)) => {
-                // Pass the close marker's inline-ness so a stray inline close in
-                // a paragraph gap cancels a pending reopen rather than popping a
-                // block off the stack.
+                // Pass the close marker's inline-ness so an unmatched inline
+                // close in a paragraph gap cancels a pending reopen and does not
+                // pop a block from the stack.
                 self.state.close_container(close.is_inline(), self.out)
             }
-            // Sentinel without a matching registry entry: best-effort skip.
+            // A sentinel whose kind does not match its registry entry renders
+            // nothing.
             _ => Ok(()),
         }
     }

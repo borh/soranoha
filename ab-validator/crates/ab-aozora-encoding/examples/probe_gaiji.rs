@@ -1,11 +1,10 @@
 //! Data-driven probe for the gaiji-resolution path.
 //!
-//! Walks every `※[#…]` entry in a sibling-repo gaiji sample file
-//! and reports which lookup tier (existing / mencode-to-str /
-//! mencode-to-char / U+xxxx / description) resolved it (or that no
-//! tier hit). Plus runs a fixed-list smoke probe of entries the user
-//! flagged as failing. Output is plain text — feed to `awk` / `sort`
-//! / etc. for further slicing.
+//! Prints the gaiji table sizes, then the `lookup` result for a fixed
+//! list of (description, mencode) pairs reported as not resolving: once
+//! with both inputs, once with the mencode only, and once with the
+//! description only. Output is plain text on stderr, suitable for `awk`
+//! or `sort`.
 //!
 //! Run with:
 //! ```text
@@ -23,7 +22,7 @@ fn main() {
     eprintln!();
 
     let failing = [
-        // The three plane-2 entries the user flagged as not resolving:
+        // The three plane-2 entries reported as not resolving:
         ("丂", Some("第4水準2-16-1")),
         ("畺", Some("第4水準2-45-30")),
         ("龔", Some("第4水準2-77-60")),
@@ -35,9 +34,8 @@ fn main() {
         ("木＋吶のつくり", None),
         // Canonical chuki naming: 鄧 = 登 + おおざと radical (阝).
         // Literal "邦＋登" is not in the dictionary because the convention is
-        // <left-component> + <right-radical-name>. Both forms
-        // probed below to make the difference obvious in the
-        // output.
+        // <left-component> + <right-radical-name>. Both forms are
+        // probed so the output shows the difference.
         ("登＋おおざと", None),
         ("邦＋登", None),
     ];
@@ -55,9 +53,8 @@ fn main() {
         }
     }
 
-    // Also: try the raw mencode strings WITHOUT the description, so
-    // we can isolate whether the description channel or the mencode
-    // channel is the failing tier.
+    // Look up each mencode without the description, to separate a
+    // mencode-tier miss from a description-tier miss.
     eprintln!();
     eprintln!("=== mencode-only probe (description='dummy') ===");
     for (_, men) in failing {
@@ -66,8 +63,8 @@ fn main() {
         eprintln!("  men={m:?} → {r:?}");
     }
 
-    // And: try the raw description WITHOUT mencode, so we know if
-    // the description-table path covers these characters.
+    // Look up each description without the mencode, to show whether the
+    // description table covers these characters.
     eprintln!();
     eprintln!("=== description-only probe (mencode=None) ===");
     for (desc, _) in failing {

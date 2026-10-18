@@ -91,6 +91,33 @@ fn relative_absolute_font_size_and_source_side_have_exclusive_payloads() {
 }
 
 #[test]
+fn corpus_size_and_baseline_aliases_retain_qualifiers() {
+    for (source_kind, expected) in [
+        (
+            "小さめの文字",
+            json!({"kind":"font-size", "source":"aat-inline", "size_type":"qualitative", "direction":"smaller", "qualifier":"やや"}),
+        ),
+        (
+            "上部に出ている",
+            json!({"kind":"baseline-position", "source":"aat-inline", "position":"raised"}),
+        ),
+        (
+            "３０度位右上がり",
+            json!({"kind":"baseline-position", "source":"aat-inline", "position":"raised", "angle_degrees":30}),
+        ),
+    ] {
+        let ir = convert(&format!("字［＃「字」は{source_kind}］"));
+        assert!(
+            nodes(&ir).iter().any(|node| node["type"] == "layout-span"
+                && node["layout"] == expected
+                && node["text"] == "字"),
+            "{source_kind}: {ir}"
+        );
+        assert_eq!(ir["interpretation_problems"], json!([]));
+    }
+}
+
+#[test]
 fn paired_rich_regions_preserve_children_and_unmatched_scopes_remain_explicit() {
     for (open, close, kind, field, expected) in [
         ("斜体", "斜体終わり", "emphasis", "style", json!("italic")),
@@ -279,6 +306,29 @@ fn paired_font_size_preserves_leading_space_and_enclosing_layout() {
         .filter_map(|n| n["text"].as_str())
         .collect();
     assert_eq!(text.trim_matches('\n'), "　〔中略〕続き。");
+}
+
+#[test]
+fn compound_small_indent_range_is_one_typed_layout_scope() {
+    let ir = convert(
+        "［＃ここから小文字、２字下げ。冒頭のみ１字下げ］\n本文\n［＃ここで小文字、字下げ終わり］",
+    );
+    let scope = ir["layout_blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|scope| scope["indent"] == 1 && scope["continuation_indent"] == 2)
+        .unwrap_or_else(|| panic!("compound layout scope: {ir}"));
+    assert_eq!(
+        scope["typography"],
+        json!({
+            "kind":"font-size",
+            "source":"aat-block",
+            "size_type":"qualitative",
+            "direction":"smaller"
+        })
+    );
+    assert_eq!(ir["interpretation_problems"], json!([]));
 }
 
 #[test]

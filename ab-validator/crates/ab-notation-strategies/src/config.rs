@@ -32,7 +32,7 @@ mod tests {
     use super::{default_config, env};
 
     #[test]
-    fn case_count_falls_back_to_the_default_when_the_variable_is_absent_or_junk() {
+    fn case_count_falls_back_to_the_default_when_the_variable_is_absent_or_unparseable() {
         // Reading the process environment makes this test order-dependent if
         // it mutated the variable, so it only asserts the fallback that holds
         // whenever the variable is unset or unparseable.

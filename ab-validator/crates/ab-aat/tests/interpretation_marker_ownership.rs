@@ -1,4 +1,4 @@
-//! Positive interpretation claims name owned markers, not enclosing text ranges.
+//! Positive interpretation claims identify owned markers, not enclosing text ranges.
 use ab_aat::aat_json_from_bytes;
 use serde_json::Value;
 
@@ -20,10 +20,7 @@ fn claims(source: &str) -> (Value, Vec<&str>) {
 
 #[test]
 fn outer_formatting_never_claims_nested_unsupported_markers() {
-    for marker in [
-        "［＃「字」に白四角傍点］",
-        "［＃「字」の部分はイタリック体］",
-    ] {
+    for marker in ["［＃「字」に黒四角傍点］", "［＃「字」は筆写体］"] {
         let source = format!("題\n作者\n\n［＃斜体］字{marker}［＃斜体終わり］\n\n底本：本\n");
         let (aat, markers) = claims(&source);
         assert_eq!(markers, ["［＃斜体］", "［＃斜体終わり］"], "{aat}");

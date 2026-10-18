@@ -1,12 +1,13 @@
-//! Structure-preserving merger for `data/aozora-syntax-coverage.toml`.
+//! Structure-preserving mergers for the syntax data records.
 //!
 //! Two operations:
 //! - `apply_classifier_findings` — replaces `parsers.<id>` and `adapters.<id>`
-//!   sub-tables for the rows present in the JSON input.
+//!   sub-tables of `data/historical-parser-comparison.toml` for the rows
+//!   present in the JSON input.
 //! - `apply_prevalence_findings` — overwrites only the
 //!   `corpus_prevalence.{works_with_feature, total_occurrences, sample_works,
-//!   coverage_basis}` fields on the rows present in the JSON input. Used by
-//!   
+//!   coverage_basis}` fields of `data/aozora-syntax-coverage.toml` on the rows
+//!   present in the JSON input.
 //!
 //! Both operations preserve comments, ordering, and untouched fields by
 //! editing through `toml_edit::DocumentMut`.
@@ -62,32 +63,32 @@ pub struct PrevalenceRow {
     pub sample_works: Vec<String>,
 }
 
-/// Merge classifier findings into a coverage matrix.
+/// Merge classifier findings into the historical parser comparison record.
 ///
 /// # Errors
 ///
-/// Returns an error when the matrix cannot be read, parsed, or written.
+/// Returns an error when the record cannot be read, parsed, or written.
 pub fn apply_classifier_findings(
-    matrix_path: &Path,
+    comparison_path: &Path,
     findings: &ClassifierFindings,
 ) -> Result<usize> {
-    let raw = fs::read_to_string(matrix_path)
-        .with_context(|| format!("read {}", matrix_path.display()))?;
+    let raw = fs::read_to_string(comparison_path)
+        .with_context(|| format!("read {}", comparison_path.display()))?;
     let mut doc: DocumentMut = raw
         .parse()
-        .with_context(|| format!("parse {}", matrix_path.display()))?;
+        .with_context(|| format!("parse {}", comparison_path.display()))?;
 
     let mut updated = 0usize;
     let rows = doc
-        .get_mut("syntax")
+        .get_mut("row")
         .and_then(|item| item.as_array_of_tables_mut())
-        .ok_or_else(|| anyhow!("missing [[syntax]] array of tables"))?;
+        .ok_or_else(|| anyhow!("missing [[row]] array of tables"))?;
 
     for row in rows.iter_mut() {
         let row_id = row
-            .get("id")
+            .get("syntax_row_id")
             .and_then(|i| i.as_str())
-            .ok_or_else(|| anyhow!("syntax row missing string id"))?
+            .ok_or_else(|| anyhow!("comparison row missing string syntax_row_id"))?
             .to_string();
         let Some(finding) = findings.rows.get(&row_id) else {
             continue;
@@ -118,8 +119,8 @@ pub fn apply_classifier_findings(
         updated += 1;
     }
 
-    fs::write(matrix_path, doc.to_string())
-        .with_context(|| format!("write {}", matrix_path.display()))?;
+    fs::write(comparison_path, doc.to_string())
+        .with_context(|| format!("write {}", comparison_path.display()))?;
     Ok(updated)
 }
 

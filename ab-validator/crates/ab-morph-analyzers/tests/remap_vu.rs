@@ -1,9 +1,9 @@
 //! Regression test for coordinate coherence of remapped `Analysis`
 //! when normalization changes byte length (`ヴ → う゛`).
 //!
-//! Spec invariant #2: after `remap_spans`, every morpheme's `byte_span`,
-//! `char_span`, AND `surface` must refer to the ORIGINAL source text — not
-//! the normalized view that was actually tokenized.
+//! After `remap_spans`, every morpheme's `byte_span`, `char_span`, and
+//! `surface` must refer to the original source text, not the normalized view
+//! that was tokenized.
 
 use std::sync::Arc;
 

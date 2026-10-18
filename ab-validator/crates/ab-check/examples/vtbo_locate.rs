@@ -1,6 +1,6 @@
 //! Locate the first character where the AAT visible-text projection is not a
-//! subsequence of the source lossy-body projection, mirroring the exact
-//! `visible_text_body_order` property in `crates/ab-check/src/properties.rs`.
+//! subsequence of the source lossy-body projection, using the same check as
+//! the `visible_text_body_order` property in `crates/ab-check/src/properties.rs`.
 //! Used to characterize the 668 VTBO failures.
 
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ struct Args {
     /// 000081_4418-04cb6bb131bc.json; resolve by glob outside this binary).
     #[arg(long)]
     aat: PathBuf,
-    /// Path to the RAW Aozora source BYTES (often Windows-31J; decoded here).
+    /// Path to the raw Aozora source bytes (often Windows-31J; decoded here).
     #[arg(long)]
     source: PathBuf,
     /// How many chars of surrounding context to print around the divergence.
@@ -26,7 +26,7 @@ struct Args {
     context: usize,
 }
 
-/// Exact copy of `ab_check::properties::normalize_visible` (which is private).
+/// Copy of `ab_check::properties::normalize_visible` (which is private).
 /// NFKC-normalize then collapse runs of whitespace to a single space.
 fn normalize_visible(value: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
@@ -67,13 +67,13 @@ fn main() -> anyhow::Result<()> {
 
     let aat: Value = serde_json::from_str(&std::fs::read_to_string(&args.aat)?)?;
 
-    // Read raw BYTES and decode the same way the harness does (properties.rs is
+    // Read raw bytes and decode the same way the harness does (properties.rs is
     // called from check.rs with decode_source_bytes(&txt_bytes).text). Reading
     // with read_to_string would fail on Windows-31J sources.
     let source_bytes = std::fs::read(&args.source)?;
     let decoded = decode_source_bytes(&source_bytes)?;
 
-    // Mirror properties.rs:81 exactly:
+    // Same expression as properties.rs:81:
     //   normalize_visible(&source_projection::comparison_lossy_body(body_text(txt)))
     let source = normalize_visible(&comparison_lossy_body(body_text(&decoded.text)));
     let projection = normalize_visible(&comparison_visible_text_projection(&aat));

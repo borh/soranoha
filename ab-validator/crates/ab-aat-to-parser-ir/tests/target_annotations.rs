@@ -37,6 +37,107 @@ fn nodes(value: &Value) -> Vec<&Value> {
 }
 
 #[test]
+fn ruby_retarget_keeps_the_repaired_base_and_both_source_relations() {
+    let ir = convert("これは白い《エステ・エ・ブランコ》［＃ルビは「これは白い」にかかる］");
+    let all = nodes(&ir);
+    let ruby = all.iter().find(|node| node["type"] == "ruby").unwrap();
+    let note = all
+        .iter()
+        .find(|node| node["type"] == "editor-note" && node["note_kind"] == "ruby-retarget")
+        .unwrap();
+
+    assert_eq!(ruby["ruby"]["base"], "これは白い");
+    assert_eq!(ruby["ruby"]["reading"], "エステ・エ・ブランコ");
+    assert_eq!(note["target_text"], "これは白い");
+    let target = &note["target_source_spans"][0];
+    assert_eq!(
+        target["end"].as_u64().unwrap() - target["start"].as_u64().unwrap(),
+        15
+    );
+    assert_eq!(
+        note["subject_source_span"]["end"].as_u64().unwrap()
+            - note["subject_source_span"]["start"].as_u64().unwrap(),
+        51
+    );
+}
+
+#[test]
+fn ruby_presence_note_keeps_the_existing_ruby_relation() {
+    let ir = convert("起上り《レカバリー》［＃「起上り」にルビ］");
+    let note = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "editor-note" && node["note_kind"] == "ruby-attached")
+        .unwrap();
+
+    assert_eq!(note["target_text"], "起上り");
+    assert_eq!(
+        note["target_source_spans"][0]["end"].as_u64().unwrap()
+            - note["target_source_spans"][0]["start"].as_u64().unwrap(),
+        9
+    );
+    assert_eq!(
+        note["subject_source_span"]["end"].as_u64().unwrap()
+            - note["subject_source_span"]["start"].as_u64().unwrap(),
+        30
+    );
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn inputter_note_reference_keeps_its_number() {
+    let ir = convert("語［＃入力者注(12)］後");
+    let note = nodes(&ir)
+        .into_iter()
+        .find(|node| {
+            node["type"] == "editor-note" && node["note_kind"] == "inputter-note-reference"
+        })
+        .unwrap();
+
+    assert_eq!(note["note_number"], 12);
+    assert_eq!(note["text"], "入力者注(12)");
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn named_apparatus_keeps_witness_groups_and_readings() {
+    let ir = convert(
+        "、［＃「、」は、『全集　第十九巻』（出版社2015年）では「。」、『全集　第十五卷』（出版社1968年）では「、」］",
+    );
+    let apparatus = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "text-apparatus")
+        .unwrap();
+
+    assert_eq!(apparatus["text"], "、");
+    assert_eq!(apparatus["readings"][0]["text"], "。");
+    assert_eq!(apparatus["readings"][1]["text"], "、");
+    assert_eq!(
+        apparatus["readings"][0]["witnesses"][0]["label"],
+        "『全集　第十九巻』（出版社2015年）"
+    );
+    assert_eq!(
+        apparatus["readings"][1]["witnesses"][0]["label"],
+        "『全集　第十五卷』（出版社1968年）"
+    );
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn critical_note_keeps_editorial_role_and_margin_placement() {
+    let ir = convert("仰願寺［＃「仰願寺」に欄外に校注、「小さきろうそく」］");
+    let note = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "annotated-text")
+        .unwrap();
+
+    assert_eq!(note["note_kind"], "critical-note");
+    assert_eq!(note["position"], "margin");
+    assert_eq!(note["text"], "仰願寺");
+    assert_eq!(note["annotation_children"][0]["text"], "小さきろうそく");
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
 fn target_notes_preserve_principal_and_annotation_axes_with_only_supplied_side() {
     for (body, position) in [
         ("刺［＃「刺」に「テフダ」の注記］後", None),
@@ -74,6 +175,29 @@ fn target_notes_preserve_principal_and_annotation_axes_with_only_supplied_side()
             .find(|fact| fact["kind"] == "annotated-text")
             .unwrap();
         assert_eq!(fact["source_span"], annotation["source_span"]);
+    }
+}
+
+#[test]
+fn paired_annotations_retain_both_source_boundaries() {
+    let open = "［＃左に注記付き］";
+    let target = "病起《びょうき》";
+    let close = "［＃左に「（ママ）」の注記付き終わり］";
+    let body = format!("{open}{target}{close}");
+    let ir = convert(&body);
+    let annotation = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "annotated-text")
+        .unwrap();
+    let markers = annotation["interpretation_marker_spans"]
+        .as_array()
+        .unwrap();
+    assert_eq!(markers.len(), 2);
+    let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+    for (marker, expected) in markers.iter().zip([open, close]) {
+        let start = usize::try_from(marker["start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(marker["end"].as_u64().unwrap()).unwrap();
+        assert_eq!(&source[start..end], expected);
     }
 }
 

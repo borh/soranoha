@@ -8,7 +8,6 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-
 SKIP_BASE_TEXT_LOCALS = {"rt", "rp", "note"}
 SKIP_BASE_TEXT_SPAN_TYPES = {"rt", "rp"}
 SKIP_BASE_TEXT_SPAN_RENDS = {"notes"}

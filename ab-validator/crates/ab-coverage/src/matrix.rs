@@ -40,8 +40,8 @@ impl CoverageMatrix {
     }
 }
 
-/// One `[[syntax]]` entry: the flat row fields plus the open-keyed `parsers` /
-/// `adapters` maps and the prevalence sub-table.
+/// One `[[syntax]]` entry: the flat row fields plus the representability and
+/// prevalence sub-tables.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Row {
@@ -61,24 +61,43 @@ pub struct Row {
     pub adapter_expectations: Vec<String>,
     #[serde(default)]
     pub oracle_cases: Vec<String>,
-    pub status: RowStatus,
-    pub status_reason: String,
     #[serde(default)]
-    pub parsers: BTreeMap<String, ParserCell>,
-    #[serde(default)]
-    pub adapters: BTreeMap<String, AdapterCell>,
+    pub notes: String,
     #[serde(default)]
     pub representability: Option<RepresentabilityCell>,
     pub corpus_prevalence: Option<CorpusPrevalence>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RowStatus {
-    Covered,
-    Partial,
-    NotModeled,
-    NeedsResearch,
+/// `data/historical-parser-comparison.toml`: how earlier parsers and their AAT
+/// adapters handled each syntax row.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ParserComparison {
+    pub row: Vec<ParserComparisonRow>,
+}
+
+impl ParserComparison {
+    /// Load the parser comparison record from TOML.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read or does not decode.
+    pub fn from_toml(path: &Path) -> Result<Self> {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read parser comparison {}", path.display()))?;
+        toml::from_str(&raw)
+            .with_context(|| format!("failed to parse parser comparison {}", path.display()))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ParserComparisonRow {
+    pub syntax_row_id: String,
+    #[serde(default)]
+    pub parsers: BTreeMap<String, ParserCell>,
+    #[serde(default)]
+    pub adapters: BTreeMap<String, AdapterCell>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

@@ -1,14 +1,12 @@
-//! Notation-hygiene lint (`aozora::lint::non_canonical_directive`) —
-//! the parse-round-trip keystone that pins the zero-false-positive
-//! invariant against recogniser drift.
+//! Parse round-trip tests of the notation-hygiene lint
+//! (`aozora::lint::non_canonical_directive`), which check the
+//! zero-false-positive invariant against changes in the parser's recognisers.
 //!
-//! For every catalogue sample: the variant, parsed as a directive, must
-//! (a) still be an Unknown directive — so linting it is legitimate — and
-//! (b) actually trigger the lint; and its suggested canonical form must
-//! parse to a recognised construct (no lint, no bare directive). If a
-//! future parser change starts recognising a variant, or stops
-//! recognising a canonical, this test fails instead of the lint silently
-//! rotting.
+//! For every catalogue sample, the variant parsed as a directive must (a) be an
+//! Unknown directive, the condition for linting it, and (b) trigger the lint;
+//! its suggested canonical form must parse to a recognised construct (no lint,
+//! no bare directive). If a parser change starts recognising a variant or stops
+//! recognising a canonical form, this test fails.
 
 use ab_aozora_facade::Document;
 use ab_aozora_facade::render::{DirectiveNormalization, RenderOptions, SerializeOptions};
@@ -30,12 +28,12 @@ fn source_fires_lint(source: &str) -> bool {
 }
 
 #[test]
-fn every_variant_is_unknown_and_fires_the_lint() {
+fn every_variant_is_unknown_and_triggers_the_lint() {
     for &variant in CATALOGUE_SAMPLES {
-        // The variant must resolve to a canonical…
+        // The variant resolves to a canonical form,
         let canonical = canonical_directive(variant)
             .unwrap_or_else(|| panic!("catalogue sample {variant:?} did not resolve"));
-        // …still be Unknown (renders as the hidden directive span)…
+        // is Unknown (renders as the hidden directive span),
         let vhtml = Document::new(format!("あ［＃{variant}］"))
             .parse()
             .to_html();
@@ -43,13 +41,13 @@ fn every_variant_is_unknown_and_fires_the_lint() {
             vhtml.contains("aozora-directive"),
             "variant {variant:?} is unexpectedly recognised; drop it from the catalogue"
         );
-        // …and actually trigger the notation-hygiene lint.
+        // and triggers the notation-hygiene lint.
         assert!(
             fires_lint(variant),
             "catalogue sample {variant:?} did not fire the lint"
         );
-        // The suggested canonical must NOT itself be a lint variant
-        // (otherwise the suggestion would just re-warn).
+        // The suggested canonical form is not itself a lint variant; otherwise
+        // the suggestion would trigger the lint again.
         assert!(
             !fires_lint(&canonical),
             "canonical {canonical:?} for {variant:?} is itself a lint variant"
@@ -57,12 +55,12 @@ fn every_variant_is_unknown_and_fires_the_lint() {
     }
 }
 
-/// The `aozora fmt --fix` autofix is the third consumer of the
-/// canonical catalogue (after the pipeline lint and the LSP quick-fix). For
-/// every catalogue sample it must: keep the variant verbatim (still
-/// lint-flagged) by default, resolve the near-miss when opted in (so the lint
-/// no longer fires), and stay a second-pass fixed point — the `write_back`
-/// idempotency guard depends on the last property.
+/// The `aozora fmt --fix` autofix uses the canonical catalogue, as do the
+/// pipeline lint and the LSP quick-fix. For every catalogue sample, the default
+/// serialization keeps the variant verbatim and lint-flagged; the opt-in
+/// serialization replaces the near-miss so that the lint does not trigger, and
+/// a second opt-in pass changes nothing, a property on which the `write_back`
+/// idempotency check depends.
 #[test]
 fn fix_resolves_every_variant_and_is_idempotent() {
     let fix = SerializeOptions {
@@ -71,8 +69,8 @@ fn fix_resolves_every_variant_and_is_idempotent() {
     for &variant in CATALOGUE_SAMPLES {
         let input = format!("あ［＃{variant}］");
 
-        // Default fmt keeps the flagged near-miss verbatim and still flagged
-        // (the parser stays lossless; only opt-in fmt rewrites).
+        // Default fmt output contains the flagged near-miss verbatim, because
+        // the parser is lossless and only opt-in fmt rewrites directives.
         let plain = Document::new(input.clone()).parse().to_source();
         assert!(
             plain.contains(&format!("［＃{variant}］")),
@@ -83,37 +81,35 @@ fn fix_resolves_every_variant_and_is_idempotent() {
             "default fmt output should still fire the lint for {variant:?}"
         );
 
-        // --fix rewrites the near-miss to canonical form, so the
-        // notation-hygiene lint no longer fires on the result.
+        // --fix rewrites the near-miss to canonical form, on which the
+        // notation-hygiene lint does not trigger.
         let fixed = Document::new(input.clone()).parse().to_source_with(fix);
         assert!(
             !source_fires_lint(&fixed),
             "fix should resolve the near-miss {variant:?}; got {fixed:?}"
         );
 
-        // The rewrite is a second-pass fixed point: every directive is now
-        // canonical (non-Unknown), so a further fix pass is a no-op.
+        // After the rewrite every directive is canonical (non-Unknown), so a
+        // second fix pass changes nothing.
         let again = Document::new(fixed.clone()).parse().to_source_with(fix);
         assert_eq!(fixed, again, "fix must be idempotent for {variant:?}");
     }
 }
 
-/// Build a source that gives `variant`'s canonical spelling a fair render
-/// context. A forward-reference form only renders non-inert when its referent
-/// is present in the preceding text, so prepend the forward target literal:
-/// the first `「X」`'s inner text for a quoted forward, or — for the
+/// Returns a source in which `variant`'s canonical spelling can render. A
+/// forward-reference form renders only when its referent is in the preceding
+/// text, so the forward target literal is prepended: the inner text of the
+/// first `「X」` for a quoted forward, or the whole `（…）` operand for the
 /// bare-parenthesised 縦中横 target `（…）`, whose canonical `「（…）」は縦中横`
-/// quotes the paren run — the whole `（…）` operand. Every non-forward form
-/// (region open/close, alignment, marker synonyms) gets a neutral `あ` lead.
+/// quotes the parenthesised run. Every non-forward form (region open/close,
+/// alignment, marker synonyms) receives a neutral `あ` lead.
 fn render_context_source(variant: &str) -> String {
-    // Quoted forward target: prepend the first 「X」 inner text.
     if let Some(open) = variant.find('「') {
         let rest = &variant[open + '「'.len_utf8()..];
         if let Some(close) = rest.find('」') {
             return format!("{referent}［＃{variant}］", referent = &rest[..close]);
         }
     }
-    // Bare-parenthesised 縦中横 target: prepend the whole （…） operand.
     if variant.starts_with('（')
         && let Some(close) = variant.find('）')
     {
@@ -125,13 +121,12 @@ fn render_context_source(variant: &str) -> String {
     format!("あ［＃{variant}］")
 }
 
-/// For every catalogue
-/// variant, the normalise-render path replaces the inert `Unknown` directive
-/// span with a real rendering of the canonical spelling. The existing
-/// round-trip test proves a canonical is not itself a lint variant, but never
-/// that it *renders* non-inert; this closes that gap. The default render stays
-/// inert — the parser never reinterprets a near-miss — so the win is entirely
-/// in the opt-in path.
+/// For every catalogue variant, the normalising render path replaces the
+/// `Unknown` directive span with a rendering of the canonical spelling.
+/// `every_variant_is_unknown_and_triggers_the_lint` checks that a canonical form
+/// is not a lint variant; this test checks that it renders. The default render
+/// keeps the `Unknown` directive span because the parser does not reinterpret a
+/// near-miss.
 #[test]
 fn normalize_render_replaces_every_inert_variant() {
     let norm = RenderOptions {
@@ -140,18 +135,18 @@ fn normalize_render_replaces_every_inert_variant() {
     for &variant in CATALOGUE_SAMPLES {
         let source = render_context_source(variant);
 
-        // (a) Without normalisation the near-miss is inert: the parser keeps it
-        // Unknown and renders the hidden `aozora-directive` span.
+        // (a) Without normalisation the parser keeps the near-miss Unknown and
+        // renders the hidden `aozora-directive` span.
         let default_html = Document::new(source.clone()).parse().to_html();
         assert!(
             default_html.contains("aozora-directive"),
             "variant {variant:?} should render inert by default; got {default_html:?}"
         );
 
-        // (b) With normalisation the canonical replaces the near-miss: the
-        // rendered HTML contains NEITHER `aozora-directive` NOR a ` hidden>`
-        // span — the reader sees a visible element (or, for a referent-less /
-        // region form, nothing), never an inert directive / heading-hint span.
+        // (b) With normalisation the canonical form replaces the near-miss, and
+        // the rendered HTML contains neither `aozora-directive` nor a ` hidden>`
+        // span: the output is a visible element, or nothing for a referent-less
+        // or region form, and no directive or heading-hint span.
         let normalized_html = Document::new(source.clone()).parse().to_html_with(norm);
         assert!(
             !normalized_html.contains("aozora-directive") && !normalized_html.contains(" hidden>"),
@@ -161,10 +156,9 @@ fn normalize_render_replaces_every_inert_variant() {
     }
 }
 
-/// The default render is unchanged by the new seam: `to_html_with` with the
-/// default (opt-out) [`RenderOptions`] is byte-identical to `to_html()` across
-/// plain text, a construct, a real directive, and a catalogue near-miss. Only
-/// the opt-in flag can alter output.
+/// `to_html_with` with the default (opt-out) [`RenderOptions`] is byte-identical
+/// to `to_html()` for plain text, a construct, a recognised directive, and a
+/// catalogue near-miss.
 #[test]
 fn default_render_options_are_byte_identical_to_to_html() {
     for source in [
@@ -185,7 +179,7 @@ fn default_render_options_are_byte_identical_to_to_html() {
 }
 
 #[test]
-fn genuine_editorial_unknown_does_not_fire() {
+fn editorial_unknown_does_not_trigger_the_lint() {
     for body in ["底本では「蒼空」", "入力者注", "「」は「」の「」"] {
         assert!(
             !fires_lint(body),
@@ -194,11 +188,12 @@ fn genuine_editorial_unknown_does_not_fire() {
     }
 }
 
-/// The negative catalogue (`EDITORIAL_MUST_STAY_UNKNOWN`, the corpus-residue
-/// refuse-list): every editorial / compound / gaiji-composition body must
-/// resolve in NEITHER Tier1 nor Tier2, stay a lossless `Unknown` directive, and
-/// never fire the lint. This anchors the zero-FP invariant from the negative
-/// side — a rule that over-generalises into editorial prose fails here.
+/// Every body in the negative catalogue `EDITORIAL_MUST_STAY_UNKNOWN`, the
+/// exclusion list drawn from corpus residue, is an editorial, compound or
+/// gaiji-composition body that resolves in neither Tier1 nor Tier2, remains a
+/// lossless `Unknown` directive, and does not trigger the lint. This test checks
+/// the zero-false-positive invariant on negative cases: a rule that matches
+/// editorial prose fails it.
 #[test]
 fn catalogue_refuses_every_editorial_body() {
     for &body in EDITORIAL_MUST_STAY_UNKNOWN {
@@ -216,7 +211,7 @@ fn catalogue_refuses_every_editorial_body() {
             !fires_lint(body),
             "editorial body {body:?} wrongly fired the notation-hygiene lint"
         );
-        // It stays a lossless Unknown: parses to the hidden directive span.
+        // The body parses to the hidden directive span of a lossless Unknown.
         let html = Document::new(format!("あ\n［＃{body}］\n本文\n"))
             .parse()
             .to_html();
@@ -227,20 +222,15 @@ fn catalogue_refuses_every_editorial_body() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tier2 (`ab_aozora_syntax::degraded`) — the opt-in, render-only home for the
-// lossy / judgment reductions migrated out of Tier1.
-// ---------------------------------------------------------------------------
-
-/// Every migrated degraded sample reduces to a directly parser-recognised
-/// spelling, stays Unknown as written, and is idempotent. The Tier2 analogue of
-/// `every_variant_is_unknown_and_fires_the_lint`.
+/// Every Tier2 (`ab_aozora_syntax::degraded`) sample is Unknown as written,
+/// reduces to a spelling the parser recognises, and is idempotent; this is the
+/// Tier2 counterpart of `every_variant_is_unknown_and_triggers_the_lint`.
 #[test]
 fn every_degraded_sample_reduces() {
     for &sample in DEGRADED_SAMPLES {
         let reduced = degraded_directive(sample)
             .unwrap_or_else(|| panic!("degraded sample {sample:?} did not reduce"));
-        // The sample itself stays Unknown (inert) — the parser never recognises it.
+        // The parser does not recognise the sample, which remains Unknown.
         let sample_html = Document::new(format!("あ\n［＃{sample}］\n本文\n"))
             .parse()
             .to_html();
@@ -265,9 +255,8 @@ fn every_degraded_sample_reduces() {
     }
 }
 
-/// Tier1 and Tier2 are disjoint catalogues: no body resolves in both.
-/// This is what keeps the zero-FP Tier1 map free of the lossy / judgment Tier2
-/// reductions migrated out of it.
+/// No sample resolves in both catalogues, which keeps the lossy and
+/// judgment-dependent Tier2 reductions out of the zero-false-positive Tier1 map.
 #[test]
 fn tier1_and_tier2_are_disjoint() {
     for &t1 in CATALOGUE_SAMPLES {
@@ -286,11 +275,11 @@ fn tier1_and_tier2_are_disjoint() {
     }
 }
 
-/// The blast-radius pin: a Tier2 reduction reaches ONLY the opt-in `Degraded`
-/// render. Under `Degraded` each migrated form renders non-inert; under
-/// `Canonical` (`render --normalize`) it stays inert (it left Tier1); and
-/// `fmt --fix` (= `Canonical` serialize) leaves it byte-verbatim, so a
-/// lossy Tier2 reduction can never rewrite source.
+/// A Tier2 reduction applies only in the opt-in `Degraded` render. Under
+/// `Degraded` each form renders as a recognised construct; under `Canonical`
+/// (`render --normalize`) it remains an `Unknown` directive because it is not a
+/// Tier1 form; and `fmt --fix` (`Canonical` serialization) leaves its bytes
+/// verbatim, so a lossy Tier2 reduction does not rewrite source.
 #[test]
 fn degraded_reductions_are_render_only() {
     let degraded = RenderOptions {
@@ -304,13 +293,14 @@ fn degraded_reductions_are_render_only() {
     };
     for &sample in DEGRADED_SAMPLES {
         let source = format!("あ\n［＃{sample}］\n本文\n");
-        // (a) --degraded reinterprets it: no inert directive span.
+        // (a) --degraded renders it without a directive span.
         let deg_html = Document::new(source.clone()).parse().to_html_with(degraded);
         assert!(
             !deg_html.contains("aozora-directive") && !deg_html.contains(" hidden>"),
             "degraded sample {sample:?} still renders inert under --degraded; got {deg_html:?}"
         );
-        // (b) --normalize (Tier1 only) leaves it inert — it is not a Tier1 form.
+        // (b) --normalize (Tier1 only) keeps the directive span, because the
+        // sample is not a Tier1 form.
         let canon_html = Document::new(source.clone())
             .parse()
             .to_html_with(canonical);
@@ -328,19 +318,13 @@ fn degraded_reductions_are_render_only() {
     }
 }
 
-/// Meaning-preservation axis: the parser retains `ここから最後まで3字下げ` as
-/// Unknown *to preserve its until-EOF scope* (the parser has no until-end indent
-/// concept). Tier1 must not override that preservation decision: the lossy
-/// reduction (dropping 最後まで) lives in Tier2, reachable only from `--degraded`.
-/// This prevents a lossy fold in Tier1.
-///
-/// (Before this axis used `中文字、ゴシック体` → `中文字、太字`; that fold was
-/// removed when ゴシック体 became a first-class gothic construct, so the axis now
-/// exercises a still-lossy Tier2 rule.)
+/// The parser keeps `ここから最後まで3字下げ` as Unknown to preserve its
+/// until-EOF scope, because the parser has no until-end indent construct. Tier1
+/// does not resolve it; the lossy reduction, which drops 最後まで, is in Tier2
+/// and applies only under `--degraded`.
 #[test]
 fn tier1_never_overrides_parser_spelling_preservation() {
     let preserved = "ここから最後まで3字下げ";
-    // The parser keeps it Unknown (inert) — scope preserved.
     let html = Document::new(format!("［＃{preserved}］\n本文\n"))
         .parse()
         .to_html();
@@ -348,7 +332,8 @@ fn tier1_never_overrides_parser_spelling_preservation() {
         html.contains("aozora-directive"),
         "parser must keep {preserved:?} Unknown to preserve its scope"
     );
-    // Tier1 must not resolve it, as that would discard the dropped 最後まで scope without explicit degradation opt-in.
+    // A Tier1 resolution would discard the 最後まで scope without the
+    // degradation opt-in.
     assert_eq!(
         canonical_directive(preserved),
         None,
@@ -361,11 +346,10 @@ fn tier1_never_overrides_parser_spelling_preservation() {
     );
 }
 
-/// Tier2 enforces zero-false-positive bounds: editorial, compound, or
-/// composition-note bodies must not reduce, as reducing them would alter
-/// editorial prose or synthesize missing data.
+/// Tier2 does not reduce editorial, compound, or composition-note bodies,
+/// because a reduction would alter editorial prose or synthesize missing data.
 #[test]
-fn degraded_refuses_editorial_and_compound() {
+fn degraded_does_not_reduce_editorial_or_compound_bodies() {
     for body in [
         "「甲」は「乙」の誤記か",               // editorial conjecture
         "初出時「甲」",                         // bibliographic note

@@ -33,10 +33,8 @@ fn named_notes(body: &str) -> Option<Vec<NamedNote<'_>>> {
         }
         let (position, following) = if let Some(following) = tail.strip_prefix("右側に") {
             (MarginNotePosition::Right, following)
-        } else if let Some(following) = tail.strip_prefix("左側に") {
-            (MarginNotePosition::Left, following)
         } else {
-            return None;
+            (MarginNotePosition::Left, tail.strip_prefix("左側に")?)
         };
         if notes
             .iter()

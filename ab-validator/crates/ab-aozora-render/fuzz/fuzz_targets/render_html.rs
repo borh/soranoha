@@ -3,8 +3,8 @@
 //!
 //! Arbitrary bytes are decoded as UTF-8 (invalid sequences skip this
 //! iteration). The source is lexed via `aozora_pipeline` and rendered
-//! to HTML via `aozora_render`. Targets renderer panics and the round-trip "no PUA sentinel survives in
-//! the rendered HTML" invariant.
+//! to HTML via `aozora_render`. The target checks for renderer panics and
+//! for the invariant that no PUA sentinel appears in the rendered HTML.
 
 #![no_main]
 
@@ -13,7 +13,7 @@ use aozora_render::render_html;
 use libfuzzer_sys::fuzz_target;
 
 /// PUA sentinel codepoints embedded by the lexer that the renderer
-/// must consume — none should survive into rendered HTML.
+/// must replace; none may appear in rendered HTML.
 const PUA_SENTINELS: [char; 4] = ['\u{E001}', '\u{E002}', '\u{E003}', '\u{E004}'];
 
 fuzz_target!(|data: &[u8]| {

@@ -76,10 +76,10 @@ fn a_quoted_closing_glyph_is_not_the_reference_boundary() {
     assert_eq!(entries[0].description, "］");
 }
 
-/// A `page-segment-line` reference into the 底本 is the same shape whether the
-/// bracket names a character or states something about the line. The middle
-/// segment cannot tell them apart, so recognition is decided by the
-/// description in front of it.
+/// A `page-segment-line` reference into the 底本 has the same shape whether the
+/// bracket identifies a character or is a statement about the line. The middle
+/// segment does not distinguish the two, so the description before it decides
+/// recognition.
 ///
 /// Every case below is attested in the pinned corpus, taken from the works
 /// whose markers were left uninterpreted.
@@ -100,13 +100,15 @@ fn a_page_segment_line_reference_is_decided_by_the_description() {
     }
     for body in [
         // 058579_001943 and 004840_000212: statements about the line, not
-        // names for a character. Promoting these would trade a handful of
-        // unread markers for proofreaders' notes read as characters.
+        // names for a character. Recognizing these as gaiji would read
+        // proofreaders' notes as characters in exchange for a few markers
+        // that remain uninterpreted.
         "判読不可、30-1段-1",
         "「な」は判読困難につき推定、コマ25-左-3",
         "底本ルビは「もら」と誤記、175-上段-4",
-        // 045476_000048: a glyph name the dictionary does not carry. The
-        // description decides, and this one names nothing this build knows.
+        // 045476_000048: a glyph name that is not in the dictionary. The
+        // description decides recognition, and this one matches no entry
+        // in this build's tables.
         "変体仮名え、11-一-18",
     ] {
         assert!(recognize_gaiji_body(body).is_none(), "{body}");

@@ -40,11 +40,10 @@ pub use tokenize::{Tokenizer, tokenize};
 
 #[cfg(test)]
 mod tests {
-    //! Sentinel-constant invariants. Other crate-public surface is
-    //! covered by per-stage tests and the lex-path tests in
-    //! `aozora-pipeline`; this block keeps the structural invariants that
-    //! every downstream consumer relies on (PUA range membership +
-    //! pairwise distinctness) co-located with the re-exports.
+    //! Invariants of the re-exported sentinel constants on which downstream
+    //! consumers rely: each lies in the PUA range, and all are pairwise
+    //! distinct. Per-stage tests and the lex-path tests in `aozora-pipeline`
+    //! cover the remaining crate-public surface.
     use super::*;
 
     #[test]

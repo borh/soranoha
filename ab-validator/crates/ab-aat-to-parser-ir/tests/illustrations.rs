@@ -59,6 +59,44 @@ fn illustration_payload_is_metadata_and_does_not_consume_principal_offsets() {
 }
 
 #[test]
+fn keyword_illustration_keeps_its_description_as_alt() {
+    for (body, alt) in [
+        (
+            "前［＃挿絵１（fig226_01.png、横570×縦829）入る］後",
+            "挿絵１",
+        ),
+        ("前［＃挿絵（fig42378_01.png）入る］後", "挿絵"),
+    ] {
+        let ir = convert(body);
+        let image = nodes(&ir)
+            .into_iter()
+            .find(|n| n["type"] == "image")
+            .unwrap();
+        assert_eq!(image["alt"], alt);
+        assert_eq!(ir["interpretation_problems"], json!([]));
+    }
+}
+
+#[test]
+fn located_figure_note_keeps_base_page_position_kind_and_description() {
+    let ir = convert("前［＃底本１４２頁右上に、持久戦争と決戦戦争の移り変わりを示した図あり］後");
+    let note = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "editor-note")
+        .unwrap();
+
+    assert_eq!(note["note_kind"], "figure-insertion");
+    assert_eq!(note["source_locator"], "１４２");
+    assert_eq!(note["page_position"], "top-right");
+    assert_eq!(note["figure_kind"], "figure");
+    assert_eq!(
+        note["figure_description"],
+        "持久戦争と決戦戦争の移り変わりを示した"
+    );
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
 fn quoted_caption_reference_reuses_rich_metadata_axis_without_a_second_body_caption() {
     let ir = convert(
         "［＃「漢《かん》の図」のキャプション付きの図（fig1.png、横10×縦20）入る］\n漢《かん》の図［＃「漢の図」はキャプション］",
@@ -119,12 +157,12 @@ fn general_description_and_trailing_reference_keep_native_fragment_provenance() 
 
 #[test]
 fn unknown_image_metadata_retains_all_uncertain_aspects() {
-    let ir = convert("前［＃漢［＃未知の説明］の図（fig1.png、横不明×縦20）入る］後");
+    let ir = convert("前［＃漢［＃未知の注記］の図（fig1.png、横不明×縦20）入る］後");
     let image = nodes(&ir)
         .into_iter()
         .find(|n| n["type"] == "image")
         .unwrap();
-    assert_eq!(image["description_source"], "漢［＃未知の説明］の図");
+    assert_eq!(image["description_source"], "漢［＃未知の注記］の図");
     assert_eq!(image["alt"], "");
     assert_eq!(
         ir["interpretation_problems"][0]["aspects"],
@@ -164,11 +202,11 @@ fn image_lettering_edition_statement_stays_on_the_annotation_axis() {
 
 #[test]
 fn asset_clause_shapes_are_distinguished_from_each_other() {
-    // The four shapes the archive actually contains. Only the last two are
-    // defective, and each is defective in its own clause: 018371 writes the
-    // dimensions clause and leaves it unfilled, and 045338 writes a stem where
-    // the filename belongs. Neither can be repaired without inventing the
-    // value the source failed to supply.
+    // The four shapes the archive contains. Only the last two are defective,
+    // and each is defective in its own clause: 018371 writes the dimensions
+    // clause and leaves it unfilled, and 045338 writes a stem where the
+    // filename belongs. Repairing either would require a value the source does
+    // not supply.
     let well_formed = convert("［＃挿絵（fig_ok.png、横441×縦233）入る］");
     let image = nodes(&well_formed)
         .into_iter()
@@ -185,8 +223,8 @@ fn asset_clause_shapes_are_distinguished_from_each_other() {
             .is_empty()
     );
 
-    // A dimensions clause the source simply does not write is absent, not
-    // defective, and says nothing about the work.
+    // A dimensions clause the source does not write is absent, not defective,
+    // and states nothing about the work.
     let absent = convert("［＃挿絵（fig_ok.png）入る］");
     let image = nodes(&absent)
         .into_iter()
@@ -220,7 +258,7 @@ fn asset_clause_shapes_are_distinguished_from_each_other() {
         json!(["layout"])
     );
 
-    // A stem with no extension separator names no file, so the asset identity
+    // A stem with no extension separator identifies no file, so the asset identity
     // is the uncertain one and no `src` is asserted.
     let stem_only = convert("［＃ひめだるまの写真（fig45338_01png、横441×縦233）入る］");
     let image = nodes(&stem_only)

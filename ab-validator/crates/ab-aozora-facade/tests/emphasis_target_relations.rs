@@ -1,4 +1,4 @@
-//! Emphasis selectors retain the exact source ranges they name or leave.
+//! Emphasis selectors resolve to the exact source ranges they quote or exclude.
 use ab_aozora_facade::{Document, ForwardOrigin, Node, NodeRef};
 
 #[test]
@@ -13,8 +13,8 @@ fn selected_targets_have_separate_owned_spans_and_one_original_marker() {
             "生、息、行、意気［＃「生」「息」「行」「意気」に傍点］後",
             vec!["生", "息", "行", "意気"],
         ),
-        // The operand names the cut-out rather than the selection, so what is
-        // styled is what the context holds beside it.
+        // In 「…」を除く部分 the operand quotes the excluded range, so the
+        // emphasis applies to the rest of the context.
         ("法律［＃「法律」の「法」を除く部分に傍点］後", vec!["律"]),
         (
             "行・実践［＃「行・実践」の「・」を除く部分に傍点］後",
@@ -53,8 +53,8 @@ fn unresolved_selectors_do_not_style_a_partial_or_different_target() {
         "法法法［＃「法法法」の「法法」に傍点］",
         "｜のれん《のれん》のねうち［＃「のれん」と「ねうち」に傍点］",
         "法律［＃「法律」の「律法」に傍点］",
-        // A cut-out the context does not hold, and one that covers the whole
-        // of it, both leave nothing the source can be said to have selected.
+        // An excluded range absent from the context, or equal to the whole
+        // context, leaves no selected range.
         "法律［＃「法律」の「文」を除く部分に傍点］",
         "法律［＃「法律」の「法律」を除く部分に傍点］",
     ] {

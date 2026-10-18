@@ -1,14 +1,14 @@
 //! [`VendoredCorpus`] — read in-tree golden fixtures.
 //!
-//! Exposes `spec/aozora/fixtures/<card-id>/input.sjis.txt` files as a
-//! [`CorpusSource`] without picking up the sibling `input.utf8.txt` /
-//! `golden.html` that would otherwise show up in a plain
-//! [`crate::FilesystemCorpus`] walk of the same directory.
+//! Exposes `<root>/<card-id>/input.sjis.txt` files as a [`CorpusSource`]
+//! and excludes the sibling `input.utf8.txt` file, which a
+//! [`crate::FilesystemCorpus`] walk of the same directory would also
+//! yield.
 //!
-//! Dedicated to the "sweep the goldens themselves" use case — applying
-//! sweep invariants to Tier A fixtures to catch regressions without
-//! running the full golden diff test, and to provide a non-empty
-//! corpus when no external `AOZORA_CORPUS_ROOT` is available.
+//! The source applies sweep invariants to the Tier A golden fixtures,
+//! detecting regressions without the full golden diff test, and
+//! supplies a non-empty corpus when no external `AOZORA_CORPUS_ROOT`
+//! is available.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,17 +17,16 @@ use std::vec::IntoIter;
 use crate::{CorpusError, CorpusItem, CorpusSource};
 
 /// Name of the expected SJIS-encoded input file inside each fixture
-/// subdirectory. Matches the layout seen under
-/// `spec/aozora/fixtures/<card-id>/` in this repository.
+/// subdirectory.
 const FIXTURE_INPUT_FILENAME: &str = "input.sjis.txt";
 
 /// Corpus source backed by the in-tree `spec/aozora/fixtures/` layout.
 ///
 /// Each immediate subdirectory of `root` is treated as one fixture.
 /// A fixture contributes an item iff it contains a file named
-/// `FIXTURE_INPUT_FILENAME`; missing the file means the fixture is
-/// skipped silently (it may be a Tier-A-candidate that hasn't been
-/// vendored yet, or a scratch dir).
+/// `FIXTURE_INPUT_FILENAME`. A subdirectory without that file is
+/// skipped without an error; it may be a Tier A candidate that is not
+/// yet vendored, or a scratch directory.
 #[derive(Debug, Clone)]
 pub struct VendoredCorpus {
     root: PathBuf,
@@ -64,10 +63,10 @@ impl CorpusSource for VendoredCorpus {
 
 /// Owning iterator over subdirectories of the fixtures root.
 ///
-/// Kept as a concrete struct (rather than a chain of closures) so the
-/// `Iterator::next` implementation can cleanly surface directory-read
-/// failures as `Err` items and continue past sub-fixtures that lack
-/// the expected input file.
+/// A concrete struct rather than a chain of closures, so that
+/// `Iterator::next` can yield a directory-read failure as an `Err`
+/// item and continue past sub-fixtures that lack the expected input
+/// file.
 struct FixtureIter {
     entries: Option<IntoIter<PathBuf>>,
     error_once: Option<CorpusError>,
@@ -126,10 +125,9 @@ fn read_fixture(dir: &Path, input: &Path) -> Result<CorpusItem, CorpusError> {
         path: input.to_path_buf(),
         source,
     })?;
-    // `read_dir` yields `DirEntry`s that, when turned into paths, always
-    // have a terminal file name. `file_name()` therefore cannot return
-    // None for entries we reach here; encode that invariant as `expect`
-    // so the "impossible" branch doesn't linger in the coverage data.
+    // A path built from a `read_dir` `DirEntry` always has a terminal
+    // file name, so `file_name()` cannot return None here; `expect`
+    // states that invariant.
     let label = dir
         .file_name()
         .expect("read_dir entries always have a terminal file name")
@@ -200,8 +198,8 @@ mod tests {
         let dir = fresh_root();
         seed_fixture(dir.path(), "56656", b"real fixture");
 
-        // A sibling directory that does not contain the expected filename:
-        // mimics a scratch dir that should not be exposed.
+        // A sibling directory without the expected filename stands for a
+        // scratch directory, which the corpus must not yield.
         let scratch = dir.path().join("scratch");
         fs::create_dir_all(&scratch).expect("create scratch dir");
         fs::write(scratch.join("golden.html"), b"<html>").expect("write golden");

@@ -90,7 +90,7 @@ fi
 
 "${python_jsonschema[@]}" - "$repo_root/schemas/parser-ir.schema.json" \
   "$repo_root/schemas/aat-parser-ir-divergence.schema.json" \
-  "$repo_root/data/aat-parser-ir-divergence-bundle-v1.schema.json" \
+  "$repo_root/schemas/outputs/aat-parser-ir-divergence-bundle-v1.schema.json" \
   "$out_dir/parser-ir.json" \
   "$out_dir/divergence.json" <<'PY'
 import json

@@ -10,11 +10,12 @@ readme = false
 [dependencies]
 anyhow.workspace = true
 encoding_rs.workspace = true
-serde = { workspace = true, optional = true }
+serde.workspace = true
 sha2.workspace = true
+toml.workspace = true
 
 [features]
 default = []
 # Enables `Serialize`/`Deserialize` on `DecodedSource` for crates that persist
 # it. ab-check does not need this.
-serde = ["dep:serde"]
+serde = []

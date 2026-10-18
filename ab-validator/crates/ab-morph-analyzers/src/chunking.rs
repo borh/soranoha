@@ -93,7 +93,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chunking_prefers_sentence_boundaries_under_limit() {
+    fn chunking_splits_at_sentence_boundaries_under_limit() {
         let chunks = semantic_chunks("吾輩は猫である。名前はまだ無い。", 10_000);
 
         assert_eq!(chunks.len(), 2);

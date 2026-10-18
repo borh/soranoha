@@ -3,10 +3,10 @@ use serde_json::{Value, json};
 
 fn bench_aat_json_io(c: &mut Criterion) {
     // The fixture below is a `"version": 1` document; validate it against
-    // the frozen v1 schema (see `data/aat-schema-v1.json`), not whichever
-    // schema `data/aat-schema.json` currently points at.
+    // the frozen v1 schema (see `schemas/outputs/aat-schema-v1.json`), not the
+    // schema version `schemas/outputs/aat-schema.json` refers to.
     let schema: Value =
-        serde_json::from_str(include_str!("../../../data/aat-schema-v1.json")).unwrap();
+        serde_json::from_str(include_str!("../../../schemas/outputs/aat-schema-v1.json")).unwrap();
     let validator = jsonschema::validator_for(&schema).unwrap();
     let fixture = large_aat_fixture();
     let fixture_json = serde_json::to_string(&fixture).unwrap();

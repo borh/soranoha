@@ -9,3 +9,4 @@ cc 5f983cff39d285be980455668db9134353c4349d1a96f9747d6f9772fbccfccb # shrinks to
 cc 54303ebc327b8602ab849bdf3fde3bb65f9e497a71ceeffafea44f7fb97f2139 # shrinks to s = "｜［＃\n］［＃］｜改丁《］》"
 cc b5fcf669104faa713555df44aa606efd0347457b98dc449d022eb652a850558a # shrinks to s = "［［［＃ここから字下げ］《《\n\n［＃「」は大見出し］｜｜｜｜｜｜"
 cc 5ba066213b7f3ff7849f958599db00434c413552c7e270ea86f300488dff76a7 # shrinks to s = "［［》》［＃ここから字下げ］《《≪≪］］［＃改］］"
+cc 27632a12d106fff32c8aed0f762d97b9fcd3e4e5e094e654b3a84daf3d229523 # shrinks to s = "※※［＃改［［《《］］］］"

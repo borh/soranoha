@@ -2,25 +2,19 @@
 //!
 //! `ab-aat-to-parser-ir`'s parser-IR / divergence-bundle output, and the
 //! `schema_hash` / `document_hash` mechanism in [`crate::schema`], are built
-//! as `serde_json::Value` trees (mostly via the `json!` macro) and rely on
-//! object keys coming out of `serde_json::Map` in sorted order to produce
-//! stable, canonical bytes (persisted files, sha256 hashes, golden-fixture
-//! comparisons). `serde_json::Map` is a `BTreeMap` by default, which *is*
-//! sorted — but if the `preserve_order` feature is ever enabled anywhere in
-//! the compiling workspace's unified feature graph (Cargo unifies features
-//! across all crates sharing a `Cargo.lock`), `Map` silently switches to an
-//! `IndexMap` that preserves insertion order instead, and the same code
-//! silently emits differently-ordered (but semantically identical) JSON.
+//! as `serde_json::Value` trees (mostly via the `json!` macro) and need
+//! sorted object keys to produce stable, canonical bytes (persisted files,
+//! sha256 hashes, golden-fixture comparisons). `serde_json::Map` is a
+//! `BTreeMap` by default, which is sorted. If any crate in the compiling
+//! workspace's unified feature graph enables the `preserve_order` feature
+//! (Cargo unifies features across all crates sharing a `Cargo.lock`), `Map`
+//! becomes an `IndexMap` that preserves insertion order, and the same code
+//! emits differently-ordered (but semantically identical) JSON.
 //!
-//! This happened once already: `ab-aozora-facade`'s `json` feature enabled
-//! `serde_json/preserve_order`, and while a since-deleted workspace member's
-//! CLI shim depended on it, this flipped `ab-aat-to-parser-ir`'s canonical
-//! output to insertion order workspace-wide (see
-//! "Feature-unification
-//! hazard"). That shim has since been deleted from the root workspace, but
-//! this module is the defense-in-depth fix: explicit key sorting at the
-//! call sites that turn a `Value` into canonical bytes, so correctness no
-//! longer depends on which map backend `serde_json` happens to use.
+//! `ab-aozora-facade`'s `json` feature enables `serde_json/preserve_order`.
+//! The functions here sort keys explicitly at the call sites that turn a
+//! `Value` into canonical bytes, so the output does not depend on the map
+//! backend `serde_json` uses.
 use serde_json::Value;
 
 /// Recursively rebuild `value` inserting object keys in sorted order.
@@ -53,10 +47,9 @@ pub fn sort_keys_deep(value: Value) -> Value {
 /// This is the wrapper used at the `ab-aat-to-parser-ir` CLI's `convert`
 /// call site (see `src/main.rs`) so the persisted `parser_ir_out` /
 /// `divergence_out` files are canonical independent of the workspace
-/// feature graph. It is also exercised directly by the
-/// `preserve-order-canary` crate's end-to-end test (which enables
-/// `serde_json/preserve_order` on purpose, in its own excluded workspace, to
-/// prove this).
+/// feature graph. The `preserve-order-canary` crate's end-to-end test calls
+/// it directly with `serde_json/preserve_order` enabled, in its own excluded
+/// workspace.
 pub fn to_canonical_json_pretty(value: Value) -> serde_json::Result<String> {
     serde_json::to_string_pretty(&sort_keys_deep(value))
 }

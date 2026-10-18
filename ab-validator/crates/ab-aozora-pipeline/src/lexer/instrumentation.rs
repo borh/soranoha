@@ -6,9 +6,8 @@
 //! its elapsed nanoseconds into a thread-local [`TimingTable`] keyed by
 //! [`Subsystem`].
 //!
-//! The `aozora-bench` `classify_subsystems` example reads the table after
-//! each document is processed via [`TimingTable::snapshot`] and
-//! [`TimingTable::reset`].
+//! A caller reads the table with [`TimingTable::snapshot`] and clears it
+//! with [`TimingTable::reset`].
 //!
 //! Default builds compile this module out entirely. The only public
 //! API surface added by the feature is this module and its re-exports
@@ -27,13 +26,11 @@ use std::time::Instant;
 /// Classify-stage recogniser subsystem identifier.
 ///
 /// One variant per major recogniser entry point. The set is closed:
-/// adding a new variant is an explicit decision because each variant
-/// implies a corresponding `SubsystemGuard::new(...)` call site.
+/// each variant requires a corresponding `SubsystemGuard::new(...)`
+/// call site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Subsystem {
-    // -------------------------------------------------------------
     // Recogniser leaves (do not nest with each other)
-    // -------------------------------------------------------------
     /// `recognize_ruby`: paired-quote ruby spans `｜base《reading》`.
     Ruby,
     /// `recognize_annotation`: bracket-hash annotation `［＃...］`.
@@ -48,10 +45,8 @@ pub enum Subsystem {
     /// keywords (kaeriten, indent, warichu open/close, etc.).
     BodyDispatcher,
 
-    // -------------------------------------------------------------
     // Framework / dispatch (may nest with leaves; their total double-
     // counts the leaf time; subtract leaves to get pure framework cost)
-    // -------------------------------------------------------------
     /// Outer `ClassifyStream::next()` body: wraps every per-event
     /// dispatch including all recogniser calls. Total time minus
     /// the recogniser leaves' sum gives the pure dispatch overhead.
@@ -90,7 +85,7 @@ pub enum Subsystem {
     /// `try_bracket_emit`: wraps `recognize_annotation`. Pre-work:
     /// frame setup + sentinel padding decisions.
     TryBracketEmit,
-    /// Outer `next()` loop body INCLUDING all sub-callees, MINUS the
+    /// Outer `next()` loop body including all sub-callees, excluding the
     /// upstream `events.next()` call. Use to isolate "loop body work"
     /// from "`PairStream` pulling work".
     LoopBody,
@@ -125,8 +120,7 @@ impl Subsystem {
         }
     }
 
-    /// Iteration order matching the human-friendly source-of-data order.
-    /// Leaves first, then framework.
+    /// Display order: leaves first, then framework.
     #[must_use]
     pub fn ordered() -> [Self; 17] {
         [
@@ -199,8 +193,7 @@ impl Drop for SubsystemGuard {
 
 /// Per-thread accumulation of `(call count, total ns)` per [`Subsystem`].
 ///
-/// Created lazily in the `thread_local!` block; reset between corpus
-/// docs by the `classify_subsystems` probe via [`TimingTable::reset`].
+/// Created lazily in the `thread_local!` block.
 #[derive(Debug, Clone, Default)]
 pub struct TimingTable {
     /// Number of recogniser entries observed per subsystem.
@@ -212,7 +205,8 @@ pub struct TimingTable {
 impl TimingTable {
     /// Snapshot the current thread's table (cloned).
     ///
-    /// Cheap: at most a 3-entry `HashMap` clone.
+    /// Clones `counts` and `total_ns`, each holding at most one entry per
+    /// [`Subsystem`] variant.
     #[must_use]
     pub fn snapshot() -> Self {
         TIMING_TABLE.with(|t| t.borrow().clone())
@@ -235,9 +229,10 @@ thread_local! {
 }
 
 /// Histogram of `pending_outputs.len()` measured at every
-/// `pending_outputs_pop_front()` call. Bucket boundaries chosen to
-/// catch the "tiny vs large" distinction relevant to the outlier
-/// docs in the corpus.
+/// `pending_outputs_pop_front()` call.
+///
+/// The bucket boundaries separate small from large queues, the
+/// distinction relevant to the outlier documents in the corpus.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PendingSizeHistogram {
     /// Observations where the queue was empty (`len == 0`).
@@ -327,8 +322,8 @@ pub fn reset_replay_sizes() {
 
 /// Per-yield-kind histogram, populated at every span yield from `ClassifyStream::next()`.
 ///
-/// Useful for spotting "this doc yields 10× more Plain spans than
-/// expected" patterns. Each variant maps to a `SpanKind` arm.
+/// Identifies documents that yield many more Plain spans than expected
+/// (for example 10×). Each variant maps to a `SpanKind` arm.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct YieldCounters {
     /// `SpanKind::Plain` spans yielded.
@@ -347,8 +342,8 @@ pub struct YieldCounters {
     pub block_close: u64,
 }
 
-/// Yield-kind tags used by `record_yield` to bump the appropriate
-/// counter without forcing the lexer crate to depend on `SpanKind`'s
+/// Yield-kind tags used by `record_yield` to increment the matching
+/// counter, so that the lexer crate does not depend on `SpanKind`'s
 /// concrete variant set.
 #[derive(Debug, Clone, Copy)]
 pub enum YieldKind {
@@ -367,8 +362,8 @@ pub enum YieldKind {
     BlockClose,
 }
 
-/// Bump the per-thread yield-kind counter. No-op when feature is OFF
-/// (the function only exists under cfg).
+/// Increment the per-thread yield-kind counter. The function exists only
+/// when the `classify-instrument` feature is enabled.
 pub fn record_yield(kind: YieldKind) {
     YIELD_COUNTERS.with(|c| {
         let mut counters = c.borrow_mut();

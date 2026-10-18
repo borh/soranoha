@@ -8,7 +8,6 @@ import subprocess
 import sys
 from collections.abc import Sequence
 
-
 DEFAULT_SOURCE_REV = "77a675fc2771936f9544505d922d4cd45075338c"
 DEFAULT_REPORT_SUBDIR = pathlib.Path("out/reports/tei-eaj-aozora")
 DEFAULT_COMPARE_SCRIPT = pathlib.Path(__file__).resolve().with_name("tei_eaj_compare.py")
@@ -35,11 +34,8 @@ def default_report_dir(cwd: pathlib.Path) -> pathlib.Path:
 
 
 def default_abc_tei_dirs(cwd: pathlib.Path) -> list[str]:
-    # Only explicit ABC_TEI_EAJ_ABC_TEI_DIRS values are honored. The former
-    # implicit fallback named the retired snapshot producer's output place
-    # (target/soranoha/full-corpus-publication-basic-ja/artifacts); it was not a
-    # value contract, so a coincidentally-existing old target dir must not be
-    # picked up. Absent the env var, there is no default TEI directory.
+    # Only explicit ABC_TEI_EAJ_ABC_TEI_DIRS values are read. No target directory
+    # is a TEI directory by contract, so without the variable the list is empty.
     env_value = os.environ.get("ABC_TEI_EAJ_ABC_TEI_DIRS")
     if env_value:
         return [path for path in env_value.split(os.pathsep) if path]

@@ -24,7 +24,7 @@ fn nodes<'a>(value: &'a Value, kind_key: &str, kind: &str, found: &mut Vec<&'a V
 }
 
 #[test]
-fn native_marks_survive_conversion_with_exact_source_spans() {
+fn native_marks_are_retained_through_conversion_with_exact_source_spans() {
     for body in [
         "フゴ／＼、とき／″＼",
         "「とき／″＼」",

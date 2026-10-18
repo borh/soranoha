@@ -38,11 +38,11 @@ fn a_junction_mark_states_a_side_and_an_anchor_separately() {
         panic!("{ir}");
     };
     // The source states both, and states them independently: every such mark
-    // sits right, and `の間に` says where along the line rather than which
-    // side of it. Neither may be read off the other.
+    // is on the right, and `の間に` states the position along the line rather
+    // than the side. Neither is derived from the other.
     assert_eq!(mark["position"], "right", "{ir}");
     assert_eq!(mark["anchor"], "between", "{ir}");
-    // The pair carries the mark; neither character is adopted as its target.
+    // The mark applies to the pair; neither character is its target.
     assert_eq!(mark["text"], "自然", "{ir}");
     assert_eq!(mark["annotation_children"][0]["text"], "白三角傍点", "{ir}");
     assert!(
@@ -52,7 +52,7 @@ fn a_junction_mark_states_a_side_and_an_anchor_separately() {
 }
 
 #[test]
-fn the_claim_covers_the_marker_and_names_the_mark_it_supplies() {
+fn the_claim_covers_the_marker_and_states_the_mark_it_supplies() {
     let ir = convert("自然［＃「自」と「然」の間に白三角傍点］");
     let facts = ir["interpretation_facts"].as_array().unwrap();
     assert_eq!(facts.len(), 1, "{ir}");
@@ -61,8 +61,8 @@ fn the_claim_covers_the_marker_and_names_the_mark_it_supplies() {
 }
 
 #[test]
-fn each_of_a_run_of_junction_marks_claims_only_the_pair_it_names() {
-    // The corpus line that motivates this reads three in a row.
+fn each_of_a_run_of_junction_marks_claims_only_the_pair_it_quotes() {
+    // The corpus line this case comes from has three in a row.
     let ir = convert(
         "自然［＃「自」と「然」の間に白三角傍点］はう［＃「は」と「う」の間に白三角傍点］たふ［＃「た」と「ふ」の間に白三角傍点］",
     );
@@ -83,15 +83,15 @@ fn each_of_a_run_of_junction_marks_claims_only_the_pair_it_names() {
 #[test]
 fn runs_that_do_not_meet_leave_the_marker_unread() {
     for body in [
-        // Something stands between them, so there is no one place to put it.
+        // A character lies between them, so there is no single junction.
         "自X然［＃「自」と「然」の間に白三角傍点］",
         // The pair is not the run the marker follows.
         "自然他［＃「自」と「然」の間に白三角傍点］",
-        // Named in an order the text does not have.
+        // Quoted in an order the text does not have.
         "然自［＃「自」と「然」の間に白三角傍点］",
-        // Three runs have two junctions and the marker names neither.
+        // Three runs have two junctions and the marker identifies neither.
         "自然は［＃「自」と「然」と「は」の間に白三角傍点］",
-        // Not a mark this vocabulary knows.
+        // Not a mark in this vocabulary.
         "自然［＃「自」と「然」の間に何か］",
     ] {
         let ir = convert(body);

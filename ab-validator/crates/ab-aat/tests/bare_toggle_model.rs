@@ -1,23 +1,22 @@
 //! Rust↔Python mirror test + property-test target for the bare-toggle
 //! inline-container classifier (`pair_bare_toggles` in `src/lib.rs`,
-//! applied AFTER block classification to every built content array via
+//! applied after block classification to every built content array via
 //! `pair_bare_toggles_in_blocks`.
 //!
-//! `pair_bare_toggles` itself is `pub(crate)` — this integration test
+//! `pair_bare_toggles` itself is `pub(crate)`; this integration test
 //! reaches it only indirectly, through the crate's public
 //! `ab_aat::aat_json_from_bytes` entry point (same call `goldens.rs`
-//! uses), which suffices for every property here EXCEPT the two that need
-//! a DIRECT pass-level call (zero-adoption structural identity,
-//! determinism at the pass level) — those live in `src/lib.rs`'s
-//! `mod tests` instead (`bare_toggle_zero_adoption_is_structurally_unchanged`,
-//! `bare_toggle_pass_is_deterministic`), the natural home for anything
-//! that must call a `pub(crate)` function directly.
+//! uses), which suffices for every property here except the two that need
+//! a direct pass-level call (zero-adoption structural identity,
+//! determinism at the pass level). Those are in `src/lib.rs`'s
+//! `mod tests` (`bare_toggle_zero_adoption_is_structurally_unchanged`,
+//! `bare_toggle_pass_is_deterministic`).
 //! The mirror test reads the vector file
 //! `tests/fixtures/bare-toggle-model-vectors.json`. It asserts the
-//! OBSERVABLE adapter outcome only — container counts and raw-node
-//! survivors — not the internal per-line counters (`orphan_open`/
+//! observable adapter outcome only (container counts and remaining raw
+//! nodes), not the internal per-line counters (`orphan_open`/
 //! `orphan_close`/`reopen`/`interleave_events`/`proper_nestings`/
-//! `rollback_markers`); the Python side owns counter-level assertions.
+//! `rollback_markers`); the Python side makes the counter-level assertions.
 //!
 //! The properties test five invariants over the same
 //! `classify_tokens`-equivalent grammar, generated via a "token soup" of
@@ -35,7 +34,7 @@ use serde_json::Value;
 /// (Rust-side, observable-outcome) mirror needs are named; the per-line
 /// counter fields (`orphan_open`, `orphan_close`, `reopen`,
 /// `interleave_events`, `proper_nestings`, `rollback_markers`) are left
-/// for serde to ignore — the Python side owns those assertions.
+/// for serde to ignore; the Python side makes those assertions.
 #[derive(Debug, Deserialize)]
 struct Vector {
     name: String,
@@ -76,7 +75,7 @@ fn aat_value_for(src: &str) -> Value {
 }
 
 /// Depth-first collect of every `"raw"` node's `source` string, in
-/// document order. Mirrors `src/lib.rs`'s `mod tests` helper of the same
+/// document order. Same as `src/lib.rs`'s `mod tests` helper of the same
 /// name.
 fn collect_raw_sources(v: &Value, out: &mut Vec<String>) {
     if let Some(obj) = v.as_object() {
@@ -96,7 +95,7 @@ fn collect_raw_sources(v: &Value, out: &mut Vec<String>) {
 }
 
 /// Depth-first collect of every node whose `"kind"` equals `kind`, in
-/// document order. Mirrors `src/lib.rs`'s `mod tests` helper of the same
+/// document order. Same as `src/lib.rs`'s `mod tests` helper of the same
 /// name.
 fn collect_nodes<'a>(v: &'a Value, kind: &str, out: &mut Vec<&'a Value>) {
     match v {
@@ -249,7 +248,7 @@ fn canonicalize(v: &Value) -> Value {
 }
 
 /// Depth-first collect of every `"raw"` node whose `source` is one of the
-/// four marker literals AND whose span lies ENTIRELY on `line`, in
+/// four marker literals and whose span lies entirely on `line`, in
 /// document order.
 ///
 /// Collection is restricted to marker-literal raw nodes rather than generic
@@ -325,7 +324,7 @@ fn assert_nesting_well_formed(v: &Value) {
                 if let Some(children) = map.get("content").and_then(Value::as_array) {
                     for child in children {
                         if let Some((child_start, child_end)) = span_bytes(child) {
-                            // STRICT containment on both ends: the parent
+                            // Strict containment on both ends: the parent
                             // span runs from its open marker's byte_start to
                             // its close marker's byte_end, and children sit
                             // strictly between the two markers, so equality
@@ -360,10 +359,10 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 512, ..ProptestConfig::default() })]
 
     /// Property 1: for every marker literal, its input occurrence count
-    /// equals its raw-survivor count plus its construct's adopted-
+    /// equals its remaining-raw count plus its construct's adopted-
     /// container count (each container consumes exactly one open-token
-    /// occurrence and one close-token occurrence of its construct) — no
-    /// marker is ever duplicated or silently dropped.
+    /// occurrence and one close-token occurrence of its construct), so no
+    /// marker is duplicated or dropped.
     #[test]
     fn every_marker_consumed_or_preserved_exactly_once(doc in bare_toggle_doc()) {
         let value = aat_value_for(&format!("{doc}\n"));
@@ -418,7 +417,7 @@ proptest! {
         assert_nesting_well_formed(&value);
     }
 
-    /// Property 3 (ADAPTER-level determinism): running
+    /// Property 3 (adapter-level determinism): running
     /// the whole public pipeline (`aat_json_from_bytes` — decode, sanitize,
     /// parse, classify, serialize) twice on the same input yields identical
     /// output bytes, hence identical JSON. Byte equality is stronger
@@ -426,7 +425,7 @@ proptest! {
     /// default `BTreeMap` map).
     /// The pass-level determinism property
     /// (`bare_toggle_pass_is_deterministic`, `src/lib.rs` `mod tests`)
-    /// remains as a narrower, direct `pair_bare_toggles` check.
+    /// is a narrower, direct `pair_bare_toggles` check.
     #[test]
     fn deterministic(doc in bare_toggle_doc()) {
         let src = format!("{doc}\n");

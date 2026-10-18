@@ -6,7 +6,7 @@
 
 use crate::Span;
 
-/// Pair kind. The variants enumerate every balanced delimiter Aozora
+/// The variants enumerate every balanced delimiter that Aozora
 /// notation recognises.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -21,7 +21,7 @@ pub enum PairKind {
 
     /// `≪ … ≫` (U+226A / U+226B). Double-angle quotation: the aozora
     /// input encoding for a 底本's twin angle brackets, displayed back
-    /// as `《…》`. Its own pair kind (a stray `》` never closes a `≪`).
+    /// as `《…》`. A separate pair kind: a `》` does not close a `≪`.
     AngleQuote,
 
     /// `〔 … 〕` (U+3014 / U+3015). Accent-decomposition segment.
@@ -33,9 +33,9 @@ pub enum PairKind {
 }
 
 impl PairKind {
-    /// Every variant in declaration order. Used by codegen so
-    /// downstream artefacts (TypeScript types, CLI tables) track the
-    /// enum without a hand-maintained parallel.
+    /// Every variant in declaration order. Codegen generates
+    /// downstream artefacts (TypeScript types, CLI tables) from this
+    /// list.
     pub const ALL: [Self; 5] = [
         Self::Bracket,
         Self::Ruby,
@@ -45,8 +45,7 @@ impl PairKind {
     ];
 
     /// Stable camelCase string identifier used by the driver wire
-    /// formats. Centralised here so every driver agrees on the wire
-    /// spelling without hand-maintaining a parallel match.
+    /// formats. Every driver reads the wire spelling from this function.
     #[must_use]
     pub const fn as_json_tag(self) -> &'static str {
         match self {
@@ -60,9 +59,9 @@ impl PairKind {
 
     /// The open delimiter literal for this pair (`［`, `《`, `≪`, `〔`, `「`).
     ///
-    /// The single authority for the delimiter glyphs: diagnostic prose,
-    /// quick-fix titles, and any renderer that needs to name a delimiter
-    /// read them from here rather than hard-coding the character.
+    /// Diagnostic prose, quick-fix titles, and renderers that print a
+    /// delimiter read the glyph from this function instead of
+    /// hard-coding the character.
     #[must_use]
     pub const fn open_str(self) -> &'static str {
         match self {
@@ -88,11 +87,11 @@ impl PairKind {
     }
 }
 
-/// Resolved open/close pair, as observed by the pair stage.
+/// Resolved open/close pair, as recorded by the pair stage.
 ///
 /// Both `open` and `close` are byte-spans in the *sanitized* source
-/// (the same coordinate system every other pair-stage / classify-stage
-/// `Span` lives in). Used downstream by editor surfaces such as LSP
+/// (the coordinate system of every other pair-stage / classify-stage
+/// `Span`). Used downstream by editor surfaces such as LSP
 /// `textDocument/linkedEditingRange` and `documentHighlight`.
 ///
 /// `Unclosed` opens and stray `Unmatched` closes are omitted here; they
@@ -110,8 +109,8 @@ pub struct PairLink {
 
 impl PairLink {
     /// Construct a link between an `open` and `close` span of the same
-    /// `kind`. The caller guarantees the two spans are a genuinely
-    /// matched pair; this constructor does no validation.
+    /// `kind`. The caller guarantees that the two spans form a matched
+    /// pair; this constructor does not validate them.
     #[must_use]
     pub const fn new(kind: PairKind, open: Span, close: Span) -> Self {
         Self { kind, open, close }
@@ -126,7 +125,7 @@ mod tests {
     fn pair_kind_is_copy() {
         let k = PairKind::Bracket;
         let copy = k;
-        // Both still usable: Copy semantics confirmed.
+        // Both bindings remain usable after the move, which requires `Copy`.
         assert_eq!(k, copy);
     }
 

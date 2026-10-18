@@ -22,7 +22,7 @@ fn ruby_reading_kunten_roundtrips_and_uses_annotation_layout() {
 }
 
 #[test]
-fn explicit_mixed_base_replays_source_when_no_reading_adopts_it() {
+fn explicit_mixed_base_serializes_as_written() {
     for source in [
         "前｜漢［＃レ］字後",
         "前｜漢［＃レ］字《》後",

@@ -10,6 +10,8 @@ keywords = ["japanese", "text-processing", "coverage", "dataset"]
 categories = ["text-processing"]
 
 [dependencies]
+ab-aozora-encoding.workspace = true
+ab-aozora-syntax.workspace = true
 ab-encoding.workspace = true
 ab-source-syntax.workspace = true
 anyhow.workspace = true
@@ -20,6 +22,7 @@ rayon.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_stacker.workspace = true
 sha2.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
@@ -28,6 +31,7 @@ zip.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+jsonschema.workspace = true
 
 [[bench]]
 name = "prevalence_detectors"
@@ -36,6 +40,18 @@ harness = false
 [[bin]]
 name = "ab-coverage-merge"
 path = "src/bin/merge.rs"
+
+[[bin]]
+name = "ab-edition-diff"
+path = "src/bin/edition_diff.rs"
+
+[[bin]]
+name = "ab-fidelity-report"
+path = "src/bin/fidelity_report.rs"
+
+[[bin]]
+name = "ab-occurrence-alignment"
+path = "src/bin/occurrence_alignment.rs"
 
 [[bin]]
 name = "ab-source-inventory"

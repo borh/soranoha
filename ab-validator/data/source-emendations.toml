@@ -1,0 +1,56 @@
+emendations_version = 1
+
+[[emendation]]
+id = "pariyori-403-ruby-bar-after-base"
+work_id = "000320_2168"
+indexed_path = "cards/000320/files/2168_ruby_16254.zip::pariyori.txt"
+transcribed = "一番向｜《むか》うにある"
+emended = "一番｜向《むか》うにある"
+evidence = ["cards/000320/files/2168_ruby_16254.zip::pariyori.txt:403", "cards/000320/files/2168_42800.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The ruby bar follows 向, its base; the published XHTML sets the reading on an empty base."
+
+[[emendation]]
+id = "genka-138-reading-before-base"
+work_id = "001798_56634"
+indexed_path = "cards/001798/files/56634_ruby_58202.zip::genka.txt"
+transcribed = "「もう一杯｜《く》呉れ」"
+emended = "「もう一杯｜呉《く》れ」"
+evidence = ["cards/001798/files/56634_ruby_58202.zip::genka.txt:138", "cards/001798/files/56634_58211.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The reading く precedes 呉, its base; the published XHTML sets the reading on an empty base."
+
+[[emendation]]
+id = "seisanryouhari-179-boten-quotation"
+work_id = "000136_731"
+indexed_path = "cards/000136/files/731_ruby.zip::seisanryouhari.txt"
+transcribed = "胎兒のだんす［＃「だんず」に傍点］"
+emended = "胎兒のだんす［＃「だんす」に傍点］"
+evidence = ["cards/000136/files/731_ruby.zip::seisanryouhari.txt:179", "cards/000136/files/731_ruby_3216.zip::02seisanryohari.txt:198", "cards/000136/files/731.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The note quotes だんず; the text has だんす. The later edition and the published XHTML quote だんす."
+
+[[emendation]]
+id = "shin-urashima-58-double-underline-closer"
+work_id = "001257_60357"
+indexed_path = "cards/001257/files/60357_ruby_75861.zip::shin_urashima.txt"
+transcribed = "［＃二重傍線］ストニイ、ポイント［＃傍線終わり］"
+emended = "［＃二重傍線］ストニイ、ポイント［＃二重傍線終わり］"
+evidence = ["cards/001257/files/60357_ruby_75861.zip::shin_urashima.txt:58", "cards/001257/files/60357_75896.html"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The double-line opener is closed by the single-line closer; the published XHTML sets ストニイ、ポイント with a double underline."
+
+[[emendation]]
+id = "he-25-katakana-he"
+work_id = "000121_3040"
+indexed_path = "cards/000121/files/3040_ruby.zip::he.txt"
+transcribed = "ヘど［＃「へど」に傍点］"
+emended = "へど［＃「へど」に傍点］"
+evidence = ["cards/000121/files/3040_ruby.zip::he.txt:25", "cards/000121/files/3040_ruby_4300.zip::he.txt:25"]
+reviewer = "source-authority-review"
+reviewed_at = "2026-10-17"
+notes = "The text has katakana ヘ in へど, the word the note quotes; the later edition prints へど."

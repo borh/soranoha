@@ -46,3 +46,65 @@ fn partial_layout_keeps_body_and_unresolved_source_separate() {
                 .is_some_and(|text| text.contains("未対応指定"))
     }));
 }
+
+#[test]
+fn return_mark_clause_stays_typed_on_its_layout_scope() {
+    let marker = "［＃ここから２字下げ、「レ」は返り点］";
+    let ir = convert(&format!("{marker}\n漢レ文\n［＃ここで字下げ終わり］"));
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["indent"], 2);
+    let instruction = &scope["source_instructions"][0];
+    assert_eq!(instruction["type"], "formatting-instruction");
+    assert_eq!(instruction["raw"], marker);
+    assert_eq!(
+        instruction["operations"][0]["effect"]["kind"],
+        "kunten-policy"
+    );
+    assert_eq!(
+        instruction["operations"][0]["effect"]["scope"],
+        "following-block"
+    );
+    assert_eq!(
+        instruction["operations"][0]["effect"]["marks"]["text"],
+        "レ"
+    );
+    assert!(instruction["operations"][0]["selection"].is_object());
+    assert!(
+        ir["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["type"] == "kunten" && node["text"] == "レ")
+    );
+    assert!(!ir["nodes"].as_array().unwrap().iter().any(|node| {
+        node["type"] == "text"
+            && node["text"]
+                .as_str()
+                .is_some_and(|text| text.contains('レ'))
+    }));
+    assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn return_mark_close_clause_stays_typed_on_its_layout_scope() {
+    let marker = "［＃ここで字下げ終わり、「レ」は返り点］";
+    let ir = convert(&format!("［＃ここから２字下げ］\n漢レ文\n{marker}"));
+    let scope = &ir["layout_blocks"][0];
+    assert_eq!(scope["indent"], 2);
+    let instruction = &scope["source_instructions"][0];
+    assert_eq!(instruction["type"], "formatting-instruction");
+    assert_eq!(instruction["raw"], marker);
+    assert_eq!(
+        instruction["operations"][0]["effect"]["scope"],
+        "preceding-block"
+    );
+    assert!(instruction["operations"][0]["selection"].is_object());
+    assert!(
+        ir["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["type"] == "kunten" && node["text"] == "レ")
+    );
+    assert!(ir["interpretation_problems"].as_array().unwrap().is_empty());
+}

@@ -48,7 +48,7 @@ and `primary_text_hash` must equal
 `AAT.meta.primary_text_hash` (or historical `AAT.meta.source_hash`). Historical
 annotation files using `work_content_hash` are accepted and migrated on read;
 new output emits only `primary_text_hash`. Bundles tagged `decoded_utf8` are
-rejected; actual source offsets cannot be reinterpreted as parser-text offsets.
+rejected; source offsets cannot be reinterpreted as parser-text offsets.
 
 ```json
 {
@@ -83,7 +83,7 @@ is `checks.<system>.aat-to-parser-ir-smoke`.
 ## Mapping generations
 
 The `source_aat_version` field selects the AAT schema: version 1 uses
-`data/aat-schema-v1.json`; version 2 uses `data/aat-schema.json`. Both mappings
+`schemas/outputs/aat-schema-v1.json`; version 2 uses `schemas/outputs/aat-schema.json`. Both mappings
 use the same target parser-IR schema. Version-suffixed mapping files preserve
 published registry coordinates; the unsuffixed files select the current mapping.
 Use the artifact itself for its version and canonical hash.
@@ -96,8 +96,7 @@ Converter subcommands that load a mapping accept
 `--expect-mapping-version <v>` and `--expect-mapping-hash <sha256:…>` to bind
 an invocation to a specific mapping generation. When either is given and the
 loaded mapping does not match, the command fails closed before doing any
-conversion work, instead of silently running against whatever the live file
-currently contains.
+conversion work, instead of running against whatever the live file contains.
 
 ## Verification
 

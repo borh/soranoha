@@ -26,10 +26,10 @@ use crate::{
 // the sibling dispatch in `crates/ab-aat-to-parser-ir/src/schema.rs`).
 // `ab-check` embeds both frozen versions and selects the compiled validator
 // per AAT document by its own top-level `"version"` field, so a
-// comparison-lane (v1) document keeps validating against the frozen v1
-// schema even after `data/aat-schema.json` rotates to a newer version.
-const AAT_SCHEMA_V1: &str = include_str!("../../../data/aat-schema-v1.json");
-const AAT_SCHEMA_V2: &str = include_str!("../../../data/aat-schema.json");
+// comparison-lane (v1) document validates against the frozen v1 schema
+// whichever version `schemas/outputs/aat-schema.json` refers to.
+const AAT_SCHEMA_V1: &str = include_str!("../../../schemas/outputs/aat-schema-v1.json");
+const AAT_SCHEMA_V2: &str = include_str!("../../../schemas/outputs/aat-schema.json");
 
 fn compile_embedded_schema(source: &str, label: &str) -> Result<Validator, String> {
     let schema: Value = serde_json::from_str(source).map_err(|error| error.to_string())?;
@@ -479,7 +479,7 @@ fn join_reader(
         .with_context(|| format!("failed to read adapter {stream_name}"))
 }
 
-/// Read the exact plain-file or ZIP-member (`archive::member`) bytes an index row names.
+/// Read the exact plain-file or ZIP-member (`archive::member`) bytes an index row refers to.
 pub fn read_indexed_source_bytes(corpus_root: &Path, indexed_path: &str) -> Result<Vec<u8>> {
     if let Some((archive_path, entry_name)) = indexed_path.split_once("::") {
         return read_zip_entry_bytes(&corpus_root.join(archive_path), entry_name);

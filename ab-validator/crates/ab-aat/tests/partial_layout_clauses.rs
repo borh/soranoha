@@ -1,4 +1,4 @@
-//! Independent geometry survives source-located unresolved clauses.
+//! Independent geometry is retained beside source-located unresolved clauses.
 use ab_aat::aat_json_from_bytes;
 use serde_json::Value;
 
@@ -108,17 +108,128 @@ fn partial_clause_spans_remain_on_original_decoded_source() {
 }
 
 #[test]
-fn supplied_unknown_clauses_do_not_erase_indentation() {
-    for (amount, clause) in [(3, "「甲」は返り点"), (5, "ここから未対応の指定")] {
-        let source =
-            format!("［＃ここから{amount}字下げ、{clause}］\n本文\n［＃ここで字下げ終わり］");
-        let aat: Value =
-            serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
-        let layout = &aat["blocks"][0];
-        assert_eq!(layout["indent"], amount, "{aat}");
-        assert_eq!(layout["children"][0]["content"][0]["source"], clause);
-        assert_only_closer_facts(&aat, &source);
-    }
+fn supplied_unknown_clause_does_not_erase_indentation() {
+    let clause = "ここから未対応の指定";
+    let source = format!("［＃ここから５字下げ、{clause}］\n本文\n［＃ここで字下げ終わり］");
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let layout = &aat["blocks"][0];
+    assert_eq!(layout["indent"], 5, "{aat}");
+    assert_eq!(layout["children"][0]["content"][0]["source"], clause);
+    assert_only_closer_facts(&aat, &source);
+}
+
+#[test]
+fn return_mark_clause_is_typed_on_its_layout_scope() {
+    let marker = "［＃ここから２字下げ、「レ」は返り点］";
+    let source = format!("{marker}\n漢レ文\n［＃ここで字下げ終わり］");
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let layout = &aat["blocks"][0];
+    assert_eq!(layout["kind"], "layout_block", "{aat}");
+    assert_eq!(layout["indent"], 2);
+    let instruction = &layout["source_instructions"][0];
+    assert_eq!(instruction["kind"], "formatting_instruction");
+    assert_eq!(instruction["source"], marker);
+    assert_eq!(
+        instruction["operations"][0]["effect"]["kind"],
+        "kunten-policy"
+    );
+    assert_eq!(
+        instruction["operations"][0]["effect"]["scope"],
+        "following-block"
+    );
+    assert_eq!(
+        instruction["operations"][0]["effect"]["marks"]["text"],
+        "レ"
+    );
+    let content = layout["children"][0]["content"].as_array().unwrap();
+    assert_eq!(content[1]["value"], "漢");
+    assert_eq!(content[2]["kind"], "kunten");
+    assert_eq!(content[2]["text"], "レ");
+    assert_eq!(content[3]["value"], "文");
+    assert_eq!(
+        instruction["operations"][0]["selection"]["targets"],
+        serde_json::json!([content[2]["span"]])
+    );
+    assert_eq!(
+        instruction["operations"][0]["selection"]["scope"],
+        layout["children"][0]["span"]
+    );
+    assert!(!layout.to_string().contains("\"kind\":\"raw\""));
+    assert!(
+        aat["meta"]["interpretation_facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|fact| fact["kind"] == "kunten")
+    );
+}
+
+#[test]
+fn return_mark_close_clause_is_typed_on_its_layout_scope() {
+    let marker = "［＃ここで字下げ終わり、「レ」は返り点］";
+    let source = format!("［＃ここから２字下げ］\n漢レ文\n{marker}");
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let layout = &aat["blocks"][0];
+    assert_eq!(layout["kind"], "layout_block", "{aat}");
+    assert_eq!(layout["indent"], 2);
+    let instruction = &layout["source_instructions"][0];
+    assert_eq!(instruction["kind"], "formatting_instruction");
+    assert_eq!(instruction["source"], marker);
+    assert_eq!(
+        instruction["operations"][0]["effect"]["scope"],
+        "preceding-block"
+    );
+    assert_eq!(
+        instruction["operations"][0]["effect"]["marks"]["text"],
+        "レ"
+    );
+    assert_eq!(layout["children"][0]["content"][2]["kind"], "kunten");
+    assert_eq!(layout["children"][0]["content"][2]["text"], "レ");
+    assert_eq!(
+        instruction["operations"][0]["selection"]["targets"][0],
+        layout["children"][0]["content"][2]["span"]
+    );
+    assert!(!layout.to_string().contains("\"kind\":\"raw\""));
+}
+
+#[test]
+fn block_return_mark_exclusions_preserve_principal_text() {
+    let marker = "［＃ここから２字下げ、「一日」の「一」をのぞいて「レ一二」は返り点］";
+    let source = format!("{marker}\n一日一レ\n［＃ここで字下げ終わり］");
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let layout = &aat["blocks"][0];
+    let content = layout["children"][0]["content"].as_array().unwrap();
+
+    assert_eq!(content[1]["value"], "一日");
+    assert_eq!(content[2]["kind"], "kunten");
+    assert_eq!(content[2]["text"], "一");
+    assert_eq!(content[3]["kind"], "kunten");
+    assert_eq!(content[3]["text"], "レ");
+    assert_eq!(
+        layout["source_instructions"][0]["operations"][0]["selection"]["targets"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn block_return_marks_keep_decoded_offsets_across_crlf() {
+    let source = "［＃ここから２字下げ、「レ」は返り点］\r\n漢レ文\r\n［＃ここで字下げ終わり］";
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let layout = &aat["blocks"][0];
+    let target = &layout["source_instructions"][0]["operations"][0]["selection"]["targets"][0];
+    let start = usize::try_from(target["byte_start"].as_u64().unwrap()).unwrap();
+    let end = usize::try_from(target["byte_end"].as_u64().unwrap()).unwrap();
+
+    assert_eq!(&source.as_bytes()[start..end], "レ".as_bytes());
+    assert_eq!(layout["children"][0]["content"][2]["span"], *target);
 }
 
 #[test]
@@ -127,6 +238,7 @@ fn edition_layout_statements_do_not_change_principal_geometry() {
         "底本では一行目は１字下げ",
         "底本では３字下げ",
         "底本では表組み",
+        "ただし底本には組み体裁上の誤りがあり",
     ] {
         let marker = format!("［＃ここから２字下げ、{statement}］");
         let source = format!("{marker}\n本文\n［＃ここで字下げ終わり］");
@@ -179,11 +291,22 @@ fn edition_statement_does_not_absorb_a_separate_unknown_clause() {
     assert_eq!(annotations[0]["text"], "底本では３字下げ");
     assert_eq!(annotations[1]["kind"], "raw");
     assert_eq!(annotations[1]["source"], "未知の指定");
-    let markers = layout["interpretation_marker_spans"].as_array().unwrap();
-    assert_eq!(markers.len(), 1);
+    let markers: Vec<&str> = layout["interpretation_marker_spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|marker| {
+            let offset = |name: &str| usize::try_from(marker[name].as_u64().unwrap()).unwrap();
+            &source[offset("byte_start")..offset("byte_end")]
+        })
+        .collect();
     assert_eq!(
-        markers[0]["byte_start"],
-        source.rfind("［＃ここで字下げ終わり］").unwrap()
+        markers,
+        [
+            "［＃ここから２字下げ、底本では３字下げ、",
+            "］",
+            "［＃ここで字下げ終わり］"
+        ]
     );
     assert!(
         aat["meta"]["interpretation_facts"]
@@ -278,7 +401,7 @@ fn mixed_image_source_preserves_the_complete_documentary_clause() {
 }
 
 #[test]
-fn image_insertion_does_not_swallow_an_uninterpreted_tail() {
+fn image_insertion_does_not_consume_an_uninterpreted_tail() {
     let source = "前［＃図（fig.png）入る。未対応の指示］後";
     let aat: Value =
         serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();

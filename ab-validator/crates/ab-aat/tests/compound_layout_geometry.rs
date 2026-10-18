@@ -176,3 +176,39 @@ fn compound_scope_claims_each_established_presentation_family() {
         assert!(!aat.to_string().contains("interpretation_problem"), "{aat}");
     }
 }
+
+#[test]
+fn a_first_line_exception_types_the_whole_opener_and_is_retained_through_serialization() {
+    let opener = "［＃ここから２字下げ、ただし冒頭の「のみは１字下げ］";
+    let source = format!("{opener}\n「本文」\n続き\n［＃ここで字下げ終わり］\n");
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let scope = &aat["blocks"][0];
+    assert_eq!(scope["indent"], 2, "{aat}");
+    assert_eq!(scope["first_line_indent"], 1, "{aat}");
+    assert_eq!(
+        scope["interpretation_marker_spans"][0],
+        json!({"byte_start": 0, "byte_end": opener.len(), "line_start": 1, "line_end": 1}),
+        "{aat}"
+    );
+    assert!(
+        aat["meta"]["interpretation_facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|fact| fact["kind"] == "line-layout"
+                && fact["source_span"]["start"] == 0
+                && fact["source_span"]["end"] == opener.len()),
+        "{aat}"
+    );
+    let serialized = ab_aozora_facade::Document::new(source.as_str())
+        .parse()
+        .to_source();
+    assert!(
+        serialized.starts_with("［＃ここから2字下げ、ただし冒頭の「のみは1字下げ］"),
+        "{serialized}"
+    );
+    let reparsed: Value =
+        serde_json::from_slice(&aat_json_from_bytes(serialized.as_bytes()).unwrap()).unwrap();
+    assert_eq!(reparsed["blocks"][0]["first_line_indent"], 1, "{reparsed}");
+}

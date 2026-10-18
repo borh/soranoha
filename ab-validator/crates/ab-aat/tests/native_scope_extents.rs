@@ -60,6 +60,7 @@ fn aat_established_scope_markers_use_original_decoded_coordinates() {
     assert_eq!(
         markers,
         [
+            "〔ae&〕",
             "［＃ここから１段階小さな文字］",
             "［＃ここで小さな文字終わり］"
         ]

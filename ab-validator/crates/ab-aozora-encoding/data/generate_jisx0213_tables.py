@@ -2,9 +2,8 @@
 """Generate the two JIS X 0213 mencode tables from the Project X0213 table.
 
 `jisx0213-2004-std.txt` is the only input. It carries its own grant, so the
-generated tables inherit terms a redistributor can act on; the earlier tables
-were filtered out of glibc's EUC-JISX0213 charmap and out of the standard's
-Annex F, neither of which stated terms in the file.
+generated tables carry terms a redistributor can act on. Neither glibc's
+EUC-JISX0213 charmap nor Annex F of the standard states terms in the file.
 
 The two outputs differ only in arity. A JIS X 0213 cell whose Unicode mapping
 is a combining sequence cannot be a Rust `char`, so those 25 cells go to a
@@ -30,9 +29,9 @@ COMBO = DATA / "jisx0213-combo.tsv"
 JIS_CELL = re.compile(r"^([34])-([0-9A-F]{2})([0-9A-F]{2})$")
 
 # A compatibility cell records its halfwidth form in the mapping column and its
-# fullwidth form in a note. Aozora text is set fullwidth, so the note wins where
-# it exists. This is the one place the tables are a reading of the source rather
-# than a transcription of it.
+# fullwidth form in a note. Aozora text is set fullwidth, so the note takes
+# precedence where it exists. This is the one place the tables interpret the
+# source rather than transcribe it.
 FULLWIDTH = re.compile(r"Fullwidth: U\+([0-9A-F]+)")
 
 SINGLE_HEADER = """\
@@ -71,10 +70,9 @@ COMBO_HEADER = """\
 # (e.g. `1\\t4\\t87\\t304B,309A` = か + 半濁点 = か゚)
 """
 
-# The combining cells fall into five writing-system groups, and saying which is
-# worth more to a reader than the cell coordinates are. The source table has no
-# such grouping, so the labels are written here, keyed by the cell that opens
-# each group.
+# The combining cells fall into five writing-system groups. The source table
+# has no such grouping, so the labels are written here, keyed by the cell that
+# opens each group.
 COMBO_GROUPS = {
     "1\t4\t87": "半濁点付きひらがな (か゚ き゚ く゚ け゚ こ゚ — Ainu / Tōhoku notation)",
     "1\t5\t87": "半濁点付きカタカナ (カ゚ キ゚ ク゚ ケ゚ コ゚ セ゚ ツ゚ ト゚ — Ainu)",
@@ -88,8 +86,8 @@ def read_cells() -> tuple[list[str], list[str]]:
     """Return the single-codepoint and combining-sequence rows, in source order.
 
     Every data line is accounted for. A line that is neither a mapped cell nor a
-    reserved one raises, because the alternative is a table that silently shrinks
-    when the source's format moves and still looks like a valid table.
+    reserved one raises, so a change in the source format cannot produce a
+    shorter table that still parses as valid.
     """
     single: list[str] = []
     combo: list[str] = []
@@ -135,8 +133,8 @@ def render(header: str, rows: list[str]) -> str:
 def render_combo(rows: list[str]) -> str:
     """Render the combining table with a blank line and a label opening each group.
 
-    A label whose cell is no longer produced raises rather than disappearing, so
-    the groups cannot quietly stop describing what follows them.
+    A label whose cell the source does not produce raises, so each label
+    describes the rows that follow it.
     """
     lines: list[str] = []
     unused = set(COMBO_GROUPS)

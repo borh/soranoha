@@ -100,3 +100,26 @@ fn unmatched_heading_remains_source_located_and_uncertain() {
         assert!(node["span"]["byte_start"].is_u64());
     }
 }
+
+#[test]
+fn heading_typography_is_a_resolved_rendition_without_an_outline_level() {
+    for (marker, variant) in [("見出し文字", "heading"), ("小見出し文字", "small-heading")]
+    {
+        let aat = document(&format!("新聞標題［＃{marker}］"));
+        let instruction = aat["blocks"][0]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["kind"] == "formatting_instruction")
+            .unwrap();
+        let operation = &instruction["operations"][0];
+        assert_eq!(operation["effect"]["kind"], "heading-typography");
+        assert_eq!(operation["effect"]["variant"], variant);
+        assert_eq!(
+            operation["selection"]["targets"].as_array().unwrap().len(),
+            1
+        );
+        assert!(instruction.get("interpretation_problem").is_none());
+        assert!(!aat.to_string().contains("\"kind\":\"heading\""));
+    }
+}

@@ -3,7 +3,7 @@ id = "aozora-rs-gaiji-jis-unresolved"
 adapter = "aozora-rs"
 syntax_row_ids = ["gaiji.jis_code"]
 status = "active"
-summary = "Adapter faithfully follows aozora-rs-gaiji v0.6.0 for JIS-form gaiji; some remain unresolved relative to the oracle."
+summary = "The adapter resolves JIS-form gaiji as aozora-rs-gaiji v0.6.0 does; some remain unresolved relative to the oracle."
 evidence = "docs/adapter-fidelity.md"
 
 [[note]]
@@ -11,7 +11,7 @@ id = "aozora-rs-cross-oracle-observations-needed"
 adapter = "aozora-rs"
 syntax_row_ids = ["ruby.basic", "heading.basic", "decoration.boten", "indentation.jisage_block", "warichu.basic", "figure.image_caption"]
 status = "retired"
-summary = "Cross-adapter oracle triage previously showed broad aozora-rs reviewed-case failures without upstream observations."
+summary = "Cross-adapter oracle triage showed broad aozora-rs reviewed-case failures without upstream observations."
 evidence = "reports/aat-fidelity/cross-adapter-summary.md"
 retired_by = "observations: classify aozora-rs cross-adapter oracle failures"
 
@@ -20,7 +20,7 @@ id = "aozora-rs-cross-oracle-observed-divergence"
 adapter = "aozora-rs"
 syntax_row_ids = ["ruby.basic", "heading.basic", "decoration.boten", "indentation.jisage_block", "warichu.basic", "figure.image_caption"]
 status = "retired"
-summary = "Upstream observations previously covered aozora-rs reviewed oracle failures; aozora-rs now passes the reviewed oracle matrix."
+summary = "Upstream observations covered aozora-rs reviewed oracle failures until aozora-rs passed the reviewed oracle matrix."
 evidence = "data/aat-upstream-observations.toml"
 retired_by = "fixes: aozora-rs reviewed oracle matrix green"
 
@@ -29,7 +29,7 @@ id = "aozora2-blocks-raw-before-reconstruction"
 adapter = "aozora2"
 syntax_row_ids = ["indentation.jisage_block", "caption.block", "layout.yokogumi"]
 status = "retired"
-summary = "Adapter previously preserved supported block markers only as raw nodes before block reconstruction was implemented."
+summary = "Before block reconstruction was implemented, the adapter preserved supported block markers only as raw nodes."
 evidence = "research/adapters/aozora2/src/lib.rs"
 retired_by = "feat: reconstruct aozora2 block containers"
 
@@ -38,7 +38,7 @@ id = "aozora2-unsupported-block-types-raw"
 adapter = "aozora2"
 syntax_row_ids = ["layout.tcy"]
 status = "retired"
-summary = "Adapter previously reconstructed headings, jisage, chitsuki, jizume, burasage, caption, keigakomi, and yokogumi, but preserved scoped tcy and related inline-display block boundaries as raw nodes."
+summary = "Before inline-display block scopes were reconstructed, the adapter reconstructed headings, jisage, chitsuki, jizume, burasage, caption, keigakomi, and yokogumi, but preserved scoped tcy and related inline-display block boundaries as raw nodes."
 evidence = "research/adapters/aozora2/src/lib.rs"
 retired_by = "feat: reconstruct aozora2 inline-display block scopes"
 
@@ -47,7 +47,7 @@ id = "aozora2html-xhtml-projection"
 adapter = "aozora2html"
 syntax_row_ids = ["gaiji.marker", "warichu.basic"]
 status = "active"
-summary = "Adapter maps rendered XHTML, so source-only markup distinctions absent from XHTML cannot always be recovered."
+summary = "The adapter maps rendered XHTML, so a source-only markup distinction that the XHTML does not encode cannot be recovered."
 evidence = "research/adapters/aozora2html/README.md"
 
 [[note]]
@@ -55,7 +55,7 @@ id = "aozora2html-cross-oracle-source-level-limits"
 adapter = "aozora2html"
 syntax_row_ids = ["gaiji.marker", "ruby.placement_directional", "heading.basic", "decoration.boten", "warichu.basic", "figure.image_caption"]
 status = "active"
-summary = "Cross-adapter oracle triage confirms aozora2html is mostly below source-level AAT oracle expectations because it maps rendered XHTML; failures must be split into recoverable notes-span reconstruction and unrecoverable rendered-output loss."
+summary = "Cross-adapter oracle triage shows that aozora2html output falls below most source-level AAT oracle expectations because the adapter maps rendered XHTML; each failure must be classified as either recoverable notes-span reconstruction or unrecoverable rendered-output loss."
 evidence = "reports/aat-fidelity/cross-adapter-summary.md"
 
 [[note]]
@@ -63,7 +63,7 @@ id = "aozora2html-full-xhtml-corpus"
 adapter = "aozora2html"
 syntax_row_ids = ["gaiji.marker", "ruby.basic", "heading.basic", "layout.yokogumi", "figure.image_caption"]
 status = "active"
-summary = "Full local upstream-XHTML comparison uses references/aozorabunko only: report_id upstream-xhtml-full loaded 17,601 observations with 15,231 rendered-body proxy rows (6,321 raw XHTML matches plus 8,910 normalized main_text matches), 2,179 main_text mismatches, 58 local_adapter_error rows, 132 upstream_missing_main_text rows, and 1 both_missing_main_text row."
+summary = "The full local upstream-XHTML comparison reads only references/aozorabunko: report_id upstream-xhtml-full loaded 17,601 observations with 15,231 rendered-body proxy rows (6,321 raw XHTML matches plus 8,910 normalized main_text matches), 2,179 main_text mismatches, 58 local_adapter_error rows, 132 upstream_missing_main_text rows, and 1 both_missing_main_text row."
 evidence = "reports/aat-fidelity/upstream-xhtml-full-summary.md"
 
 [[note]]
@@ -87,7 +87,7 @@ id = "aozora-epub3-warichu-malformed"
 adapter = "aozora-epub3"
 syntax_row_ids = ["warichu.basic"]
 status = "active"
-summary = "AozoraEpub3 1.3.4-jdk21 emits malformed HTML for warichu blocks and reports [ERROR] 割り注終わりなし; source-derived warichu recovery is a no-op because the schema warigaki kind needs upper/lower rows unrecoverable from rendered split spans."
+summary = "AozoraEpub3 1.3.4-jdk21 emits malformed HTML for warichu blocks and reports [ERROR] 割り注終わりなし; source-derived warichu recovery makes no change because the schema warigaki kind requires upper and lower rows, which cannot be recovered from the rendered split spans."
 evidence = "docs/adapter-fidelity.md"
 
 [[note]]
@@ -95,7 +95,7 @@ id = "aozora-initial-json-inspect-adapter"
 adapter = "aozora"
 syntax_row_ids = []
 status = "active"
-summary = "Initial aozora adapter maps from the upstream inspect JSON surface and raw-preserves unsupported node kinds."
+summary = "The initial aozora adapter maps the upstream inspect JSON output and preserves unsupported node kinds as raw nodes."
 evidence = "docs/adapter-fidelity.md"
 
 [[note]]
@@ -103,7 +103,7 @@ id = "aozora2-upstream-implicit-ruby-base-lost-after-gaiji-ruby"
 adapter = "aozora2"
 syntax_row_ids = ["ruby.basic", "gaiji_ruby.inline_base"]
 status = "active"
-summary = "Upstream aozora-core 0.7.1: after a gaiji-bearing ruby earlier in the same line, the next bar-less ruby is parsed as Ruby { children: [] }; the base text stays in the preceding Text node and the AAT ruby has an empty base (3,541 rubies across 1,266 works in the aozora2-full-20260705 dump). Reproduced against the upstream crate directly; the adapter maps the upstream nodes faithfully."
+summary = "Upstream aozora-core 0.7.1: after a gaiji-bearing ruby earlier in the same line, the next bar-less ruby is parsed as Ruby { children: [] }; the base text stays in the preceding Text node and the AAT ruby has an empty base (3,541 rubies across 1,266 works in the aozora2-full-20260705 dump). The behaviour reproduces against the upstream crate directly; the adapter maps the upstream nodes unchanged."
 evidence = "docs/adapter-fidelity.md"
 
 [[note]]

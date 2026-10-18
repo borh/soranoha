@@ -5,8 +5,8 @@
 //! level. Three invariants are checked over arbitrary input:
 //!
 //! - `Off` normalization is byte-identical to the default `serialize` — the
-//!   opt-in catalogues never touch the default path.
-//! - `Canonical` / `Degraded` never panic (guards the catalogue `strip_suffix`
+//!   opt-in catalogues do not alter the default path.
+//! - `Canonical` / `Degraded` never panic (covers the catalogue `strip_suffix`
 //!   / char-boundary arithmetic behind the serializer).
 //! - each level is a second-pass fixed point (the catalogue outputs are
 //!   recognised, non-key spellings, so a further pass is a no-op) — the
@@ -26,7 +26,7 @@ fuzz_target!(|data: &[u8]| {
     let lex0 = lex(src);
 
     // `Off` is byte-identical to the default serialize — the opt-in catalogues
-    // never alter the default path.
+    // do not alter the default path.
     let off = serialize_with(
         &lex0,
         SerializeOptions {

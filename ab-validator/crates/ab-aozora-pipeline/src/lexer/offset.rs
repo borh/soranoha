@@ -1,26 +1,25 @@
 //! Sanitized ↔ source byte-offset mapping.
 //!
 //! [`Document::parse`](crate) reports [`Diagnostic`](ab_aozora_spec::Diagnostic)
-//! spans in **sanitized** coordinates: the [`sanitize`](super::sanitize)
+//! spans in sanitized coordinates: the [`sanitize`](super::sanitize)
 //! output, after a leading BOM is stripped, `CR`/`LF` is folded to `\n`,
 //! decorative rules gain a separating blank line, and `〔…〕` accent
 //! digraphs are decomposed. Each of those shifts byte offsets, so a
 //! consumer that positions a caret (an editor overlay, a SARIF
-//! region, a character-level checker) on the **source** text must undo
+//! region, a character-level checker) on the source text must undo
 //! the sanitize transform.
 //!
 //! BOM and `CR`/`LF` are pure deletions a byte-alignment can recover, but
 //! the `〔…〕` accent substitution (`ae&` → æ, `m'` → ḿ) changes length
-//! per digraph and cannot be recovered by alignment alone; it cannot be
-//! derived by a source-coordinate consumer from text alignment alone.
-//! [`offset_map`] builds an exact map covering **all** the shifts.
+//! per digraph, so a source-coordinate consumer cannot recover it by text
+//! alignment. [`offset_map`] builds an exact map covering all the shifts.
 //!
 //! ```
 //! use ab_aozora_pipeline::lexer::offset_map;
 //!
 //! // CRLF source → the diagnostic-coordinate `\n` text.
 //! let map = offset_map("a\r\nb");
-//! // sanitized "a\nb": the 'b' at sanitized offset 2 sits at source offset 3.
+//! // sanitized "a\nb": the 'b' at sanitized offset 2 is at source offset 3.
 //! assert_eq!(map.source_offset(2), 3);
 //! ```
 //!
@@ -30,7 +29,7 @@
 
 use ab_aozora_syntax::Span;
 
-/// Exact map from a **sanitized** byte offset back to the **source** byte
+/// Exact map from a sanitized byte offset back to the source byte
 /// offset it came from. Build it with [`offset_map`].
 ///
 /// Querying is `O(log n)` per length-changing pass (typically one or two
@@ -213,7 +212,7 @@ fn scan_crlf_edits(after_bom: &str) -> Vec<(u32, u32, u32)> {
 /// `line_normalized`. Mirrors
 /// [`isolate_decorative_rules`](super::sanitize::isolate_decorative_rules)
 /// exactly (same `prev_nonblank` bookkeeping and tail-line handling), so
-/// the recorded insertion points stay in lockstep with the real pass.
+/// the recorded insertion points match those of the sanitize pass.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "byte offset ≤ source.len() ≤ u32::MAX is the lexer-wide span contract"
@@ -281,7 +280,7 @@ mod tests {
         let map = offset_map(source);
         let mut prev = 0u32;
         for s in 0..=sanitized.len() {
-            // Diagnostic spans land only on char boundaries; the
+            // Diagnostic spans lie only on char boundaries; the
             // boundary-preservation guarantee is scoped to those.
             if !sanitized.is_char_boundary(s) {
                 continue;
@@ -322,7 +321,7 @@ mod tests {
         let source = "\u{FEFF}abc"; // BOM = 3 bytes
         let map = offset_map(source);
         assert!(!map.is_identity());
-        assert_eq!(map.source_offset(0), 3); // 'a' sits 3 bytes in
+        assert_eq!(map.source_offset(0), 3); // 'a' is at source byte 3
         assert_eq!(map.source_offset(3), 6); // sanitized end → source end
         assert_map_invariants(source);
     }

@@ -61,6 +61,34 @@ fn shared_literal_continuation_remains_outside_the_witness_quote() {
     }
 }
 
+#[test]
+fn explicit_base_correction_remains_documentary_apparatus() {
+    let body = "生まれでた［＃底本「生まれてた」を「生まれでた」に訂正］のではない";
+    let ir = convert(body);
+    let all = nodes(&ir);
+    let variant = all
+        .iter()
+        .find(|node| node["type"] == "base-text-variant")
+        .unwrap();
+    assert_eq!(variant["text"], "生まれでた");
+    assert_eq!(variant["variant"]["base_text"], "生まれてた");
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn implicit_base_correction_does_not_invent_current_text() {
+    let body = "こゝろを［＃底本「お」を訂正］どらす";
+    let ir = convert(body);
+    let all = nodes(&ir);
+    let note = all
+        .iter()
+        .find(|node| node["type"] == "editor-note" && node["base_text"] == "お")
+        .unwrap();
+    assert_eq!(note["note_kind"], "base-edition");
+    assert!(all.iter().all(|node| node["type"] != "base-text-variant"));
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
 fn convert(body: &str) -> Value {
     let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -95,6 +123,323 @@ fn nodes(value: &Value) -> Vec<&Value> {
 }
 
 #[test]
+fn retrospective_gaiji_retains_target_and_marker_identity() {
+    let body = "詩集1［＃「1」はローマ数字、1-13-21］後";
+    let ir = convert(body);
+    let all = nodes(&ir);
+    let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+    let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+    let target_start = source.find("1［").unwrap();
+    let marker_start = target_start + 1;
+
+    assert_eq!(glyph["gaiji"]["unicode"], "Ⅰ");
+    assert_eq!(glyph["source_span"]["start"], target_start);
+    assert_eq!(glyph["source_span"]["end"], marker_start);
+    assert_eq!(
+        glyph["interpretation_marker_spans"][0]["start"],
+        marker_start
+    );
+    assert_eq!(
+        glyph["interpretation_marker_spans"][0]["end"],
+        marker_start + "［＃「1」はローマ数字、1-13-21］".len()
+    );
+    assert_eq!(ir["nodes"][0]["text"], "詩集");
+    assert_eq!(ir["nodes"][1]["type"], "gaiji");
+    assert_eq!(ir["nodes"][2]["text"], "後");
+}
+
+#[test]
+fn unresolved_combined_punctuation_retains_visible_fallback() {
+    let marker = "［＃「!!!」は一文字、95-13］";
+    let body = format!("詩集!!!{marker}後");
+    let ir = convert(&body);
+    let all = nodes(&ir);
+    let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+    let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+    let target_start = source.find("!!!").unwrap();
+    let marker_start = target_start + 3;
+
+    assert_eq!(glyph["gaiji"]["unicode"], Value::Null);
+    assert_eq!(glyph["gaiji"]["image_or_glyph_fallback"], "!!!");
+    assert_eq!(glyph["source_span"]["start"], target_start);
+    assert_eq!(glyph["source_span"]["end"], marker_start);
+    assert_eq!(
+        glyph["interpretation_marker_spans"][0]["start"],
+        marker_start
+    );
+}
+
+#[test]
+fn persistent_double_parenthesis_declarations_retain_shared_source_identity() {
+    let open = "［＃この二重括弧は一文字、以下同様に使用、第3水準1-2-54、197-16］";
+    let close = "［＃この二重括弧は一文字、以下同様に使用、第3水準1-2-55、197-16］";
+    let body = format!("（（{open}前文略））{close}\n（（中略））\n（（下略））");
+    let ir = convert(&body);
+    let glyphs = nodes(&ir)
+        .into_iter()
+        .filter(|node| node["type"] == "gaiji")
+        .collect::<Vec<_>>();
+    let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+    let open_marker_start = source.find(open).unwrap();
+    let close_marker_start = source.find(close).unwrap();
+
+    assert_eq!(glyphs.len(), 6);
+    for glyph in glyphs {
+        let (expected_marker, expected_source) = if glyph["gaiji"]["unicode"] == "｟" {
+            (open_marker_start, "（（")
+        } else {
+            (close_marker_start, "））")
+        };
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["start"],
+            expected_marker
+        );
+        let start = usize::try_from(glyph["source_span"]["start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(glyph["source_span"]["end"].as_u64().unwrap()).unwrap();
+        assert!(start < end);
+        assert_eq!(&source[start..end], expected_source);
+    }
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn standalone_encoded_glyphs_retain_the_declaration_as_source_identity() {
+    for marker in [
+        "［＃「※」は「題の頁の代わりに韋」、第4水準2-92-15、182-13］",
+        "［＃「※」は「題の頁の代わりに韋」、第4水準2-92-15、184-11］",
+    ] {
+        let body = format!("丁{marker}良");
+        let ir = convert(&body);
+        let all = nodes(&ir);
+        let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+        let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+        let marker_start = source.find(marker).unwrap();
+
+        assert_eq!(glyph["gaiji"]["unicode"], "韙", "{body}");
+        assert_eq!(glyph["source_span"]["start"], marker_start, "{body}");
+        assert_eq!(
+            glyph["source_span"]["end"],
+            marker_start + marker.len(),
+            "{body}"
+        );
+        assert!(glyph.get("interpretation_marker_spans").is_none(), "{body}");
+        assert_eq!(ir["interpretation_problems"], json!([]), "{body}");
+    }
+}
+
+#[test]
+fn detached_gaiji_declarations_retain_target_and_marker_identity() {
+    for (body, marker, resolved, inside_ruby) in [
+        (
+            "※々［＃「※」は「つつみがまえ（勹）」＋「夕」で、読みは「そうそう」67-6］",
+            "［＃「※」は「つつみがまえ（勹）」＋「夕」で、読みは「そうそう」67-6］",
+            None,
+            false,
+        ),
+        (
+            "琅※《らうかん》［＃「※」は「王へん」に「干」、第3水準1-87-83、P61-下段5首目］",
+            "［＃「※」は「王へん」に「干」、第3水準1-87-83、P61-下段5首目］",
+            Some("玕"),
+            true,
+        ),
+        (
+            "※《いとど》［＃「※」は「虫へん」に「車」、第3水準1-91-55、69-下段9首目］",
+            "［＃「※」は「虫へん」に「車」、第3水準1-91-55、69-下段9首目］",
+            Some("蛼"),
+            true,
+        ),
+    ] {
+        let ir = convert(body);
+        let all = nodes(&ir);
+        let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+        let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+        let target_start = source.find('※').unwrap();
+        let marker_start = source.find(marker).unwrap();
+
+        assert_eq!(glyph["gaiji"]["unicode"].as_str(), resolved, "{body}");
+        assert_eq!(glyph["source_span"]["start"], target_start, "{body}");
+        assert_eq!(
+            glyph["source_span"]["end"],
+            target_start + '※'.len_utf8(),
+            "{body}"
+        );
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["start"], marker_start,
+            "{body}"
+        );
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["end"],
+            marker_start + marker.len(),
+            "{body}"
+        );
+        assert_eq!(
+            all.iter().any(|node| node["type"] == "ruby"),
+            inside_ruby,
+            "{body}"
+        );
+    }
+}
+
+#[test]
+fn detached_gaiji_declarations_retain_ruby_and_bouten_structure() {
+    let ruby_marker = "［＃「さんずい＋自」、第3水準1-86-66、XI-1］";
+    let ruby_body = format!("幽かな※芙藍{ruby_marker}《さふらん》の凋れ");
+    let ruby_ir = convert(&ruby_body);
+    let ruby_nodes = nodes(&ruby_ir);
+    let ruby = ruby_nodes
+        .iter()
+        .find(|node| node["type"] == "ruby" && node["ruby"]["reading"] == "さふらん")
+        .unwrap();
+    assert_eq!(ruby["ruby"]["base"], "洎芙藍");
+    let glyph = nodes(&ruby["inline_children"])
+        .into_iter()
+        .find(|node| node["type"] == "gaiji")
+        .unwrap();
+    let ruby_source = format!("題\n作者\n\n{ruby_body}\n\n底本：本\n");
+    let target_start = ruby_source.find('※').unwrap();
+    let marker_start = ruby_source.find(ruby_marker).unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], "洎");
+    assert_eq!(glyph["source_span"]["start"], target_start);
+    assert_eq!(glyph["source_span"]["end"], target_start + '※'.len_utf8());
+    assert_eq!(
+        glyph["interpretation_marker_spans"][0]["start"],
+        marker_start
+    );
+    assert_eq!(ruby_ir["interpretation_problems"], json!([]));
+
+    let bouten_marker = "［＃「大※」に傍点］";
+    let gaiji_marker = "［＃「郷－即のへん」、232-1］";
+    let bouten_body = format!("郵便局の上の字は大※{bouten_marker}{gaiji_marker}だけ見えている");
+    let bouten_ir = convert(&bouten_body);
+    let bouten_nodes = nodes(&bouten_ir);
+    let emphasis = bouten_nodes
+        .iter()
+        .find(|node| node["type"] == "emphasis" && node["style"] == "bouten")
+        .unwrap();
+    let glyph = nodes(&emphasis["inline_children"])
+        .into_iter()
+        .find(|node| node["type"] == "gaiji")
+        .unwrap();
+    let bouten_source = format!("題\n作者\n\n{bouten_body}\n\n底本：本\n");
+    let target_start = bouten_source.find('※').unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], "\u{28675}");
+    assert_eq!(glyph["source_span"]["start"], target_start);
+    assert_eq!(glyph["source_span"]["end"], target_start + '※'.len_utf8());
+    assert_eq!(
+        glyph["interpretation_marker_spans"][0]["start"],
+        bouten_source.find(gaiji_marker).unwrap()
+    );
+    assert_eq!(
+        emphasis["interpretation_marker_spans"][0]["start"],
+        bouten_source.find(bouten_marker).unwrap()
+    );
+    assert_eq!(bouten_ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn encoded_character_declarations_retain_target_and_marker_identity() {
+    for (body, target, marker, resolved) in [
+        (
+            "LACLARTE［＃「E」はアキュートアクセント付きE、1-9-32］　第二",
+            "E",
+            "［＃「E」はアキュートアクセント付きE、1-9-32］",
+            "É",
+        ),
+        (
+            "タックネップ［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］ネ",
+            "プ",
+            "［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］",
+            "ㇷ゚",
+        ),
+        (
+            "シサム［＃「ム」は小書き片仮名ム、1-6-89］達",
+            "ム",
+            "［＃「ム」は小書き片仮名ム、1-6-89］",
+            "ㇺ",
+        ),
+    ] {
+        let ir = convert(body);
+        let all = nodes(&ir);
+        let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+        let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+        let marker_start = source.find(marker).unwrap();
+        let target_start = marker_start - target.len();
+
+        assert_eq!(glyph["gaiji"]["unicode"], resolved, "{body}");
+        assert_eq!(glyph["source_span"]["start"], target_start, "{body}");
+        assert_eq!(glyph["source_span"]["end"], marker_start, "{body}");
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["start"], marker_start,
+            "{body}"
+        );
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["end"],
+            marker_start + marker.len(),
+            "{body}"
+        );
+    }
+}
+
+#[test]
+fn ruby_reading_declarations_retain_nested_target_identity() {
+    for (body, target, marker, resolved) in [
+        (
+            "太陽《チュプ》［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］",
+            "プ",
+            "［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］",
+            "ㇷ゚",
+        ),
+        (
+            "和人《シサム》［＃「ム」は小書き片仮名ム、1-6-89］達",
+            "ム",
+            "［＃「ム」は小書き片仮名ム、1-6-89］",
+            "ㇺ",
+        ),
+        (
+            "和人《シサム［＃「ム」は小書き片仮名ム、1-6-89］》",
+            "ム",
+            "［＃「ム」は小書き片仮名ム、1-6-89］",
+            "ㇺ",
+        ),
+    ] {
+        let ir = convert(body);
+        let ruby = ir["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["type"] == "ruby")
+            .unwrap();
+        let glyph = ruby["reading_children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["type"] == "gaiji")
+            .unwrap();
+        let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+        let marker_start = source.find(marker).unwrap();
+        let target_start = source[..marker_start].rfind(target).unwrap();
+
+        assert_eq!(glyph["gaiji"]["unicode"], resolved, "{body}");
+        assert_eq!(glyph["source_span"]["start"], target_start, "{body}");
+        assert_eq!(
+            glyph["source_span"]["end"],
+            target_start + target.len(),
+            "{body}"
+        );
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["start"], marker_start,
+            "{body}"
+        );
+        assert_eq!(
+            glyph["interpretation_marker_spans"][0]["end"],
+            marker_start + marker.len(),
+            "{body}"
+        );
+        assert_eq!(ir["interpretation_problems"], json!([]), "{body}");
+    }
+}
+
+#[test]
 fn witness_alternative_retains_a_whole_styled_target() {
     let ir = convert(
         "ΩIV［＃「IV」は上付き小文字］［＃「IV」は底本では「VI」］k［＃「k」は下付き小文字］",
@@ -124,7 +469,7 @@ fn explicit_witness_absence_retains_principal_text() {
 }
 
 #[test]
-fn typed_witness_apparatus_does_not_hide_an_independent_target() {
+fn typed_witness_apparatus_keeps_the_independent_layout_target() {
     let ir = convert("覆われた２）［＃「)」は底本では欠落］［＃「２）」は縦中横、行右小書き］。");
     let all = nodes(&ir);
     let compound = all
@@ -326,7 +671,7 @@ fn base_edition_statements_are_apparatus_not_principal_layout() {
 }
 
 #[test]
-fn source_error_assertion_survives_beside_the_structured_alternative() {
+fn source_error_assertion_is_retained_beside_the_structured_alternative() {
     let ir = convert("あっちイ［＃「あっちイ」は底本では「あつちイ」と誤記］後。");
     let all = nodes(&ir);
     let app = all
@@ -342,6 +687,41 @@ fn source_error_assertion_survives_beside_the_structured_alternative() {
     assert_eq!(note["text"], "「あっちイ」は底本では「あつちイ」と誤記");
     assert_eq!(app["source_span"], note["source_span"]);
     assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn original_text_errors_keep_witness_authority_through_parser_ir() {
+    for (body, current, witness, locator) in [
+        (
+            "音がしました。［＃「しました。」は原文では「しました、」と誤記、136-2］後。",
+            "しました。",
+            "しました、",
+            "136-2",
+        ),
+        (
+            "驚きました。「［＃【「】は原文では【」】と誤記、43-10］なあんだ。",
+            "「",
+            "」",
+            "43-10",
+        ),
+    ] {
+        let ir = convert(body);
+        let all = nodes(&ir);
+        let app = all
+            .iter()
+            .find(|node| node["type"] == "base-text-variant")
+            .unwrap_or_else(|| panic!("{ir}"));
+        assert_eq!(app["text"], current);
+        assert_eq!(app["variant"]["base_text"], witness);
+        assert_eq!(app["variant"]["witness_kind"], "original-text");
+        let note = all
+            .iter()
+            .find(|node| node["note_kind"] == "original-text")
+            .unwrap_or_else(|| panic!("{ir}"));
+        assert!(note["text"].as_str().unwrap().contains("原文では"));
+        assert_eq!(note["source_locator"], locator);
+        assert_eq!(ir["interpretation_problems"], json!([]));
+    }
 }
 
 #[test]
@@ -749,7 +1129,7 @@ fn component_substitution_glyphs_remain_structured_witnesses() {
 
 #[test]
 fn unknown_witness_directives_and_unknown_target_glyphs_are_not_inferred() {
-    let partial = convert("字［＃「字」は底本では「字［＃未知の意味］」］");
+    let partial = convert("字［＃「字」は底本では「字［＃未知の字指定］」］");
     assert!(
         nodes(&partial)
             .iter()
@@ -758,7 +1138,7 @@ fn unknown_witness_directives_and_unknown_target_glyphs_are_not_inferred() {
     assert!(
         nodes(&partial)
             .iter()
-            .any(|node| node["note"]["raw"] == "［＃未知の意味］")
+            .any(|node| node["note"]["raw"] == "［＃未知の字指定］")
     );
     assert!(
         !partial["interpretation_facts"]
@@ -824,10 +1204,8 @@ fn normalized_accent_targets_keep_their_exact_original_source_extent() {
             .iter()
             .find(|node| node["type"] == "base-text-variant")
             .unwrap();
-        let child = &app["inline_children"][0];
         let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
-        let start = usize::try_from(child["source_span"]["start"].as_u64().unwrap()).unwrap();
-        let end = usize::try_from(child["source_span"]["end"].as_u64().unwrap()).unwrap();
+        let (start, end) = source_extent(&app["inline_children"]);
         let raw = &source[start..end];
         assert_eq!(raw, expected_source);
         assert!(!app["text"].as_str().unwrap().contains([':', '&']));
@@ -966,6 +1344,42 @@ fn variant_citations_and_assertions_stay_separate_from_the_witness() {
 }
 
 #[test]
+fn base_edition_register_locator_is_retained_through_conversion() {
+    for locator in ["172-上段-8", "172-下段-2"] {
+        let ir = convert(&format!("学士［＃「学士」は底本では「博士」、{locator}］"));
+        let all = nodes(&ir);
+        let app = all
+            .iter()
+            .find(|node| node["type"] == "base-text-variant")
+            .unwrap();
+        assert_eq!(app["text"], "学士");
+        assert_eq!(app["variant"]["base_text"], "博士");
+        let note = all
+            .iter()
+            .find(|node| node["note_kind"] == "base-edition")
+            .unwrap();
+        assert_eq!(note["source_locator"], locator);
+        assert_eq!(ir["interpretation_problems"], json!([]));
+    }
+}
+
+#[test]
+fn attached_author_note_keeps_rich_target_and_marker_content() {
+    let ir = convert("御｜正忌《しやうき》［＃「御正忌」に「＊」の著者註］");
+    let note = nodes(&ir)
+        .into_iter()
+        .find(|node| node["type"] == "annotated-text")
+        .unwrap();
+    assert_eq!(note["note_kind"], "author-note");
+    assert_eq!(note["text"], "御正忌");
+    assert_eq!(note["inline_children"][0]["text"], "御");
+    assert_eq!(note["inline_children"][1]["type"], "ruby");
+    assert_eq!(note["inline_children"][1]["ruby"]["base"], "正忌");
+    assert_eq!(note["annotation_children"][0]["text"], "＊");
+    assert_eq!(ir["interpretation_problems"], json!([]));
+}
+
+#[test]
 fn direct_glyph_witnesses_reuse_native_reference_interpretation() {
     let marker = "※［＃「飮のへん＋稻のつくり」、第4水準2-92-68］";
     let ir = convert(&format!("餡［＃「餡」は底本では{marker}］"));
@@ -1073,7 +1487,7 @@ fn edition_targets_remain_inside_their_normal_heading() {
     let ruby = all.iter().find(|node| node["type"] == "ruby").unwrap();
     assert_eq!(ruby["reading_children"][0]["type"], "base-text-variant");
     assert_eq!(ir["interpretation_problems"], json!([]));
-    for middle in ["［＃未知の意味］", "\n", "\n別の本文"] {
+    for middle in ["［＃未知の字指定］", "\n", "\n別の本文"] {
         let ir = convert(&format!(
             "見出し［＃「見出し」は大見出し］{middle}［＃「見出し」は底本では「別題」］"
         ));
@@ -1132,10 +1546,11 @@ fn unresolved_glyph_targets_require_the_same_structured_identity() {
             nodes(&ir)
                 .iter()
                 .any(|node| node["type"] == "base-text-variant"),
-            actual == glyph
+            actual == glyph,
+            "{actual} / {glyph}"
         );
     }
-    for suffix in ["別", "\n", "［＃未知の意味］"] {
+    for suffix in ["別", "\n", "［＃未知の字指定］"] {
         let ir = convert(&format!(
             "{current}{suffix}［＃「{current}」は底本では「別」］"
         ));
@@ -1474,7 +1889,7 @@ fn rich_sic_statements_compose_without_weakening_quoted_identity() {
     for body in [
         "甲［＃「甲」はママ］別［＃「甲［＃「甲」はママ］」は底本では「乙」］",
         "甲［＃「甲」はママ］［＃「甲［＃底本のまま］」は底本では「乙」］",
-        "甲［＃未解釈指示］［＃「甲［＃未解釈指示］」は底本では「乙」］",
+        "甲［＃未解釈の字指示］［＃「甲［＃未解釈の字指示］」は底本では「乙」］",
     ] {
         let ir = convert(body);
         assert!(
@@ -1561,10 +1976,8 @@ fn edition_targets_retain_the_immediately_preceding_accent_scope() {
             .unwrap();
         assert_eq!(app["text"], current);
         assert_eq!(app["variant"]["base_text"], witness);
-        let span = &app["inline_children"][0]["source_span"];
         let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
-        let start = usize::try_from(span["start"].as_u64().unwrap()).unwrap();
-        let end = usize::try_from(span["end"].as_u64().unwrap()).unwrap();
+        let (start, end) = source_extent(&app["inline_children"]);
         assert_eq!(&source[start..end], spelling);
         assert_eq!(ir["interpretation_problems"], json!([]));
     }
@@ -1602,21 +2015,20 @@ fn a_quoted_source_spelling_inherits_only_its_exact_target_accent_context() {
     assert_eq!(app["text"], "Hätte.“");
     assert_eq!(app["variant"]["base_text"], "Hätte“.");
     let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
-    for (node, spelling) in [
-        (&app["inline_children"][0], "Ha:tte.“"),
-        (&app["variant"]["base_children"][0], "Ha:tte“."),
+    for (children, spelling) in [
+        (&app["inline_children"], "Ha:tte.“"),
+        (&app["variant"]["base_children"], "Ha:tte“."),
     ] {
-        let span = &node["source_span"];
-        let start = usize::try_from(span["start"].as_u64().unwrap()).unwrap();
-        let end = usize::try_from(span["end"].as_u64().unwrap()).unwrap();
+        let (start, end) = source_extent(children);
         assert_eq!(&source[start..end], spelling);
     }
     assert_eq!(ir["interpretation_problems"], json!([]));
     let facts = ir["interpretation_facts"].as_array().unwrap();
-    assert_eq!(facts.len(), 1);
-    assert_eq!(facts[0]["kind"], "text-variant");
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0]["kind"], "accent");
+    assert_eq!(facts[1]["kind"], "text-variant");
     assert_eq!(
-        facts[0]["source_span"]["start"],
+        facts[1]["source_span"]["start"],
         source.find("［＃").unwrap()
     );
     let ligature = convert("〔ae&〕［＃「ae&」は底本では「oe&」］");
@@ -1654,6 +2066,29 @@ fn a_quoted_source_spelling_inherits_only_its_exact_target_accent_context() {
             "{body}"
         );
     }
+}
+
+fn source_extent(children: &Value) -> (usize, usize) {
+    let spans = children
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| &node["source_span"])
+        .collect::<Vec<_>>();
+    let start = spans
+        .iter()
+        .filter_map(|span| span["start"].as_u64())
+        .min()
+        .unwrap();
+    let end = spans
+        .iter()
+        .filter_map(|span| span["end"].as_u64())
+        .max()
+        .unwrap();
+    (
+        usize::try_from(start).unwrap(),
+        usize::try_from(end).unwrap(),
+    )
 }
 
 #[test]
@@ -1842,4 +2277,61 @@ fn exact_targets_retain_uncertain_witness_components_without_claiming_them_compl
             .any(|fact| fact["kind"] == "text-variant")
     );
     assert_eq!(complete["interpretation_problems"], json!([]));
+}
+
+#[test]
+fn formatting_keeps_instruction_spans_separate_from_target_spans() {
+    for (body, expected) in [
+        (
+            "animus or mens［＃「animus」、「mens」の部分はイタリック体］",
+            vec![
+                (
+                    "animus",
+                    vec!["［＃「animus」、「mens」の部分はイタリック体］"],
+                ),
+                (
+                    "mens",
+                    vec!["［＃「animus」、「mens」の部分はイタリック体］"],
+                ),
+            ],
+        ),
+        (
+            "前B1［＃「B1」は縦中横］後",
+            vec![("B1", vec!["［＃「B1」は縦中横］"])],
+        ),
+        (
+            "［＃斜体］甲［＃斜体終わり］",
+            vec![("甲", vec!["［＃斜体］", "［＃斜体終わり］"])],
+        ),
+        (
+            "｜甲［＃「甲」は太字］乙［＃「乙」は斜体］丙《よみ》",
+            vec![
+                ("甲", vec!["［＃「甲」は太字］"]),
+                ("乙", vec!["［＃「乙」は斜体］"]),
+            ],
+        ),
+    ] {
+        let source = format!("題\n作者\n\n{body}\n\n底本：本\n");
+        let ir = convert(body);
+        let all = nodes(&ir);
+        let mut styles: Vec<_> = all
+            .into_iter()
+            .filter(|n| matches!(n["type"].as_str(), Some("emphasis" | "layout-span")))
+            .collect();
+        styles.sort_by_key(|node| node["source_span"]["start"].as_u64().unwrap());
+        assert_eq!(styles.len(), expected.len());
+        for (node, (target, expected_markers)) in styles.into_iter().zip(expected) {
+            assert_eq!(node["text"], target);
+            let markers = node["interpretation_marker_spans"]
+                .as_array()
+                .expect("instruction spans");
+            assert_eq!(markers.len(), expected_markers.len());
+            for (span, marker) in markers.iter().zip(expected_markers) {
+                assert_eq!(span["coordinate_system"], "decoded_utf8");
+                assert_eq!(span["start"], source.find(marker).unwrap());
+                assert_eq!(span["end"], source.find(marker).unwrap() + marker.len());
+                assert_ne!(node["source_span"], *span);
+            }
+        }
+    }
 }

@@ -4,26 +4,25 @@
 //!
 //! 1. **BOM strip**: every leading `U+FEFF` (UTF-8 BOM, 3 bytes each)
 //!    is consumed. Both single (`U+FEFF`) and stacked (`U+FEFF`+
-//!    `U+FEFF`+…) leading sequences resolve to the same empty prefix
-//!    so that `to_source(to_source(x))` round-trips byte-equal, a
-//!    single-strip would peel off one BOM per pass and break I3
-//!    fixed-point on inputs that carry more than one. Interior
-//!    `U+FEFF` (zero-width no-break space) is still preserved.
+//!    `U+FEFF`+…) leading sequences resolve to the same empty prefix,
+//!    so that `to_source(to_source(x))` is byte-equal to `to_source(x)`
+//!    (the I3 fixed point) on inputs that carry more than one BOM; a
+//!    single strip would remove one BOM per pass. Interior `U+FEFF`
+//!    (zero-width no-break space) is preserved.
 //! 2. **CR/LF normalization**: `\r\n` → `\n`, lone `\r` → `\n`. Aozora
-//!    source comes from a variety of encoders; downstream stages assume
-//!    `\n` as the one line terminator so they don't have to handle three
-//!    variants each.
-//! 3. **Accent decomposition inside `〔...〕`**: ASCII accent digraphs
+//!    source comes from a variety of encoders; downstream stages handle
+//!    `\n` as the only line terminator.
+//! 3. **Decorative rule isolation**: lines composed entirely of 10 or
+//!    more `-`, `=`, or `_` characters (a very common visual separator
+//!    in Aozora Bunko prose) are separated from the preceding line by
+//!    an inserted blank line, so downstream Markdown
+//!    layers (e.g. the sibling `afm` repo's `CommonMark` integration)
+//!    do not promote the preceding paragraph into a setext heading.
+//! 4. **Accent decomposition inside `〔...〕`**: ASCII accent digraphs
 //!    (`fune`+grave-accent → funèbre, `cafe`+apostrophe → café, …) are
 //!    rewritten to their Unicode-combined form before any later stage
 //!    processes them. Scope is restricted to tortoiseshell-bracket
 //!    spans; the function is the identity outside them.
-//! 4. **Decorative rule isolation**: lines composed entirely of 10 or
-//!    more `-`, `=`, or `_` characters (a very common visual separator
-//!    in Aozora Bunko prose) are forced to sit on their own stanza by
-//!    inserting a blank line before them, so downstream Markdown
-//!    layers (e.g. the sibling `afm` repo's `CommonMark` integration)
-//!    do not promote the preceding paragraph into a setext heading.
 //!
 //! Marker identity belongs to the normalized-offset registry. Literal private-use
 //! source characters remain text, including codepoints also used by injected markers.
@@ -36,9 +35,9 @@ use std::collections::BTreeMap;
 use memchr::memmem;
 
 use ab_aozora_syntax::Span;
-use ab_aozora_syntax::accent::decompose_fragment_sites;
+use ab_aozora_syntax::accent::{ACCENT_TABLE, decompose_fragment_sites, unresolved_accent_sites};
 
-use ab_aozora_spec::{Diagnostic, PairKind};
+use ab_aozora_spec::{Diagnostic, PairKind, PairLink};
 
 use super::{pair::pair, tokenize::tokenize};
 
@@ -71,9 +70,8 @@ pub struct SanitizeOutput<'s> {
 /// One non-identity rewrite: source bytes `src_start..src_end` became
 /// output bytes `dst_start..dst_end`.
 ///
-/// Recorded in a single transform step's OWN input/output coordinates
-/// (offset-map groundwork for span metrics; consumed by
-/// [`OffsetMap`] / [`SanitizeMaps`]).
+/// Recorded in a single transform step's own input/output coordinates
+/// and consumed by [`OffsetMap`] / [`SanitizeMaps`] for span metrics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MapEdit {
     pub src_start: usize,
@@ -82,7 +80,7 @@ pub struct MapEdit {
     pub dst_end: usize,
 }
 
-/// Offset map for ONE transform pass: sorted, non-overlapping edits;
+/// Offset map for one transform pass: sorted, non-overlapping edits;
 /// offsets between edits translate by the accumulated length delta.
 #[derive(Debug, Clone, Default)]
 pub struct OffsetMap {
@@ -120,7 +118,7 @@ impl OffsetMap {
     pub fn to_source_end(&self, dst: usize) -> usize {
         // End-exclusive semantics: an end whose last covered byte
         // (dst - 1) lands inside an edit resolves to the edit's src_end;
-        // an end at an edit's dst_start resolves BEFORE the edit. An
+        // an end at an edit's dst_start resolves before the edit. An
         // empty span's end behaves like its start.
         if dst == 0 {
             return self.to_source_offset(0);
@@ -166,7 +164,7 @@ impl SanitizeMaps {
     }
 }
 
-/// [`sanitize`] plus the composed offset map .
+/// [`sanitize`] plus the composed offset map.
 #[derive(Debug)]
 pub struct SanitizeMappedOutput<'s> {
     pub text: Cow<'s, str>,
@@ -180,12 +178,12 @@ pub struct SanitizeMappedOutput<'s> {
 /// documentation for the step order and rationale.
 #[must_use]
 pub fn sanitize(source: &str) -> SanitizeOutput<'_> {
-    // Strip every leading `U+FEFF`. CommonMark / WHATWG-text-encoding
-    // both consider only one BOM, but the `to_source` round-trip would
-    // peel one off per pass without this loop, breaking the I3
+    // Strip every leading `U+FEFF`. CommonMark and WHATWG text encoding
+    // strip only one BOM; stripping every leading BOM keeps the I3
     // fixed-point invariant `to_source(to_source(x)) == to_source(x)`
-    // on inputs that carry stacked BOMs (e.g. `\u{feff}\u{feff}` →
-    // first pass yields `\u{feff}`, second yields `""`).
+    // on inputs that carry stacked BOMs (a single strip maps
+    // `\u{feff}\u{feff}` to `\u{feff}` on the first pass and to `""` on
+    // the second).
     let mut after_bom = source;
     while let Some(rest) = after_bom.strip_prefix('\u{FEFF}') {
         after_bom = rest;
@@ -203,12 +201,11 @@ pub fn sanitize(source: &str) -> SanitizeOutput<'_> {
         line_normalized
     };
 
-    // Gate via `memmem::find` on the UTF-8 byte sequence rather than
-    // `str::contains(char)`, which falls back to a per-codepoint
-    // scan via `Pattern::is_contained_in` and pays full UTF-8 decode
-    // cost on every char of the input. memmem uses Two-Way / SIMD on
-    // the 3-byte needle and zooms through Japanese prose at memory-
-    // bandwidth speed.
+    // The gate uses `memmem::find` on the UTF-8 byte sequence:
+    // `str::contains(char)` scans per codepoint via
+    // `Pattern::is_contained_in` and decodes every character of the
+    // input, while memmem runs Two-Way / SIMD search on the 3-byte
+    // needle at near memory-bandwidth speed over Japanese prose.
     let mut accent_diagnostics: Vec<Diagnostic> = Vec::new();
     let mut accent_scopes = Vec::new();
     let text: Cow<'_, str> =
@@ -235,13 +232,12 @@ pub fn sanitize(source: &str) -> SanitizeOutput<'_> {
 ///
 /// Composes one [`OffsetMap`] per transform step, so a downstream consumer
 /// can translate a byte offset in the sanitized `text` back to the
-/// corresponding offset in `source` (groundwork for span
-/// semantics). Mirrors `sanitize`'s exact step sequence and MUST stay
-/// bit-identical to it; both delegate to the same `_core` functions, so
-/// there is only one implementation of each step to drift.
+/// corresponding offset in `source`. Mirrors `sanitize`'s exact step
+/// sequence and must produce bit-identical text; both delegate to the
+/// same `_core` functions, so each step has one implementation.
 #[must_use]
 pub fn sanitize_mapped(source: &str) -> SanitizeMappedOutput<'_> {
-    let mut steps: Vec<OffsetMap> = Vec::with_capacity(5);
+    let mut steps: Vec<OffsetMap> = Vec::with_capacity(4);
 
     // Step 1: BOM strip. See `sanitize` for the stacked-BOM rationale.
     let mut after_bom = source;
@@ -324,36 +320,21 @@ pub fn rewrite_accent_spans(input: &str) -> String {
     rewrite_accent_spans_collecting(input, &mut sink)
 }
 
-/// Like [`rewrite_accent_spans`], but also pushes one
-/// [`Diagnostic::accent_decomposition_applied`] (a `Note`) for every
-/// digraph **substitution site** inside a `〔…〕` span; a `〔…〕` that
-/// contains no accent digraph is silent.
-///
-/// Spans are reported in **output (post-decomposition) coordinates** and
-/// bracket exactly the replacement character. Accent decomposition is
-/// *not* byte-length-preserving, so
-/// an input-coordinate span would slide once the first digraph changes
-/// width. Downstream stages and the CLI miette renderer see the
-/// rewritten text, so output coordinates put the caret on the right
-/// character.
 fn rewrite_accent_spans_collecting(input: &str, diagnostics: &mut Vec<Diagnostic>) -> String {
     rewrite_accent_spans_collecting_core(input, diagnostics, None, &mut Vec::new())
 }
 
-/// Core of [`rewrite_accent_spans_collecting`]; when `edits` is `Some`,
-/// records delimiter deletions and one [`MapEdit`] per digraph substitution: the source digraph
-/// bytes to the replacement character, in THIS step's input/output
-/// coordinates. Length-preserving substitutions (`s&` = ß, `s,` = ş) are
-/// recorded too: an edit marks "these bytes were rewritten", exactly as the
-/// width-equal lone-`\r` → `\n` normalization does. Bytes *between* sites
-/// carry no edit, so every unrewritten byte inside a span keeps its exact
-/// source position; a whole-span edit here once collapsed every interior
-/// fact onto the span start, which manufactured byte-identical
-/// classified-source entries out of distinct constructs.
+#[derive(Clone, Copy)]
+enum AccentEdit {
+    Compose(char),
+    RemoveDelimiter,
+    RetainUnresolved,
+}
+
 pub(super) fn rewrite_accent_spans_collecting_core(
     input: &str,
     diagnostics: &mut Vec<Diagnostic>,
-    mut edits: Option<&mut Vec<MapEdit>>,
+    edits: Option<&mut Vec<MapEdit>>,
     accent_scopes: &mut Vec<Span>,
 ) -> String {
     let mut pairs = pair(tokenize(input));
@@ -367,6 +348,7 @@ pub(super) fn rewrite_accent_spans_collecting_core(
         .map(|link| link.open.start as usize..link.close.end as usize)
         .collect();
     annotations.sort_unstable_by_key(|range| range.start);
+    let non_text = accent_non_text_ranges(input, &annotations, &links);
     let mut scopes: Vec<_> = links
         .iter()
         .filter(|link| link.kind == PairKind::Tortoise)
@@ -394,21 +376,61 @@ pub(super) fn rewrite_accent_spans_collecting_core(
             continue;
         }
         let before = replacements.len();
-        for range in scope_fragments(start, end, &scopes) {
-            replacements.extend(
-                decompose_fragment_sites(&input[range.clone()])
-                    .into_iter()
-                    .map(|(offset, len, replacement)| {
-                        (range.start + offset, len, Some(replacement))
-                    }),
-            );
+        if let Some(&(_, character)) = ACCENT_TABLE
+            .iter()
+            .find(|&&(spelling, _)| spelling == &input[start..end])
+        {
+            replacements.push((start, end - start, AccentEdit::Compose(character)));
+        } else {
+            for range in scope_fragments(start, end, &scopes) {
+                replacements.extend(
+                    decompose_fragment_sites(&input[range.clone()])
+                        .into_iter()
+                        .map(|(offset, len, replacement)| {
+                            (range.start + offset, len, AccentEdit::Compose(replacement))
+                        }),
+                );
+                replacements.extend(
+                    unresolved_accent_sites(&input[range.clone()])
+                        .into_iter()
+                        .map(|(offset, len)| {
+                            (range.start + offset, len, AccentEdit::RetainUnresolved)
+                        }),
+                );
+            }
         }
-        if replacements.len() > before {
+        let composed = replacements[before..]
+            .iter()
+            .any(|&(_, _, edit)| matches!(edit, AccentEdit::Compose(_)));
+        if !composed && !accent_scope_has_latin_text(input, start, end, &non_text) {
+            replacements.truncate(before);
+            continue;
+        }
+        if composed {
             realized.push((scope.start, end));
-            replacements.push((scope.start, TORTOISE_OPEN.len_utf8(), None));
-            replacements.push((end, TORTOISE_CLOSE.len_utf8(), None));
+            replacements.push((
+                scope.start,
+                TORTOISE_OPEN.len_utf8(),
+                AccentEdit::RemoveDelimiter,
+            ));
+            replacements.push((end, TORTOISE_CLOSE.len_utf8(), AccentEdit::RemoveDelimiter));
         }
     }
+    let (out, boundaries) = apply_accent_edits(input, replacements, diagnostics, edits);
+    accent_scopes.extend(
+        realized
+            .into_iter()
+            .map(|(start, end)| Span::new(boundaries[&start], boundaries[&end])),
+    );
+    out
+}
+
+fn apply_accent_edits(
+    input: &str,
+    mut replacements: Vec<(usize, usize, AccentEdit)>,
+    diagnostics: &mut Vec<Diagnostic>,
+    mut edits: Option<&mut Vec<MapEdit>>,
+) -> (String, BTreeMap<usize, u32>) {
     replacements.sort_unstable_by_key(|&(start, _, _)| start);
     let mut out = String::with_capacity(input.len());
     let mut cursor = 0;
@@ -416,21 +438,28 @@ pub(super) fn rewrite_accent_spans_collecting_core(
     for (start, len, replacement) in replacements {
         out.push_str(&input[cursor..start]);
         let dst_start = out.len();
-        if replacement.is_none() {
-            boundaries.insert(start, u32::try_from(dst_start).expect("source fits u32"));
+        match replacement {
+            AccentEdit::RemoveDelimiter => {
+                boundaries.insert(start, u32::try_from(dst_start).expect("source fits u32"));
+            }
+            AccentEdit::Compose(character) => {
+                out.push(character);
+                diagnostics.push(Diagnostic::accent_decomposition_applied(Span::new(
+                    u32::try_from(dst_start).expect("source fits u32"),
+                    u32::try_from(out.len()).expect("source fits u32"),
+                )));
+            }
+            AccentEdit::RetainUnresolved => {
+                out.push_str(&input[start..start + len]);
+                diagnostics.push(Diagnostic::unresolved_accent_notation(Span::new(
+                    u32::try_from(dst_start).expect("source fits u32"),
+                    u32::try_from(out.len()).expect("source fits u32"),
+                )));
+            }
         }
-        if let Some(replacement) = replacement {
-            out.push(replacement);
-            #[allow(
-                clippy::cast_possible_truncation,
-                reason = "sanitized text length <= u32::MAX is asserted at sanitize entry"
-            )]
-            diagnostics.push(Diagnostic::accent_decomposition_applied(Span::new(
-                dst_start as u32,
-                out.len() as u32,
-            )));
-        }
-        if let Some(e) = edits.as_deref_mut() {
+        if !matches!(replacement, AccentEdit::RetainUnresolved)
+            && let Some(e) = edits.as_deref_mut()
+        {
             e.push(MapEdit {
                 src_start: start,
                 src_end: start + len,
@@ -441,15 +470,53 @@ pub(super) fn rewrite_accent_spans_collecting_core(
         cursor = start + len;
     }
     out.push_str(&input[cursor..]);
-    accent_scopes.extend(
-        realized
-            .into_iter()
-            .map(|(start, end)| Span::new(boundaries[&start], boundaries[&end])),
-    );
-    out
+    (out, boundaries)
 }
 
-fn scope_fragments(start: usize, end: usize, children: &[Range<usize>]) -> Vec<Range<usize>> {
+pub(crate) fn accent_non_text_ranges(
+    input: &str,
+    annotations: &[Range<usize>],
+    links: &[PairLink],
+) -> Vec<Range<usize>> {
+    let mut non_text = annotations
+        .iter()
+        .map(|range| {
+            let start = if input[..range.start].ends_with('※') {
+                range.start - '※'.len_utf8()
+            } else {
+                range.start
+            };
+            start..range.end
+        })
+        .collect::<Vec<_>>();
+    non_text.extend(
+        links
+            .iter()
+            .filter(|link| link.kind == PairKind::Ruby)
+            .map(|link| link.open.start as usize..link.close.end as usize),
+    );
+    non_text.sort_unstable_by_key(|range| range.start);
+    non_text
+}
+
+pub(crate) fn accent_scope_has_latin_text(
+    input: &str,
+    start: usize,
+    end: usize,
+    non_text: &[Range<usize>],
+) -> bool {
+    scope_fragments(start, end, non_text).iter().all(|range| {
+        input[range.clone()].chars().all(|character| {
+            character.is_ascii() || ACCENT_TABLE.iter().any(|&(_, letter)| character == letter)
+        })
+    })
+}
+
+pub(crate) fn scope_fragments(
+    start: usize,
+    end: usize,
+    children: &[Range<usize>],
+) -> Vec<Range<usize>> {
     let mut fragments = Vec::new();
     let mut cursor = start;
     let first = children.partition_point(|range| range.start < start);
@@ -470,8 +537,8 @@ fn scope_fragments(start: usize, end: usize, children: &[Range<usize>]) -> Vec<R
 /// rule (≥ `DECORATIVE_RULE_MIN_LEN` of `-` / `=` / `_`).
 ///
 /// Used as a fast-path gate in [`sanitize`]: when the whole document
-/// has no long rule line, the pass is a no-op and [`Cow::Borrowed`]
-/// survives.
+/// has no long rule line, the pass is a no-op and the text remains
+/// [`Cow::Borrowed`].
 #[doc(hidden)]
 pub fn has_long_rule_line(input: &str) -> bool {
     input.lines().any(is_decorative_rule_line)
@@ -486,8 +553,8 @@ fn is_decorative_rule_line(line: &str) -> bool {
 
 /// Byte-level rule-line check on a string the caller has already
 /// trimmed. Used by [`isolate_decorative_rules`] which also needs
-/// the trimmed length for the blank-line bookkeeping; sharing the
-/// trim avoids the duplicate work the prior split called for.
+/// the trimmed length for the blank-line bookkeeping, so each line is
+/// trimmed once.
 ///
 /// `-` / `=` / `_` are ASCII single-byte characters, so the
 /// `bytes().all(...)` comparison is a `memcmp`-class scan. For lines
@@ -496,7 +563,7 @@ fn is_decorative_rule_line(line: &str) -> bool {
 /// in 2–3 ops and the rest of the function is skipped entirely.
 ///
 /// `pub` (and `#[doc(hidden)]`, like the other sanitize helpers) so the
-/// in-workspace LSP `ParseCache` can reuse the *exact* decorative-rule
+/// in-workspace LSP `ParseCache` can reuse the same decorative-rule
 /// predicate when it (a) precomputes which raw lines gained an isolation
 /// blank and (b) gates an incremental edit that would create or destroy a
 /// rule line; sharing the predicate keeps the rope splice byte-identical
@@ -517,23 +584,21 @@ pub fn is_rule_line_trimmed(trimmed: &str) -> bool {
 
 /// Insert a blank line before every decorative rule that would
 /// otherwise be interpreted by `CommonMark` as a setext underline for
-/// the preceding paragraph. The output differs from the input *only*
+/// the preceding paragraph. The output differs from the input only
 /// in the blank lines inserted.
 ///
 /// ## Algorithm
 ///
 /// `memchr::memchr_iter(b'\n', ...)` walks every newline position via
-/// SIMD byte scan. For each line we run [`is_decorative_rule_line`]
+/// SIMD byte scan. Each line is checked with [`is_decorative_rule_line`]
 /// (which exits in O(1) when the trimmed first char isn't `-=_`,
 /// covering ≥99% of Aozora lines). Only when a rule line needs an
 /// inserted blank line does the algorithm break the running bulk-copy
 /// to flush `[copy_from..line_start)` and emit a `\n`.
 ///
-/// Replaces a previous `for line in input.split_inclusive('\n')` /
-/// `out.push_str(line)` loop that paid one `push_str` (one `memcpy`)
-/// per line. Real Aozora corpora have ~10⁴ short lines per document
-/// and typically only 1–5 rule line insertions, so the new path
-/// collapses ~10⁴ small `memcpy`s into a small handful of large ones.
+/// Aozora documents have ~10⁴ short lines and typically 1–5 rule-line
+/// insertions, so bulk copying performs a few large `memcpy`s where a
+/// per-line `push_str` would perform ~10⁴ small ones.
 #[doc(hidden)]
 #[must_use]
 pub fn isolate_decorative_rules(input: &str) -> String {
@@ -542,8 +607,7 @@ pub fn isolate_decorative_rules(input: &str) -> String {
 
 /// Core of [`isolate_decorative_rules`]; when `edits` is `Some`, records
 /// one [`MapEdit`] per inserted blank line: an empty source span (the
-/// insertion point) to the one-byte `\n` it produced (offset-map
-/// groundwork).
+/// insertion point) to the one-byte `\n` it produced.
 fn isolate_decorative_rules_core(input: &str, mut edits: Option<&mut Vec<MapEdit>>) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len() + 16);
@@ -553,9 +617,8 @@ fn isolate_decorative_rules_core(input: &str, mut edits: Option<&mut Vec<MapEdit
 
     for nl_pos in memchr::memchr_iter(b'\n', bytes) {
         let line_no_eol = &input[line_start..nl_pos];
-        // Single trim per line: feed the result to both the rule check
-        // and the blank-line bookkeeping. Avoids the double `.trim()`
-        // the prior implementation paid on every line.
+        // One trim per line serves both the rule check and the
+        // blank-line bookkeeping.
         let trimmed = line_no_eol.trim();
         if is_rule_line_trimmed(trimmed) && prev_nonblank {
             // Flush the bulk-copy run up to (but not including) this
@@ -619,16 +682,16 @@ fn isolate_decorative_rules_core(input: &str, mut edits: Option<&mut Vec<MapEdit
 /// single-byte lookahead distinguishes `\r\n` (skip both, emit `\n`)
 /// from a lone `\r` (skip the `\r`, emit `\n`).
 ///
-/// One pass over the input, one buffer allocation. Replaces the prior
-/// `.replace("\r\n", "\n").replace('\r', "\n")` pair which materialised
-/// **two** intermediate `String`s and walked the input twice. On the
-/// 17 k-document Aozora corpus, where every document arrives with
-/// CRLF line endings (the archive's house format), this sub-pass is
-/// the dominant cost in the sanitize stage; the single-pass form is
-/// ~2–3× faster at memory-bandwidth ceiling.
+/// One pass over the input, one buffer allocation. On the 17 k-document
+/// Aozora corpus, where every document arrives with CRLF line endings
+/// (the archive's house format), this sub-pass is the dominant cost in
+/// the sanitize stage; the single pass is ~2–3× faster, at the
+/// memory-bandwidth ceiling, than the chained
+/// `.replace("\r\n", "\n").replace('\r', "\n")`, which allocates two
+/// intermediate `String`s and reads the input twice.
 ///
-/// `\r` (0x0D) is ASCII so `memchr` lands cleanly on UTF-8 boundaries;
-/// no need for `is_char_boundary` checks.
+/// `\r` (0x0D) is ASCII, so every `memchr` hit is a UTF-8 boundary and
+/// needs no `is_char_boundary` check.
 #[doc(hidden)]
 #[must_use]
 pub fn normalize_line_endings(input: &str) -> String {
@@ -637,7 +700,7 @@ pub fn normalize_line_endings(input: &str) -> String {
 
 /// Core of [`normalize_line_endings`]; when `edits` is `Some`, records
 /// one [`MapEdit`] per `\r\n`→`\n` or lone `\r`→`\n` substitution in this
-/// step's own input/output coordinates (offset-map groundwork).
+/// step's own input/output coordinates.
 fn normalize_line_endings_core(input: &str, mut edits: Option<&mut Vec<MapEdit>>) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
@@ -710,9 +773,9 @@ mod tests {
     #[test]
     fn stacked_leading_boms_are_all_stripped() {
         // I3 fixed-point regression: `to_source(to_source(x))` must
-        // byte-equal `to_source(x)`. Stacked leading BOMs would
-        // otherwise peel off one per round-trip pass, so the strip
-        // loop has to consume every leading `U+FEFF`.
+        // byte-equal `to_source(x)`. The strip loop consumes every
+        // leading `U+FEFF`; a single strip would remove one BOM per
+        // round-trip pass.
         let input = "\u{FEFF}\u{FEFF}\u{FEFF}hello";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), "hello");
@@ -720,10 +783,9 @@ mod tests {
 
     #[test]
     fn leading_boms_only_resolve_to_empty() {
-        // Edge case: an input that is *nothing but* leading BOMs
-        // resolves to the empty string. The previous single-strip
-        // behaviour produced `""` for one BOM and `"\u{feff}"` for
-        // two; the source of the I3 fuzz crash.
+        // An input that consists only of leading BOMs resolves to the
+        // empty string. A single strip would produce `""` for one BOM
+        // and `"\u{feff}"` for two, which breaks the I3 fixed point.
         let out = sanitize("\u{FEFF}\u{FEFF}");
         assert_eq!(out.text.as_ref(), "");
     }
@@ -781,9 +843,7 @@ mod tests {
         assert!(out.diagnostics.is_empty());
     }
 
-    // -----------------------------------------------------------------
     // Accent-decomposition inside 〔...〕.
-    // -----------------------------------------------------------------
 
     #[test]
     fn pure_japanese_is_not_accent_rewritten_and_stays_borrowed() {
@@ -803,8 +863,8 @@ mod tests {
 
     #[test]
     fn accent_digraph_inside_tortoiseshell_is_decomposed() {
-        // The 罪と罰 canary: the grave-accent digraph `e`` must collapse
-        // to `è` inside the span so the parser never sees the lone backtick.
+        // The 罪と罰 case: the grave-accent digraph `e`` must become `è`
+        // inside the span, so the parser receives no lone backtick.
         let input = "〔oraison fune`bre〕";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), "oraison funèbre");
@@ -944,8 +1004,8 @@ mod tests {
 
     #[test]
     fn unclosed_tortoiseshell_span_passes_through_verbatim() {
-        // Graceful degradation: do not panic, emit the rest as-is so a
-        // later stage can surface a diagnostic.
+        // An unclosed span must not panic; the rest is emitted as-is so
+        // a later stage can report a diagnostic.
         let input = "tail 〔fune`bre without close";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), input);
@@ -973,19 +1033,15 @@ mod tests {
         assert!(!out.text.contains('`'), "grave accent must be consumed");
     }
 
-    // -------------------------------------------------------------
     // Decorative rule isolation: long `-` / `=` / `_` rows must not
-    // be misread as setext underlines for a preceding paragraph.
+    // be read as setext underlines for a preceding paragraph.
     //
-    // Background: Aozora Bunko prose frequently inserts
+    // Aozora Bunko prose often inserts
     // `---------------------------------------------------------`
     // as a visual separator between front matter and body. Without
-    // this pass, CommonMark would interpret the front-matter paragraph
-    // as a level-2 heading. These tests verify both aspects of the contract.
-    // Long runs are isolated, whereas short runs (standard setext underlines)
-    // are preserved untouched so that future refactors do not silently
-    // regress either behavior.
-    // -------------------------------------------------------------
+    // this pass, CommonMark reads the front-matter paragraph as a
+    // level-2 heading. The tests check that long runs are isolated and
+    // that short runs (standard setext underlines) are preserved.
 
     #[test]
     fn long_hyphen_rule_gets_blank_line_before_it() {
@@ -1022,9 +1078,9 @@ mod tests {
 
     #[test]
     fn short_hyphen_setext_underline_is_not_split() {
-        // The genuine setext-heading idiom uses `---` or `===` rows
-        // of modest length (typically < 10 chars). Those must reach
-        // unmodified so the H1/H2 promotion still fires.
+        // A setext heading uses `---` or `===` rows of modest length
+        // (typically < 10 chars). Those must pass unmodified, so the
+        // H1/H2 promotion still applies.
         let input = "Heading\n---\nbody";
         let out = sanitize(input);
         assert_eq!(
@@ -1037,7 +1093,7 @@ mod tests {
     #[test]
     fn nine_char_hyphen_row_stays_as_setext_underline() {
         // Nine characters: still inside the setext-heading length
-        // range per our DECORATIVE_RULE_MIN_LEN threshold.
+        // range per the DECORATIVE_RULE_MIN_LEN threshold.
         let input = "Heading\n---------\nbody";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), input);
@@ -1045,8 +1101,8 @@ mod tests {
 
     #[test]
     fn ten_char_hyphen_row_is_isolated() {
-        // Ten characters: the first length at which we classify the
-        // row as decorative rather than setext.
+        // Ten characters: the first length at which the row is
+        // classified as decorative rather than setext.
         let input = "Heading\n----------\nbody";
         let out = sanitize(input);
         assert!(
@@ -1058,8 +1114,8 @@ mod tests {
 
     #[test]
     fn rule_already_preceded_by_blank_line_is_unchanged() {
-        // Idempotence: if the author already put a blank line before
-        // the rule, we must not add a second.
+        // Idempotence: if the source already has a blank line before
+        // the rule, no second blank line is added.
         let input = "前置き\n\n-----------\n本文";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), input);
@@ -1090,8 +1146,8 @@ mod tests {
     #[test]
     fn mixed_character_rule_is_not_isolated() {
         // `---===---` is neither a valid setext underline nor a
-        // homogeneous rule; leave it alone so CommonMark handles it
-        // as a plain paragraph line.
+        // homogeneous rule; it is left unchanged, so CommonMark handles
+        // it as a plain paragraph line.
         let input = "text\n---===---\ntail";
         let out = sanitize(input);
         assert_eq!(out.text.as_ref(), input);
@@ -1099,14 +1155,10 @@ mod tests {
 
     #[test]
     fn consecutive_rule_rows_each_get_isolated() {
-        // Author stacks two rules back-to-back for a thick border.
-        // Current policy isolates every decorative rule uniformly;
-        // the extra blank line between two rules is a no-op in
-        // CommonMark (both become `<hr>` regardless), so the simpler
-        // uniform behaviour is preferred over a conditional that
-        // special-cases rule-after-rule. This test documents the shape so
-        // any future change skipping the second isolation requires updating
-        // this expectation.
+        // Two consecutive rules form a thick border. Every decorative
+        // rule is isolated, including a rule after a rule; the extra
+        // blank line between two rules has no effect in CommonMark,
+        // where both become `<hr>`.
         let input = "前置き\n----------\n==========\n本文";
         let out = sanitize(input);
         assert_eq!(
@@ -1119,8 +1171,8 @@ mod tests {
     fn aozora_style_long_rule_fixture_shape() {
         // Direct analogue of the `spec/aozora/fixtures/56656/input.utf8.txt`
         // front-matter: a prose paragraph (here condensed) immediately
-        // followed by a 55-char `-` row. The promotion would otherwise
-        // turn the prose into a setext H2; the isolation pass must
+        // followed by a 55-char `-` row. Without isolation, setext
+        // promotion turns the prose into an H2; the isolation pass must
         // separate them so the paragraph reaches the parser as a
         // paragraph.
         let rule: String = "-".repeat(55);
@@ -1133,7 +1185,7 @@ mod tests {
     #[test]
     fn every_backtick_inside_vowel_span_collapses() {
         // Every vowel base + grave accent digraph has a table entry,
-        // so no backtick survives inside a `〔<vowel>`〕` span.
+        // so no backtick remains inside a `〔<vowel>`〕` span.
         for base in ['a', 'e', 'i', 'o', 'u'] {
             let input = format!("〔x{base}`y〕");
             let out = sanitize(&input);
@@ -1145,10 +1197,8 @@ mod tests {
         }
     }
 
-    // -------------------------------------------------------------
     // `sanitize_mapped` + `OffsetMap`: offset bookkeeping
-    // across the five sanitize transform steps.
-    // -------------------------------------------------------------
+    // across the four sanitize transform steps.
 
     #[test]
     fn sanitize_mapped_text_equals_sanitize() {
@@ -1202,10 +1252,10 @@ mod tests {
     fn bytes_between_accent_sites_keep_exact_source_positions() {
         // `〔Henri《ア》 Re'gnier《レ》〕`: one digraph site (`e'` → é). Every
         // byte outside that site (the ruby runs before AND after it) must
-        // translate to its own source position, not to the span start. The
-        // old whole-span edit collapsed all of them onto `〔`, which
-        // manufactured byte-identical ledger entries out of distinct
-        // constructs (the corpus-wide duplicate-entry capture failures).
+        // translate to its own source position, not to the span start:
+        // mapping all of them onto `〔` gives distinct constructs
+        // byte-identical ledger entries, which fail duplicate-entry
+        // capture across the corpus.
         let src = "〔Henri《ア》 Re'gnier《レ》〕";
         let out = sanitize_mapped(src);
         let dst = out.text.as_ref();
@@ -1253,7 +1303,7 @@ mod tests {
             .map(|(i, m)| (i, i + m.len()))
             .collect();
         assert_eq!(spans, expected);
-        // A span whose body has no digraph stays silent.
+        // A span whose body has no digraph produces no Note.
         assert!(
             sanitize("〔plain〕")
                 .diagnostics
@@ -1262,8 +1312,8 @@ mod tests {
         );
     }
 
-    /// Width-equality is not unedited-ness: lone `\r`→`\n` is a
-    /// width-equal rewrite (plan test corrected per prose property).
+    /// Equal width does not imply an unedited byte: lone `\r`→`\n` is a
+    /// width-equal rewrite.
     #[test]
     fn offset_map_is_monotone_and_content_preserving() {
         let src = "\u{feff}前〔e'te'〕中\r\n==========\n後\r尾";
@@ -1293,7 +1343,7 @@ mod tests {
             );
         }
         // Pin the traced rewrite: the `\n` produced from the lone `\r`
-        // (between 後 and 尾) IS an edit and maps to the
+        // (between 後 and 尾) is an edit and maps to the
         // lone `\r`'s exact source range (src 36..37).
         let newline = dst.rfind('\n').unwrap();
         assert!(out.maps.is_edited(newline));

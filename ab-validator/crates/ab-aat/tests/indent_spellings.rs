@@ -85,3 +85,21 @@ fn unrelated_or_conflicting_remainder_is_not_an_indent_alias() {
         assert!(aat.to_string().contains("interpretation_problem"), "{aat}");
     }
 }
+
+#[test]
+fn line_indent_spellings_preserve_their_shared_geometry() {
+    for (body, amount) in [
+        ("２字下げ", 2),
+        ("この行３字下げ", 3),
+        ("天から４字下げ", 4),
+        ("５字下がる", 5),
+    ] {
+        let source = format!("［＃{body}］本文");
+        let aat: Value =
+            serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+        let block = &aat["blocks"][0];
+        assert_eq!(block["kind"], "layout_block", "{aat}");
+        assert_eq!(block["indent"], amount, "{aat}");
+        assert_eq!(block["children"][0]["content"][0]["value"], "本文", "{aat}");
+    }
+}

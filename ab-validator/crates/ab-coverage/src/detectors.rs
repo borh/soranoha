@@ -138,8 +138,9 @@ fn build_detector_for_row(row: &Row) -> Detector {
     } else {
         // Default: count any AAT node whose kind matches the row's `aat_nodes`.
         // Generic kinds like "text" / "paragraph" are dropped because they match
-        // the structural backbone of every work and would dwarf real signal; for
-        // those rows the source-side regex is the authoritative detector.
+        // the structural nodes of every work and would outnumber the row's own
+        // occurrences; for those rows the source-side regex is the authoritative
+        // detector.
         let kinds = row
             .aat_nodes
             .iter()
@@ -221,7 +222,6 @@ fn lookup_named_detector(id: &str) -> Option<Rule> {
         "kunten_okurigana" => node(d_source_only),
 
         "heading_basic" => node(d_heading_any),
-        "heading_inline_form" => node(d_source_only),
         "heading_dogyo" => node(d_source_only),
         "heading_mado" => node(d_source_only),
 
@@ -238,6 +238,7 @@ fn lookup_named_detector(id: &str) -> Option<Rule> {
         "indentation_jisage_block" => node(d_jisage_block),
         "indentation_jisage_oneline" => node(d_source_only),
         "indentation_chitsuki" => node(d_source_only),
+        "layout_cross_line_head_alignment" => node(d_source_only),
         "indentation_jizume" => node(d_source_only),
         "indentation_burasage" => node(d_source_only),
         "layout_yokogumi" => node(d_yokogumi),
@@ -285,6 +286,9 @@ fn d_gaiji_unicode_codepoint(n: &Value) -> bool {
     if n.get("kind").and_then(Value::as_str) != Some("gaiji") {
         return false;
     }
+    if let Some(parts) = n.get("reference_parts").and_then(Value::as_array) {
+        return parts.iter().any(|part| part["kind"] == "unicode-code");
+    }
     if let Some(desc) = n.get("description").and_then(Value::as_str)
         && desc.contains("U+")
     {
@@ -299,6 +303,9 @@ fn d_gaiji_unicode_codepoint(n: &Value) -> bool {
 fn d_gaiji_with_jis_code(n: &Value) -> bool {
     if n.get("kind").and_then(Value::as_str) != Some("gaiji") {
         return false;
+    }
+    if let Some(parts) = n.get("reference_parts").and_then(Value::as_array) {
+        return parts.iter().any(|part| part["kind"] == "jis-code");
     }
     if n.get("jis_code")
         .and_then(Value::as_str)
@@ -329,7 +336,6 @@ fn d_gaiji_dakuten_katakana(n: &Value) -> bool {
 }
 
 fn d_gaiji_un_embed(n: &Value) -> bool {
-    // unresolved gaiji marker: kind=gaiji and resolved is empty/null AND no jis code.
     if n.get("kind").and_then(Value::as_str) != Some("gaiji") {
         return false;
     }
@@ -339,11 +345,22 @@ fn d_gaiji_un_embed(n: &Value) -> bool {
         Some(Value::String(s)) => s.is_empty(),
         _ => false,
     };
-    let no_jis = n
-        .get("jis_code")
-        .map(|j| j.is_null() || j.as_str().is_some_and(str::is_empty))
-        .unwrap_or(true);
-    resolved_empty && no_jis
+    let no_code = n
+        .get("reference_parts")
+        .and_then(Value::as_array)
+        .map_or_else(
+            || {
+                n.get("jis_code")
+                    .map(|j| j.is_null() || j.as_str().is_some_and(str::is_empty))
+                    .unwrap_or(true)
+            },
+            |parts| {
+                !parts
+                    .iter()
+                    .any(|part| matches!(part["kind"].as_str(), Some("jis-code" | "unicode-code")))
+            },
+        );
+    resolved_empty && no_code
 }
 
 fn d_accent_kind(node: &Value) -> bool {
@@ -352,7 +369,7 @@ fn d_accent_kind(node: &Value) -> bool {
 
 fn d_figure_insertion_declaration(n: &Value) -> bool {
     // A figure the source places without supplying it: an editorial note, not a
-    // figure node, because there is no image to carry.
+    // figure node, because there is no image to contain.
     n.get("kind").and_then(Value::as_str) == Some("editorial_note")
         && n.get("note_kind").and_then(Value::as_str) == Some("figure-insertion")
 }
@@ -553,7 +570,7 @@ mod tests {
         // Two style nodes — one boten, one shatai (italic). Without per-row
         // detectors both `decoration.boten` and `decoration.bold_italic` would
         // match every style node identically. With named detectors, each row
-        // sees only its own subset.
+        // counts only its own subset.
         let aat = json!({
             "kind": "paragraph",
             "content": [
@@ -585,6 +602,18 @@ mod tests {
         });
         assert_eq!(count_with(&aat, d_ruby_directional), 1);
         assert_eq!(count_with(&aat, d_ruby_any), 2);
+    }
+
+    #[test]
+    fn gaiji_code_detectors_use_typed_parts_instead_of_raw_reference_names() {
+        let aat = json!({"content":[
+            {"kind":"gaiji","jis_code":"37-下-11","resolved":null,"reference_parts":[{"kind":"source-location","source":"37-下-11","page":"37","column":"下","line":"11"}]},
+            {"kind":"gaiji","jis_code":"U+201E、189-8","reference_parts":[{"kind":"unicode-code","source":"U+201E","codepoint":8222},{"kind":"source-location","source":"189-8","page":"189","line":"8"}]},
+            {"kind":"gaiji","jis_code":"1-13-21","reference_parts":[{"kind":"jis-code","source":"1-13-21","plane":1,"row":13,"cell":21}]}
+        ]});
+        assert_eq!(count_with(&aat, d_gaiji_with_jis_code), 1);
+        assert_eq!(count_with(&aat, d_gaiji_unicode_codepoint), 1);
+        assert_eq!(count_with(&aat, d_gaiji_un_embed), 1);
     }
 
     #[test]
@@ -622,8 +651,7 @@ mod tests {
             "id":"r1","priority":1,"category":"c","feature_keys":[],"reference_sources":[],
             "source_examples":[],"source_patterns":[],"ir_nodes":[],"aat_nodes":["gaiji"],
             "tei_projection":"x","plaintext_projection":"x","comparison_projection":"x",
-            "validation_properties":[],"adapter_expectations":[],"status":"covered",
-            "status_reason":"x"
+            "validation_properties":[],"adapter_expectations":[]
         }"#,
         )
         .unwrap();

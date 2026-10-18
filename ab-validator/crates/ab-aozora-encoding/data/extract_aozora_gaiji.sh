@@ -8,14 +8,14 @@
 # Steps:
 #   1. download Chuki.xml (~4 MB, CC0)
 #   2. extract descriptions, source characters, and explicit Unicode codes
-#   3. perl-filter: use explicit Unicode for composed glyphs, dedupe,
-#      decode XML entities, format codepoint as hex
+#   3. perl-filter: use the explicit Unicode code the note states, fall
+#      back to the transcribed character only when the note states none,
+#      dedupe, decode XML entities, format codepoint as hex
 #   4. prepend the schema-comment header
 #
 # The committed `aozora-gaiji-chuki.tsv` is the *generated artifact*;
-# the source of truth is the upstream XML. xtask gaiji-gen reads the
-# TSV, not the XML, so consumers do not need network access at gen
-# time.
+# the source of truth is the upstream XML. build.rs reads the TSV,
+# not the XML, so a build needs no network access.
 
 set -euo pipefail
 
@@ -71,11 +71,12 @@ perl -CSD -E '
     my ($desc, $char, $unicode, $components) = split /\t/, $_, 4;
     next unless defined $desc && defined $char;
     next if $desc eq "" || $char eq "";
-    if ($components > 1) {
-      next unless defined $unicode && $unicode =~ /\A[0-9A-Fa-f]{4,6}\z/;
+    if (defined $unicode && $unicode =~ /\A[0-9A-Fa-f]{4,6}\z/) {
       my $codepoint = hex $unicode;
       next if $codepoint > 0x10FFFF || ($codepoint >= 0xD800 && $codepoint <= 0xDFFF);
       $char = chr $codepoint;
+    } elsif ($components > 1) {
+      next;
     }
     next if $desc =~ /[\x00-\x1F]/;
     # decode XML entities (apply &amp; LAST so it does not double-decode)
@@ -87,6 +88,8 @@ perl -CSD -E '
       $s =~ s/&amp;/&/g;
     }
     next unless length($char) == 1;
+    my $code = ord $char;
+    next if ($code >= 0xE000 && $code <= 0xF8FF) || $code >= 0xF0000;
     next if $seen{$desc}++;
     say "$desc\t" . sprintf("%X", ord $char);
   }
@@ -102,7 +105,8 @@ echo "→ writing $OUT"
   echo "# License: CC0 1.0 Universal (Public Domain Dedication)."
   echo "#"
   echo "# Filtering applied during extraction:"
-  echo "#  * composed glyphs use the explicit Unicode code; omit them when absent"
+  echo "#  * the explicit Unicode code the note states wins over the transcribed character"
+  echo "#  * composed glyphs without an explicit code and private-use characters are omitted"
   echo "#  * otherwise retain exactly 1 Unicode codepoint per entry"
   echo "#  * surrounding 「」 stripped from descriptions"
   echo "#  * XML entities (&lt;, &gt;, &amp;) decoded"

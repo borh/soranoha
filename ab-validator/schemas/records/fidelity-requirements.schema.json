@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abc.local/schemas/fidelity-requirements-v1.json",
+  "type": "object",
+  "required": ["requirements_version", "family"],
+  "additionalProperties": false,
+  "properties": {
+    "requirements_version": { "const": 1 },
+    "family": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Family" }
+    }
+  },
+  "$defs": {
+    "Family": {
+      "type": "object",
+      "required": [
+        "syntax_row_id",
+        "review_status",
+        "target_policy",
+        "evidence_ids",
+        "obligation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "syntax_row_id": { "type": "string", "minLength": 1 },
+        "review_status": { "enum": ["draft", "reviewed", "disputed"] },
+        "target_policy": { "enum": ["required", "not_applicable"] },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": { "type": "string" },
+        "obligation": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Obligation" }
+        }
+      }
+    },
+    "Obligation": {
+      "type": "object",
+      "required": [
+        "id",
+        "aspect",
+        "statement",
+        "required_cases",
+        "required_projections"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$" },
+        "aspect": {
+          "enum": ["semantic-role", "source-span", "target", "scope", "value"]
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "required_cases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "required_projections": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["aat", "tei"] }
+        },
+        "corpus_check": { "$ref": "#/$defs/CorpusCheck" }
+      }
+    },
+    "CorpusCheck": {
+      "type": "object",
+      "required": ["partitions", "operands", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "partitions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "operands": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "text": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "target_before_marker": { "type": "string", "minLength": 1 },
+        "marker_span": { "type": "boolean" },
+        "marker_text": { "type": "boolean" }
+      }
+    }
+  }
+}

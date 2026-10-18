@@ -1,34 +1,26 @@
-//! Invariant gate for incremental re-parse equivalence.
+//! Corpus check of incremental re-parse equivalence.
 //!
-//! Proves, over every document in `AOZORA_CORPUS_ROOT`, that the
-//! **diagnostics-only** incremental engine
-//! [`ab_aozora_facade::reparse_incremental_diagnostics_only`] — the LSP's per-keystroke
-//! hot path — splices diagnostics **byte-for-byte equal** to a from-scratch
-//! parse of the edited text. A single deterministic plain-character insertion
-//! near each document's midpoint exercises the splice fast path on global-free
-//! documents and the full-parse fallback elsewhere; the fast-path count is
-//! asserted non-zero so the gate actually drives the splice. Any edit the splice
-//! cannot prove byte-identical returns `None` and falls back to a full parse
-//! (trivially correct).
+//! For every document in `AOZORA_CORPUS_ROOT`, the diagnostics-only incremental
+//! engine [`ab_aozora_facade::reparse_incremental_diagnostics_only`], which the
+//! LSP calls on each keystroke, must splice diagnostics byte-for-byte equal to a
+//! from-scratch parse of the edited text. One deterministic plain-character
+//! insertion near each document's midpoint exercises the splice fast path on
+//! global-free documents and the full-parse fallback elsewhere; the test asserts
+//! a non-zero fast-path count. An edit the splice cannot prove byte-identical
+//! returns `None` and falls back to a full parse.
 //!
-//! Skipped when `AOZORA_CORPUS_ROOT` is unset; never hard-fails on
-//! a missing corpus (mirrors `corpus_sweep`).
+//! The test is skipped when `AOZORA_CORPUS_ROOT` is unset and does not fail on a
+//! missing corpus, as in `corpus_sweep`.
 
 use ab_aozora_encoding::decode_auto;
 use ab_aozora_facade::{
     DiagBaseRef, Diagnostic, Document, PieceSeq, reparse_incremental_diagnostics_only,
 };
 
-///the **diagnostics-only** incremental engine
-/// ([`ab_aozora_facade::reparse_incremental_diagnostics_only`]) — the LSP's per-keystroke
-/// hot path — must produce diagnostics byte-identical to a from-scratch parse of
-/// the edited text, for every corpus document whose midpoint insertion is a
-/// sanitize fixed point.
-///
 /// The harness takes each document's sanitized fixed-point buffer as the cached
-/// baseline and applies a single midpoint plain insertion. Divergences are
-/// collected and reported together rather than failing fast, and the fast-path
-/// count is asserted non-zero so the gate actually drives the engine.
+/// baseline, applies one midpoint plain insertion, and reports all divergences
+/// together. Documents whose midpoint insertion is not a sanitize fixed point
+/// are skipped.
 #[test]
 #[allow(
     clippy::too_many_lines,
@@ -55,35 +47,30 @@ fn reparse_diagnostics_only_equals_full_parse() {
             continue;
         }
 
-        // The incremental engine operates entirely in **sanitized** space (the
-        // raw↔sanitized bridge is a later wiring PR): `cached` must therefore be
-        // the parse of already-sanitized text, not the raw corpus bytes. Parsing
-        // the raw text would leave sanitize-stage diagnostics
-        // (`AccentDecompositionApplied`) in `cached` that a
-        // re-parse of the sanitized buffer never reproduces — a harness
-        // asymmetry, not a splice property. So sanitize once, then take the parse
-        // of the sanitized buffer as the cached baseline.
+        // The incremental engine operates in sanitized space, so `cached` is the
+        // parse of sanitized text, not of the raw corpus bytes. A parse of the
+        // raw text would leave sanitize-stage diagnostics
+        // (`AccentDecompositionApplied`) in `cached` that a re-parse of the
+        // sanitized buffer does not reproduce.
         let san = Document::new(text).lex().sanitized;
         if san.is_empty() {
             continue;
         }
         let cached = Document::new(san.as_str()).lex();
-        // Skip documents whose sanitized buffer is not itself a sanitize fixed
-        // point (sanitize is non-idempotent for them): the incremental contract
-        // assumes a stable sanitized baseline, and production would full-parse.
+        // The incremental contract requires a sanitized baseline that is a
+        // sanitize fixed point; for other documents production runs a full parse.
         if cached.sanitized != san {
             continue;
         }
 
-        // A plain ASCII insertion at a char boundary near the sanitized midpoint.
         let mut mid = san.len() / 2;
         while mid < san.len() && !san.is_char_boundary(mid) {
             mid += 1;
         }
         let new_san = format!("{}x{}", &san[..mid], &san[mid..]);
 
-        // Idempotence precheck: only edits that are sanitize fixed points are
-        // representative — production would full-parse a non-fixed-point edit.
+        // Production runs a full parse for an edit whose result is not a
+        // sanitize fixed point, so such edits are skipped.
         let full = Document::new(new_san.as_str()).lex();
         if full.sanitized != new_san {
             continue;
@@ -106,8 +93,8 @@ fn reparse_diagnostics_only_equals_full_parse() {
         };
         fast_path += 1;
         count += 1;
-        // The diagnostics-only splice returns the maintained `PieceSeq`; flatten
-        // it (the bridge by which this gate keeps comparing resolved surfaces).
+        // The diagnostics-only splice returns a `PieceSeq`; the comparison uses
+        // its flattened diagnostics.
         let diag_diags = diag.pieces.collect_diagnostics();
 
         // Diagnostics byte-identical to a full parse (the production contract).
@@ -137,8 +124,8 @@ fn reparse_diagnostics_only_equals_full_parse() {
     );
 }
 
-/// Diagnostics sorted by position then debug string — a canonical positional
-/// multiset ordering for comparison.
+/// Returns the debug strings of `diags` sorted by span, then by debug string, so
+/// that two diagnostic multisets compare equal regardless of order.
 fn sorted_debug(mut diags: Vec<Diagnostic>) -> Vec<String> {
     diags.sort_by(|a, b| {
         let (sa, sb) = (a.span(), b.span());

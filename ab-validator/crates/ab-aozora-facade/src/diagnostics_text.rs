@@ -2,15 +2,15 @@
 //!
 //! [`diagnostics_text`] formats a parse's diagnostics into a
 //! human-readable string using only the public [`Diagnostic`] accessors
-//! — no `miette` / terminal dependency. That keeps it compilable for
-//! every target (notably `wasm32-unknown-unknown`, where `miette`'s
-//! `fancy` graphical renderer cannot build), so the WASM / Python / FFI
-//! front doors can surface human-facing diagnostics and not just the
-//! machine [`json`](crate::json) envelope.
+//! — no `miette` / terminal dependency. It therefore compiles for
+//! every target (including `wasm32-unknown-unknown`, where `miette`'s
+//! `fancy` graphical renderer does not build), so the WASM / Python / FFI
+//! bindings can return human-readable diagnostics in addition to the
+//! [`json`](crate::json) envelope.
 //!
-//! The CLI keeps its richer `miette` graphical report for a TTY; this is
-//! the portable sibling — closest in spirit to the CLI's one-line
-//! `short` view, with the offending source slice added for context.
+//! The CLI renders a `miette` graphical report on a TTY. This format
+//! corresponds to the CLI's one-line `short` view, with the offending
+//! source slice added.
 
 use std::fmt::{self, Write as _};
 
@@ -24,10 +24,10 @@ use crate::Diagnostic;
 /// <message>` header followed by the offending source slice — joined by
 /// newlines. Returns the empty string when `diagnostics` is empty.
 ///
-/// Spans are in *sanitized* coordinates (the lexer strips the BOM, folds
+/// Spans are in sanitized coordinates (the lexer strips the BOM, folds
 /// CRLF→LF, and decomposes 〔…〕 accent digraphs, each of which shifts
 /// byte offsets), so `source` is sanitized internally before the
-/// offending slice is cut — mirroring the CLI's graphical renderer.
+/// offending slice is cut, as in the CLI's graphical renderer.
 ///
 /// # Panics
 ///
@@ -37,8 +37,8 @@ use crate::Diagnostic;
 pub fn diagnostics_text(source: &str, diagnostics: &[Diagnostic]) -> String {
     let mut out = String::new();
     // Writing into a `String` cannot fail; the fallible inner helper
-    // keeps `write!` ergonomics without a per-line discard. Mirrors the
-    // `serialize` renderer's infallible-write idiom.
+    // permits `write!` with `?` instead of discarding each line's result,
+    // as in the `serialize` renderer.
     write_report(&mut out, source, diagnostics).expect("String write is infallible");
     out
 }
@@ -78,17 +78,19 @@ mod tests {
 
     #[test]
     fn renders_code_and_offending_slice() {
-        // Nested ruby is a diagnostic-bearing construct.
-        let doc = Document::new("｜《おうめ》");
+        // The inner `《ん》` inside the outer reading is nested ruby.
+        let doc = Document::new("｜漢《か《ん》じ》");
         let tree = doc.parse();
         let diagnostics = tree.diagnostics();
-        if diagnostics.is_empty() {
-            return; // grammar may not flag this exact input; skip if so.
-        }
+        assert!(!diagnostics.is_empty(), "nested ruby yields a diagnostic");
         let text = super::diagnostics_text(doc.source(), diagnostics);
         assert!(
             text.contains("aozora::") && text.contains('@'),
             "header carries the code + span: {text}"
+        );
+        assert!(
+            text.contains("  > \""),
+            "report carries the source slice: {text}"
         );
     }
 
@@ -98,7 +100,7 @@ mod tests {
         let tree = doc.parse();
         let diagnostics = tree.diagnostics();
         let text = super::diagnostics_text(doc.source(), diagnostics);
-        // Header lines (start with a severity word) number one per diag.
+        // Each diagnostic contributes one header line, which starts with its severity.
         let headers = text.lines().filter(|l| l.contains("] @ ")).count();
         assert_eq!(
             headers,

@@ -71,3 +71,53 @@ fn quoted_target_cache_cannot_rule_out_unquoted_source_operands() {
     );
     assert!(!aat.to_string().contains("unknown-notation"));
 }
+
+#[test]
+fn horizontal_line_alias_retains_its_source_and_tcy_meaning() {
+    let source = "前!?［＃「!?」は横一列］後";
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let instruction = &aat["blocks"][0]["content"][1];
+
+    assert_eq!(instruction["kind"], "formatting_instruction", "{aat}");
+    assert_eq!(
+        instruction["operations"][0]["effect"]["attribute"]["kind"], "tcy",
+        "{aat}"
+    );
+    assert_eq!(
+        instruction["operations"][0]["selection"]["targets"][0]["byte_start"], 3,
+        "{aat}"
+    );
+    assert!(!aat.to_string().contains("unknown-notation"), "{aat}");
+    assert_eq!(Document::new(source).parse().to_source(), source);
+}
+
+#[test]
+fn no_particle_alias_retains_its_source_and_tcy_meaning() {
+    let source = "前24［＃「24」の縦中横］後";
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let instruction = &aat["blocks"][0]["content"][1];
+
+    assert_eq!(instruction["kind"], "formatting_instruction", "{aat}");
+    assert_eq!(
+        instruction["operations"][0]["effect"]["attribute"]["kind"], "tcy",
+        "{aat}"
+    );
+    assert!(!aat.to_string().contains("unknown-notation"), "{aat}");
+    assert_eq!(Document::new(source).parse().to_source(), source);
+}
+
+#[test]
+fn tcy_over_annotated_text_starts_at_its_principal_target() {
+    let source = "90［＃「90」に「ママ」の注記］［＃「90」は縦中横］";
+    let aat: Value =
+        serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+    let tcy = &aat["blocks"][0]["content"][0];
+
+    assert_eq!(tcy["kind"], "tcy", "{aat}");
+    assert_eq!(tcy["span"]["byte_start"], 0, "{aat}");
+    assert_eq!(tcy["span"]["byte_end"], source.len(), "{aat}");
+    assert_eq!(tcy["content"][0]["kind"], "annotated_text", "{aat}");
+    assert_eq!(tcy["content"][0]["content"][0]["span"]["byte_start"], 0);
+}

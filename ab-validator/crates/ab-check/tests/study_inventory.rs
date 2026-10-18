@@ -5,9 +5,9 @@ use ab_check::encoding::hex_sha256;
 /// The authoritative study-inventory identity: item id is `{work_id}-{sha12}`
 /// (sha12 = first 12 hex of sha256(indexed_path)) and the content hash is
 /// sha256(bytes). This is the scheme that produced the committed
-/// `aozorabunko-source-snapshot` corpus hash; the Python `materialize_index`
-/// smoke helper differs (id = raw work id, path = sha256(work_id))
-/// and must not be mistaken for it.
+/// `aozorabunko-source-snapshot` corpus hash. The Python `materialize_index`
+/// smoke helper uses a different scheme (id = raw work id, path =
+/// sha256(work_id)).
 #[test]
 fn inventory_identity_is_the_authoritative_work_id_sha12_scheme() {
     let temp = tempfile::tempdir().unwrap();
@@ -36,7 +36,7 @@ fn inventory_identity_is_the_authoritative_work_id_sha12_scheme() {
         inventory["items"][0]["sha256"].as_str().unwrap(),
         format!("sha256:{}", hex_sha256(b"alpha"))
     );
-    // Authoritative inventory carries no smoke marker.
+    // The authoritative inventory has no smoke marker.
     assert!(inventory.get("materializer").is_none());
 }
 

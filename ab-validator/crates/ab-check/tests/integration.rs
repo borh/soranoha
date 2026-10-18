@@ -11,12 +11,11 @@ fn aat_schema_accepts_nested_fixture_and_rejects_event_nodes() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let schema = schema_validator_for_version(1).unwrap();
     let valid: Value = serde_json::from_str(
-        &fs::read_to_string(manifest.join("../../data/fixtures/aat-valid-nested.json")).unwrap(),
+        &fs::read_to_string(manifest.join("tests/fixtures/aat-valid-nested.json")).unwrap(),
     )
     .unwrap();
     let invalid: Value = serde_json::from_str(
-        &fs::read_to_string(manifest.join("../../data/fixtures/aat-invalid-event-node.json"))
-            .unwrap(),
+        &fs::read_to_string(manifest.join("tests/fixtures/aat-invalid-event-node.json")).unwrap(),
     )
     .unwrap();
 
@@ -152,7 +151,7 @@ fn check_single_accepts_deeply_nested_aat_json() {
 fn aat_schema_documents_raw_source_marker_extensions() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let schema_doc: Value = serde_json::from_str(
-        &fs::read_to_string(manifest.join("../../data/aat-schema.json")).unwrap(),
+        &fs::read_to_string(manifest.join("../../schemas/outputs/aat-schema.json")).unwrap(),
     )
     .unwrap();
     let raw_properties = &schema_doc["$defs"]["raw"]["properties"];

@@ -6,25 +6,27 @@ assert linguistic correctness.
 
 Adapters may add `x-*` extension fields to nodes where the schema permits them.
 `x-provenance = "source-derived"` means the node was reconstructed from source
-marker text that survived in parser output, not emitted as a first-class parser
+marker text that remained in parser output, not emitted as a first-class parser
 event. Consumers must not count source-derived nodes as direct upstream parser
 faithfulness.
 
-`data/aat-schema.json` is the normative validation schema for AAT v1 document
+`schemas/outputs/aat-schema.json` is the normative validation schema for AAT v1 document
 shape. This document explains the contract semantics that schema validation
 cannot fully express, including selector behavior, result axes, span coordinate
 meaning, and projection rules.
 
 ## Versioning
 
-AAT documents use top-level `version`. Current AAT is `version = 1`.
+AAT documents use top-level `version`. Current emitted AAT is `version = 2`;
+version 1 remains available for frozen comparison inputs.
 
-Oracle case files use `aat_version` because they are not AAT documents; they
-are test data that targets an AAT contract version. `aat_version = 1` means the
-oracle expectations are written against AAT document `version = 1`.
+Oracle case files use `oracle_version` for their own schema. Each case keeps its
+source evidence separate from one or more `projection` records. An AAT projection
+states the AAT `version` its assertions address, so assertions for different AAT
+versions cannot be applied interchangeably.
 
-Schema-compatible additions to AAT v1 may add optional fields. Required field
-changes or changed node semantics require AAT v2.
+Schema-compatible additions to AAT v2 may add optional fields. Required field
+changes or changed node semantics require a new AAT version.
 
 ## Result Axes
 
@@ -40,7 +42,7 @@ upstream is incomplete.
 ## Oracle Correctness Provenance
 
 Oracle cases are independent truth-data claims, not adapter consensus. Evidence
-for oracle correctness lives in top-level `[[evidence]]` records in
+for oracle correctness is recorded in top-level `[[evidence]]` records in
 `data/aat-oracle-cases.toml`; cases reference those records through
 `evidence_ids`.
 
@@ -48,9 +50,10 @@ Review state is a succession of `[[case.review]]` values. The current review
 status is the last review entry. This preserves review history instead of
 mutating a single status field without context.
 
-`oracle_status` reports only whether adapter output matches the oracle
-assertions. It remains independent of oracle credibility. Reports carry
-`oracle_review_status` and `oracle_evidence_strength` as separate fields.
+`oracle_status` reports only whether adapter output matches the projection for
+that output's AAT version. `projection-not-registered` means the case has no
+non-retired projection for that version. Review status and linked evidence remain
+separate from the projection result.
 
 Assertion-level `evidence_ids` are optional overrides. When omitted or empty,
 the assertion inherits the case-level `evidence_ids`.
@@ -60,7 +63,7 @@ Retired oracle cases are not evaluated in reports by default.
 Evidence strength is derived from linked evidence using strongest-wins
 precedence: `unicode` evidence reports `normative`, `reference_table` reports
 `reference`, and `curator_note` reports `curated`. If more than one evidence
-kind is linked, the strongest linked kind wins.
+kind is linked, the strongest linked kind determines the reported strength.
 
 `visible_text` assertions inherit the case-level `evidence_ids`; there is no
 separate `visible_text_evidence_ids` field in this contract. If a visible-text
@@ -95,6 +98,12 @@ An AAT document is an object with these top-level fields:
 | `parse_complete` | boolean | Whether the adapter reports a complete parser-backed projection. |
 | `warnings` | array | Adapter warnings. |
 
+`meta` may contain:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `emendations` | array | Source emendations from `data/source-emendations.toml` applied to the decoded text before parsing, omitted when none applies. Each item has `id`, `transcribed` (the notation as transcribed), `emended` (the notation read instead), and `span` (the extent of `emended`). |
+
 ## Block Nodes
 
 | Kind | Required fields | Optional fields | Meaning |
@@ -119,10 +128,13 @@ inline content through `content`.
 | `ruby` | `kind`, `base`, `reading` | `base_content`, `reading_content`, `direction`, `span`, `x-*` | `base` | Ruby annotation. Nested source structure can be preserved in `base_content` and `reading_content`. |
 | `gaiji` | `kind`, `description`, `resolved`, `unresolved_reason` | `jis_code`, `span`, `x-*` | `resolved` when non-empty, otherwise empty | Aozora gaiji marker or parser-normalized gaiji. |
 | `accent` | `kind`, `code`, `name`, `resolved` | `span`, `x-*` | `resolved` when non-empty, otherwise `name` | Latin accent notation. |
+| `iteration-mark` | `kind`, `source`, `text` | `span`, `x-*` | `text` | A supplied vertical kana repeat mark. |
+| `supplied-diacritic` | `kind`, `source`, `text` | `span`, `x-*` | `text` | A supplied character resolved from source notation. |
 | `figure` | `kind`, `filename`, `alt`, `css_class` | `width`, `height`, `caption`, `span`, `x-*` | empty | Inline figure/image. |
-| `raw` | `kind`, `source` | `span`, `x-*` | adapter-defined, normally empty for oracle checks | Faithful escape hatch for unsupported parser events. |
+| `raw` | `kind`, `source` | `span`, `x-*` | adapter-defined, normally empty for oracle checks | Verbatim fallback for unsupported parser events. |
 | `style` | `kind`, `content` | `style_type`, `level`, `class_name`, `span`, `x-*` | child projection | Inline style or normalized parser scope. |
 | `font_size` | `kind`, `content` | `size_type`, `level`, `span`, `x-*` | child projection | Inline font-size scope. |
+| `jisage` | `kind`, `indent`, `content` | `span`, `x-*` | child projection | One indented line inside a heading block. |
 | `tcy` | `kind`, `content` | `span`, `x-*` | child projection | Vertical-in-horizontal text. |
 | `yokogumi` | `kind`, `content` | `span`, `x-*` | child projection | Inline horizontal composition. |
 | `keigakomi` | `kind`, `content` | `span`, `x-*` | child projection | Inline ruled enclosure. |
@@ -131,7 +143,7 @@ inline content through `content`.
 
 ### Source Marker Preservation
 
-AAT v1 has two levels of source representability:
+AAT has two levels of source representability:
 
 1. Typed representation: a source marker maps to a semantic AAT node such as
    `ruby`, `gaiji`, `figure`, `style`, `tcy`, `keigakomi`, or `warigaki`.
@@ -191,16 +203,19 @@ existing adapter output. This equivalence is limited to those fields.
 
 ## Span Coordinate System
 
-AAT v1 span objects require `line_start`, `line_end`, `byte_start`, and
+AAT span objects require `line_start`, `line_end`, `byte_start`, and
 `byte_end`.
 
-When `coordinate_system` is absent, the default AAT v1 coordinate system is
+When `coordinate_system` is absent, the default AAT coordinate system is
 `decoded_utf8`:
 
 - `byte_start` and `byte_end` are UTF-8 byte offsets into the decoded source
   string used by the adapter;
 - `line_start` and `line_end` are one-based decoded-source line numbers.
 
+The decoded source is the decoded text after the emendations declared in
+`meta.emendations`; `source_hash` remains the hash of the source bytes.
+
 If an adapter emits spans with different semantics, that adapter output is not
-conformant to this contract and must be called out in structured fidelity
+conformant to this contract and must be recorded in structured fidelity
 notes. Original encoded byte offsets must not reuse these decoded-byte fields.

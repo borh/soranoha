@@ -1,19 +1,11 @@
 {
   "mapping_id": "https://w3id.org/soranoha/mappings/aat-v2-to-parser-ir-v1/generated-probe",
-  "mapping_version": "0.52.0",
+  "mapping_version": "0.65.0",
   "mapping_schema_hash": "sha256:c75eaa2e3f4f42002e25ff6cccf725c019c98d653360ca4e648c0f96bec2958a",
   "source_aat_version": 2,
   "target_parser_ir_schema_id": "https://w3id.org/soranoha/schemas/parser-ir.schema.json",
-  "target_parser_ir_schema_hash": "sha256:1df4269238092a84c2b11c40801210da1c4c4d6a7bc625856ababdf16279d7e9",
+  "target_parser_ir_schema_hash": "sha256:b9df5bb4e66f23838875e5738f26159df912abe39958cfd49ba34c12fc65052c",
   "transform_rule_descriptions": [
-    {
-      "rule_id": "A-02",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].children[].content[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "accent mapped to emphasis; accent code/name semantics not preserved"
-    },
     {
       "rule_id": "A-03",
       "category": "AMBIGUITY",
@@ -85,14 +77,6 @@
       "parser_ir_pointer": "span",
       "action": "project",
       "description": "AAT node has no serialized source extent; parser_text_utf8 coordinates are derived from the parser text projection, and exact source provenance remains unavailable"
-    },
-    {
-      "rule_id": "A-13",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].children[].content[].content[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "Observed 76 occurrences; first_path=blocks[15].children[0].content[0].content[1].accent. accent mapped to emphasis; accent code/name semantics not preserved"
     },
     {
       "rule_id": "A-14",
@@ -229,22 +213,6 @@
       "parser_ir_pointer": "gaiji.resolved",
       "action": "project",
       "description": "Observed 28 occurrences; first_path=blocks[1].children[0].heading.content[1].gaiji.resolved. AAT resolved is string (the chosen char); parser-IR resolved is boolean (was it resolved?)"
-    },
-    {
-      "rule_id": "A-40",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].content[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "Observed 1493 occurrences; first_path=blocks[0].content[13].accent. accent mapped to emphasis; accent code/name semantics not preserved"
-    },
-    {
-      "rule_id": "A-41",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].content[].content[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "Observed 1016 occurrences; first_path=blocks[23].content[0].content[3].accent. accent mapped to emphasis; accent code/name semantics not preserved"
     },
     {
       "rule_id": "A-42",
@@ -783,14 +751,6 @@
       "description": "Observed 4 occurrences; first_path=blocks[5].content[19].warigaki.lower[0].span. AAT node has no serialized source extent; parser_text_utf8 coordinates are derived from the parser text projection, and exact source provenance remains unavailable"
     },
     {
-      "rule_id": "A-109",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].content[].warigaki.upper[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "Observed 4 occurrences; first_path=blocks[1].content[5].warigaki.upper[1].accent. accent mapped to emphasis; accent code/name semantics not preserved"
-    },
-    {
       "rule_id": "A-110",
       "category": "AMBIGUITY",
       "aat_pointer": "blocks[].content[].warigaki.upper[].gaiji.jis_code",
@@ -821,14 +781,6 @@
       "parser_ir_pointer": "emphasis",
       "action": "project",
       "description": "Observed 7 occurrences; first_path=blocks[130].content[124].warigaki.upper[1].style. style inline_container mapped to emphasis; parser-IR does not preserve nested inline container identity"
-    },
-    {
-      "rule_id": "A-114",
-      "category": "AMBIGUITY",
-      "aat_pointer": "blocks[].heading.content[].accent",
-      "parser_ir_pointer": "emphasis",
-      "action": "project",
-      "description": "Observed 33 occurrences; first_path=blocks[22].heading.content[2].accent. accent mapped to emphasis; accent code/name semantics not preserved"
     },
     {
       "rule_id": "A-115",
@@ -1007,28 +959,12 @@
       "description": "Observed 89169 occurrences; first_path=(top-level). parser-IR requires schema_id+schema_hash; AAT supplies only version=1"
     },
     {
-      "rule_id": "I-08",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].children[].content[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "used accent.code='1-09-63' as free-form style string"
-    },
-    {
       "rule_id": "I-10",
       "category": "INVENTION",
       "aat_pointer": "blocks[].children[].content[].gaiji.description",
       "parser_ir_pointer": "gaiji.raw_marker",
       "action": "invent",
       "description": "AAT has no raw source marker; used description as raw_marker"
-    },
-    {
-      "rule_id": "I-12",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].children[].content[].content[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "Observed 76 occurrences; first_path=blocks[15].children[0].content[0].content[1].accent.code. used accent.code='1-09-63' as free-form style string"
     },
     {
       "rule_id": "I-13",
@@ -1055,22 +991,6 @@
       "description": "Observed 28 occurrences; first_path=blocks[1].children[0].heading.content[1].gaiji.description. AAT has no raw source marker; used description as raw_marker"
     },
     {
-      "rule_id": "I-20",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].content[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "Observed 1493 occurrences; first_path=blocks[0].content[13].accent.code. used accent.code='1-09-58' as free-form style string"
-    },
-    {
-      "rule_id": "I-21",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].content[].content[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "Observed 1016 occurrences; first_path=blocks[23].content[0].content[3].accent.code. used accent.code='1-09-92' as free-form style string"
-    },
-    {
       "rule_id": "I-23",
       "category": "INVENTION",
       "aat_pointer": "blocks[].content[].content[].gaiji.description",
@@ -1095,14 +1015,6 @@
       "description": "Observed 91591 occurrences; first_path=blocks[0].content[149].gaiji.description. AAT has no raw source marker; used description as raw_marker"
     },
     {
-      "rule_id": "I-27",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].content[].warigaki.upper[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "Observed 4 occurrences; first_path=blocks[1].content[5].warigaki.upper[1].accent.code. used accent.code='1-09-68' as free-form style string"
-    },
-    {
       "rule_id": "I-28",
       "category": "INVENTION",
       "aat_pointer": "blocks[].content[].warigaki.upper[].gaiji.description",
@@ -1111,36 +1023,12 @@
       "description": "Observed 21 occurrences; first_path=blocks[36].content[83].warigaki.upper[1].gaiji.description. AAT has no raw source marker; used description as raw_marker"
     },
     {
-      "rule_id": "I-29",
-      "category": "INVENTION",
-      "aat_pointer": "blocks[].heading.content[].accent.code",
-      "parser_ir_pointer": "emphasis.style",
-      "action": "invent",
-      "description": "Observed 33 occurrences; first_path=blocks[22].heading.content[2].accent.code. used accent.code='1-09-81' as free-form style string"
-    },
-    {
       "rule_id": "I-31",
       "category": "INVENTION",
       "aat_pointer": "blocks[].heading.content[].gaiji.description",
       "parser_ir_pointer": "gaiji.raw_marker",
       "action": "invent",
       "description": "Observed 249 occurrences; first_path=blocks[515].heading.content[0].gaiji.description. AAT has no raw source marker; used description as raw_marker"
-    },
-    {
-      "rule_id": "L-01",
-      "category": "LOSS",
-      "aat_pointer": null,
-      "parser_ir_pointer": "gaiji.unicode",
-      "action": "drop",
-      "description": "Unresolved AAT gaiji has no Unicode text to project"
-    },
-    {
-      "rule_id": "L-02",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "accent.name='アキュートアクセント付きE小文字' has no parser-IR field"
     },
     {
       "rule_id": "L-03",
@@ -1159,52 +1047,12 @@
       "description": "style text projection kept ruby base text only; reading not represented inside emphasis.text"
     },
     {
-      "rule_id": "L-05",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].figure.css_class",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "css_class=illustration dropped; parser-IR image has no such field"
-    },
-    {
-      "rule_id": "L-08",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "unresolved_reason='unresolved' has no parser-IR field"
-    },
-    {
       "rule_id": "L-10",
       "category": "LOSS",
       "aat_pointer": "blocks[].children[].content[].ruby.reading_content",
       "parser_ir_pointer": null,
       "action": "drop",
       "description": "Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
-    },
-    {
-      "rule_id": "L-14",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 12 occurrences; first_path=blocks[7].children[0].content[0].content[1].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-15",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].content[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 76 occurrences; first_path=blocks[15].children[0].content[0].content[1].accent.name. accent.name='アキュートアクセント付きE小文字' has no parser-IR field"
-    },
-    {
-      "rule_id": "L-16",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 8 occurrences; first_path=blocks[1].children[0].content[0].content[0].content[1].accent. style text projection dropped inline kind 'accent'"
     },
     {
       "rule_id": "L-17",
@@ -2295,180 +2143,12 @@
       "description": "Observed 12 occurrences; first_path=blocks[81].children[0].content[0].warigaki.upper[0].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
     },
     {
-      "rule_id": "L-164",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].heading.content[].figure.css_class",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 4 occurrences; first_path=blocks[38].children[1].heading.content[10].figure.css_class. css_class= dropped; parser-IR image has no such field"
-    },
-    {
-      "rule_id": "L-167",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].children[].heading.content[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 20 occurrences; first_path=blocks[1].children[0].heading.content[1].gaiji.unresolved_reason. unresolved_reason='image_fallback' has no parser-IR field"
-    },
-    {
       "rule_id": "L-169",
       "category": "LOSS",
       "aat_pointer": "blocks[].children[].heading.content[].ruby.reading_content",
       "parser_ir_pointer": null,
       "action": "drop",
       "description": "Observed 21 occurrences; first_path=blocks[38].children[0].heading.content[4].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
-    },
-    {
-      "rule_id": "L-171",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 1493 occurrences; first_path=blocks[0].content[13].accent.name. accent.name='ダイエレシス付きA小文字' has no parser-IR field"
-    },
-    {
-      "rule_id": "L-172",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 253 occurrences; first_path=blocks[0].content[0].content[29].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-173",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 1016 occurrences; first_path=blocks[23].content[0].content[3].accent.name. accent.name='マクロン付きU小文字' has no parser-IR field"
-    },
-    {
-      "rule_id": "L-174",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 115 occurrences; first_path=blocks[2].content[0].content[0].content[2].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-175",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 36 occurrences; first_path=blocks[0].content[0].content[0].content[0].content[2].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-176",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 12 occurrences; first_path=blocks[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-177",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[32].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-178",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 12 occurrences; first_path=blocks[6].content[0].content[0].content[0].content[0].content[0].content[0].content[33].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-179",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 3 occurrences; first_path=blocks[196].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[4].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-180",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 14 occurrences; first_path=blocks[33].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[91].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-181",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[40].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[2].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-182",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[4].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[6].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-183",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[4].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[22].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-184",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 3 occurrences; first_path=blocks[22].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[2].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-185",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[2].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[4].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-186",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[10].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-187",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[10].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-188",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[7].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[2].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-189",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[10].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
     },
     {
       "rule_id": "L-190",
@@ -3847,22 +3527,6 @@
       "description": "Observed 690 occurrences; first_path=blocks[2].content[1].content[1].figure. style text projection dropped inline kind 'figure'"
     },
     {
-      "rule_id": "L-363",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].figure.css_class",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 1034 occurrences; first_path=blocks[3].content[0].content[1].figure.css_class. css_class= dropped; parser-IR image has no such field"
-    },
-    {
-      "rule_id": "L-366",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 428 occurrences; first_path=blocks[41].content[0].content[11].gaiji.unresolved_reason. unresolved_reason='unresolved' has no parser-IR field"
-    },
-    {
       "rule_id": "L-367",
       "category": "LOSS",
       "aat_pointer": "blocks[].content[].content[].raw",
@@ -3887,14 +3551,6 @@
       "description": "Observed 1059499 occurrences; first_path=blocks[0].content[0].content[2].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
     },
     {
-      "rule_id": "L-371",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].content[].upper[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[4].content[0].content[25].upper[1].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
       "rule_id": "L-372",
       "category": "LOSS",
       "aat_pointer": "blocks[].content[].content[].upper[].ruby.reading",
@@ -3911,22 +3567,6 @@
       "description": "Observed 6 occurrences; first_path=blocks[0].content[0].content[3].warigaki.upper[1].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
     },
     {
-      "rule_id": "L-376",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].figure.css_class",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 6513 occurrences; first_path=blocks[5].content[1].figure.css_class. css_class=illustration dropped; parser-IR image has no such field"
-    },
-    {
-      "rule_id": "L-379",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 20140 occurrences; first_path=blocks[5].content[3].gaiji.unresolved_reason. unresolved_reason='unresolved' has no parser-IR field"
-    },
-    {
       "rule_id": "L-381",
       "category": "LOSS",
       "aat_pointer": "blocks[].content[].ruby.reading_content",
@@ -3935,84 +3575,12 @@
       "description": "Observed 1378390 occurrences; first_path=blocks[1].content[1].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
     },
     {
-      "rule_id": "L-382",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].warigaki.upper[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 4 occurrences; first_path=blocks[1].content[5].warigaki.upper[1].accent.name. accent.name='サーカムフレックスアクセント付きI小文字' has no parser-IR field"
-    },
-    {
-      "rule_id": "L-383",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].content[].warigaki.upper[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[40].content[45].warigaki.upper[1].gaiji.unresolved_reason. unresolved_reason='unresolved' has no parser-IR field"
-    },
-    {
       "rule_id": "L-385",
       "category": "LOSS",
       "aat_pointer": "blocks[].content[].warigaki.upper[].ruby.reading_content",
       "parser_ir_pointer": null,
       "action": "drop",
       "description": "Observed 7 occurrences; first_path=blocks[81].content[1].warigaki.upper[1].ruby.reading_content. Historical reading_content observation; current conversion retains text and gaiji references in reading_children wherever the containing ruby is emitted, while nested formatting is flattened"
-    },
-    {
-      "rule_id": "L-386",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].accent.name",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 33 occurrences; first_path=blocks[22].heading.content[2].accent.name. accent.name='ダイエレシス付きU小文字' has no parser-IR field"
-    },
-    {
-      "rule_id": "L-387",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 203 occurrences; first_path=blocks[547].heading.content[0].content[39].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-388",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[6].heading.content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-389",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[3].heading.content[0].content[0].content[0].content[7].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-390",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[26].heading.content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-391",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 2 occurrences; first_path=blocks[12].heading.content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[3].accent. style text projection dropped inline kind 'accent'"
-    },
-    {
-      "rule_id": "L-392",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].content[].accent",
-      "parser_ir_pointer": "(emphasis.text)",
-      "action": "drop",
-      "description": "Observed 1 occurrence; first_path=blocks[12].heading.content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[0].content[5].accent. style text projection dropped inline kind 'accent'"
     },
     {
       "rule_id": "L-393",
@@ -4527,22 +4095,6 @@
       "description": "Observed 1 occurrence; first_path=blocks[27].heading.content[0].content[139].upper[1].ruby.reading. style text projection kept ruby base text only; reading not represented inside emphasis.text"
     },
     {
-      "rule_id": "L-458",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].figure.css_class",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 32 occurrences; first_path=blocks[3].heading.content[149].figure.css_class. css_class= dropped; parser-IR image has no such field"
-    },
-    {
-      "rule_id": "L-461",
-      "category": "LOSS",
-      "aat_pointer": "blocks[].heading.content[].gaiji.unresolved_reason",
-      "parser_ir_pointer": null,
-      "action": "drop",
-      "description": "Observed 13 occurrences; first_path=blocks[515].heading.content[0].gaiji.unresolved_reason. unresolved_reason='image_fallback' has no parser-IR field"
-    },
-    {
       "rule_id": "L-463",
       "category": "LOSS",
       "aat_pointer": "blocks[].heading.content[].ruby.reading_content",
@@ -4573,14 +4125,6 @@
       "parser_ir_pointer": null,
       "action": "flatten",
       "description": "block container of kind 'heading' has no parser-IR node; boundary + span + style lost, only inlines emitted"
-    },
-    {
-      "rule_id": "S-07",
-      "category": "STRUCTURAL",
-      "aat_pointer": "blocks[].heading",
-      "parser_ir_pointer": null,
-      "action": "flatten",
-      "description": "Observed 87024 occurrences; first_path=blocks[1].heading. block container of kind 'heading' has no parser-IR node; boundary + span + style lost, only inlines emitted"
     },
     {
       "rule_id": "U-01",

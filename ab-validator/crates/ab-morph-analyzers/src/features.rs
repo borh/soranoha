@@ -62,8 +62,8 @@ const VAPORETTO_UNIDIC_KEYS: &[&str] = &[
     "lex_type",
 ];
 
-// Interned key names shared across tokens: cloning an Arc<str> is a refcount
-// bump, while `&'static str -> Arc<str>` allocates per token.
+// Interned key names shared across tokens: cloning an Arc<str> increments a
+// reference count, while `&'static str -> Arc<str>` allocates per token.
 static VIBRATO_UNIDIC_KEY_ARCS: LazyLock<Vec<FeatureKey>> = LazyLock::new(|| {
     VIBRATO_UNIDIC_KEYS
         .iter()

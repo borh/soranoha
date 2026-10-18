@@ -1,5 +1,5 @@
-//! Gaiji (外字) resolution — mapping `※［＃…、mencode］` references
-//! to real Unicode characters.
+//! Gaiji (外字) resolution: mapping `※［＃…、mencode］` references
+//! to Unicode characters.
 //!
 //! Two incoming shapes per the Aozora annotation manual:
 //!
@@ -10,49 +10,55 @@
 //!
 //! The lexer's classify-stage recogniser (`aozora-pipeline::lexer::classify::recognize_gaiji`)
 //! captures `description` and `mencode` verbatim and leaves `ucs = None`;
-//! this module turns that reference into a concrete [`Resolved`] by
-//! consulting two `phf::Map`s compiled into the binary
-//! (one for the single-codepoint majority and one for the 25
-//! combining-sequence cells) and, for `U+XXXX` shaped mencodes,
-//! parsing the hex digits directly.
+//! this module resolves that reference to a [`Resolved`] by looking it up
+//! in two `phf::Map`s compiled into the binary (one for the
+//! single-codepoint cells and one for the 25 combining-sequence cells)
+//! and, for `U+XXXX` mencodes, by parsing the hex digits.
 //!
-//! ## Why a `Resolved` enum
+//! ## `Resolved` variants
 //!
 //! 25 cells in JIS X 0213:2004 plane 1 (Ainu か゚ family, IPA tone marks,
-//! a handful of accented Latin) decode to a *combining sequence* — two
-//! Unicode scalars that must travel together. A single `char` cannot
-//! carry them, so the resolved value is either a [`char`] (the
-//! ~99.4% common path) or a `&'static str` borrowed from the
-//! generated combo table. Both variants are `Copy`, so embedding
-//! `Option<Resolved>` in the parser's `Gaiji` payload does not
-//! perturb its `Copy`-able tree.
+//! some accented Latin letters) decode to a *combining sequence*: two
+//! Unicode scalars that must be emitted together. A single `char` cannot
+//! hold them, so the resolved value is either a [`char`] (~99.4% of
+//! cells) or a `&'static str` borrowed from the generated combo table.
+//! Both variants are `Copy`, so the parser's `Gaiji` payload, which
+//! embeds `Option<Resolved>`, and the tree containing it remain `Copy`.
 //!
 //! ## Lookup order
 //!
-//! 1. **`existing`** — the caller-provided codepoint (e.g. extracted
-//!    by an earlier escape recogniser); short-circuit identity.
-//! 2. **Combo table** — checked first for `mencode` because it is the
-//!    only way to honour a 2-codepoint cell.
-//! 3. **Single-char table** — the bulk path; one perfect-hash probe
-//!    in `.rodata`.
-//! 4. **`U+XXXX` clause** — `U+` followed by 1–6 hex digits. Parsed
-//!    as a hex integer, validated via [`char::from_u32`].
-//! 5. **Description fallback** — small secondary table keyed by the
-//!    literal description text (well-known shapes like 〓, 〻).
-//! 6. **None** — unresolved. Renderer falls back to the raw
-//!    `description` bytes.
+//! 1. **`existing`**: the caller-provided codepoint (e.g. extracted
+//!    by an earlier escape recogniser), returned unchanged.
+//! 2. **Combo table**: checked before the single-char table because it
+//!    is the only table that maps a cell to two codepoints.
+//! 3. **Single-char table**: one perfect-hash lookup in `.rodata`.
+//! 4. **`U+XXXX` clause**: `U+` followed by 1–6 hex digits, parsed
+//!    as a hex integer and validated via [`char::from_u32`].
 //!
-//! ## Why two PHF maps rather than one enum-valued map
+//!    Steps 2 to 4 apply to each reference clause of `mencode` and to the
+//!    trailing reference clauses of `description`; two clauses that
+//!    resolve to different values make the result `None`.
+//! 5. **Description table**: keyed by the literal description text
+//!    (外字注記辞書 entries and placeholders such as 〓, 〻).
+//! 6. **Roman numeral**: a bare `ローマ数字N` description, composed from
+//!    the U+2160 / U+2170 blocks.
+//! 7. **Single-character description**: a description that is one
+//!    character resolves to that character.
+//! 8. **None**: unresolved. The renderer outputs the raw `description`.
+//!
+//! ## Two PHF maps
 //!
 //! The single-char map includes both JIS X 0208 cells and JIS X 0213 additions.
 //! The combo map has 25 entries.
-//! Storing the common path as `phf::Map<&str, char>` keeps each value
-//! at 4 bytes (vs 16-byte `&str`) and the cache footprint of the hot
-//! lookup path tight. The combo map is consulted second; misses
-//! there cost a single probe.
+//! Storing the single-char map as `phf::Map<&str, char>` keeps each value
+//! at 4 bytes (a `&str` is 16 bytes), which keeps the cache footprint of
+//! the common lookup small. The combo map is consulted first; a miss
+//! there costs a single probe.
 
 use core::fmt;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 use crate::jisx0213_table::{
     DESCRIPTION_TO_CHAR, JISX0213_MENCODE_TO_CHAR, JISX0213_MENCODE_TO_STR, ROMAN_NUMERAL_LOWER,
@@ -62,8 +68,8 @@ use crate::jisx0213_table::{
 /// Resolution outcome — either a single Unicode scalar or a static
 /// string covering a combining sequence.
 ///
-/// `Copy` so it can sit inside `Gaiji` without breaking the parser
-/// tree's `Copy` chain.
+/// Implements `Copy` so that `Gaiji`, which contains it, and the parser
+/// tree remain `Copy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Resolved {
     /// Common path: the mencode mapped to a single Unicode scalar
@@ -76,9 +82,52 @@ pub enum Resolved {
     Multi(&'static str),
 }
 
+/// Plane, row, and cell of a single Unicode scalar in JIS X 0213.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JisCell {
+    /// JIS X 0213 plane (1 or 2).
+    pub plane: u8,
+    /// Ku/row number (1 through 94).
+    pub row: u8,
+    /// Ten/cell number (1 through 94).
+    pub cell: u8,
+}
+
+static CHAR_TO_JIS_CELL: LazyLock<BTreeMap<char, JisCell>> = LazyLock::new(|| {
+    JISX0213_MENCODE_TO_CHAR
+        .entries()
+        .filter_map(|(mencode, character)| {
+            let coordinates = mencode
+                .split_once("水準")?
+                .1
+                .split('-')
+                .map(str::parse::<u8>)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()?;
+            let [plane, row, cell] = coordinates.as_slice() else {
+                return None;
+            };
+            Some((
+                *character,
+                JisCell {
+                    plane: *plane,
+                    row: *row,
+                    cell: *cell,
+                },
+            ))
+        })
+        .collect()
+});
+
+/// Return the JIS X 0213 cell for a single Unicode scalar.
+#[must_use]
+pub fn jis_cell(character: char) -> Option<JisCell> {
+    CHAR_TO_JIS_CELL.get(&character).copied()
+}
+
 impl Resolved {
-    /// Convenience: write the resolved char(s) into any [`fmt::Write`].
-    /// Renderer / hover / inlay-hint paths all take this shape.
+    /// Write the resolved character or characters into a [`fmt::Write`].
+    /// The renderer, hover and inlay-hint paths call this.
     ///
     /// # Errors
     /// Propagates the writer's own errors verbatim.
@@ -113,9 +162,9 @@ impl Resolved {
 /// Pure-function lookup used by `aozora-pipeline`'s classify stage
 /// to populate the gaiji node's `ucs` field at construction time.
 ///
-/// `existing` is the short-circuit for callers that already extracted
-/// a codepoint from the source. Pass `None` to fall through to the
-/// table layers.
+/// When `existing` is `Some`, it is returned without a table lookup;
+/// callers that already extracted a codepoint from the source pass it
+/// there. Pass `None` to consult the tables.
 #[must_use]
 pub fn lookup(
     existing: Option<char>,
@@ -149,24 +198,23 @@ pub fn lookup(
     if let Some(&ch) = DESCRIPTION_TO_CHAR.get(description) {
         return Some(Resolved::Char(ch));
     }
-    // Bare `ローマ数字N` composes from the U+2160 block — the
-    // N≥13 forms have no single JIS cell, so the dictionary above misses.
+    // Bare `ローマ数字N` is composed from the U+2160 block: the N≥13
+    // forms have no single JIS cell and no entry in the description table.
     if let Some(s) = roman_numeral_glyph(description) {
         return Some(Resolved::Multi(s));
     }
-    // Smart fallback: a description that is *itself* a single
-    // character resolves to that character. Common in real corpora
-    // when the author CAN type the kanji (e.g. on a modern IME) but
-    // wants the reader to see a `※[#…]` annotation pointing at the
-    // JIS source. Mencode/dictionary tiers above already short-
-    // circuited any case where the table had a more specific answer,
-    // so this only fires when description is a one-glyph payload
-    // and nothing else matched.
+    // A description that is itself a single character resolves to that
+    // character. The corpora contain this form where the transcriber could
+    // type the kanji (e.g. on a modern IME) but wrote a `※[#…]` annotation
+    // referring to the JIS source. The mencode and description-table
+    // lookups above return first whenever a table has an entry, so this
+    // branch applies only to a one-character description with no other
+    // match.
     //
-    // Counts grapheme clusters by Unicode scalars: a base-plus-
-    // combining sequence (e.g. アクセント分解) returns >1 char and
-    // falls through to the final `None`. Surrogate halves can't
-    // appear in `&str` so single-`char` is unambiguous here.
+    // The count is of Unicode scalars, not grapheme clusters: a
+    // base-plus-combining sequence (e.g. アクセント分解) has more than one
+    // char and reaches the final `None`. `&str` cannot contain surrogate
+    // halves, so a single `char` is unambiguous.
     let mut chars = description.chars();
     if let Some(only) = chars.next()
         && chars.next().is_none()
@@ -179,10 +227,10 @@ pub fn lookup(
 /// The characters a marker body uses to separate a description from its
 /// men-ku-ten reference.
 ///
-/// 、 is the form the archive writes almost everywhere. `002587_000372` writes
-/// the halfwidth ､ in one marker, which is the same punctuation mark in a
-/// different width and separates the same two things, so it is read as the
-/// same boundary rather than as description text.
+/// The archive uses 、 in almost every marker. One marker in `002587_000372`
+/// uses the halfwidth ､, the same punctuation mark at a different width in
+/// the same position, so it is read as the same boundary rather than as
+/// description text.
 const CLAUSE_SEPARATORS: [char; 2] = ['、', '､'];
 
 /// Split gaiji reference clauses without splitting commas inside quoted descriptions.
@@ -206,12 +254,12 @@ pub fn reference_clauses(text: &str) -> impl Iterator<Item = &str> {
 /// A `第N水準` token with any spacing between the level and its men-ku-ten
 /// coordinates removed.
 ///
-/// `060590_001938` writes `第4水準 2-13-28` where every table key and every
-/// other work writes `第4水準2-13-28`. The clause is already delimited by
-/// `、`, so a space inside it separates nothing and dropping it loses no
-/// distinction. Only the source-facing shape changes: the token is still
-/// echoed verbatim on serialization, because it stays `Unresolved` rather
-/// than becoming a structured `MenKuTen` whose `Display` would rewrite it.
+/// `060590_001938` contains `第4水準 2-13-28`; every table key and every
+/// other work has `第4水準2-13-28`. The clause is delimited by `、`, so
+/// removing a space inside it merges no distinct keys. The removal applies
+/// only to the lookup key: serialization reproduces the source token
+/// unchanged, because the token remains `Unresolved` rather than a
+/// structured `MenKuTen`, whose `Display` would omit the space.
 fn without_level_spacing(token: &str) -> Cow<'_, str> {
     let Some(after) = token.strip_prefix('第') else {
         return Cow::Borrowed(token);
@@ -226,6 +274,15 @@ fn without_level_spacing(token: &str) -> Cow<'_, str> {
     } else {
         Cow::Owned(format!("第{level}{coordinates}"))
     }
+}
+
+fn normalized_level_prefix(token: &str) -> Cow<'_, str> {
+    for (source, level) in [("第三水準", '3'), ("第四水準", '4')] {
+        if let Some(coordinates) = token.strip_prefix(source) {
+            return Cow::Owned(format!("第{level}水準{coordinates}"));
+        }
+    }
+    Cow::Borrowed(token)
 }
 
 fn resolve_reference(clause: &str) -> Option<Resolved> {
@@ -249,15 +306,16 @@ fn resolve_reference(clause: &str) -> Option<Resolved> {
     } else {
         Cow::Borrowed(clause)
     };
-    let prefixed = normalized
+    let normalized_level = normalized_level_prefix(&normalized);
+    let prefixed = normalized_level
         .strip_prefix("1-")
-        .map(|_| format!("第3水準{normalized}"))
+        .map(|_| format!("第3水準{normalized_level}"))
         .or_else(|| {
-            normalized
+            normalized_level
                 .strip_prefix("2-")
-                .map(|_| format!("第4水準{normalized}"))
+                .map(|_| format!("第4水準{normalized_level}"))
         });
-    let key = without_level_spacing(prefixed.as_deref().unwrap_or(&normalized));
+    let key = without_level_spacing(prefixed.as_deref().unwrap_or(&normalized_level));
     let key = key.as_ref();
     JISX0213_MENCODE_TO_STR
         .get(key)
@@ -308,13 +366,14 @@ fn roman_numeral_glyph(description: &str) -> Option<&'static str> {
 /// Parse a `U+XXXX` style mencode — 1 to 6 hex digits after the
 /// literal `U+` prefix — and validate the result via
 /// [`char::from_u32`]. Returns `None` for surrogates, non-characters,
-/// and out-of-range integers, rather than panicking, so malformed
-/// input falls cleanly through to the description fallback.
+/// and out-of-range integers, rather than panicking, so that [`lookup`]
+/// continues to the description fallback on malformed input.
 #[must_use]
 fn parse_u_plus(mencode: &str) -> Option<char> {
     let hex = mencode.strip_prefix("U+")?;
-    // Reject empty / oversized; `u32::from_str_radix` would accept
-    // 10-digit inputs but those can't fit a Unicode scalar.
+    // An empty or longer-than-six-digit value is rejected:
+    // `u32::from_str_radix` accepts 10-digit inputs, which cannot be a
+    // Unicode scalar.
     if hex.is_empty() || hex.len() > 6 {
         return None;
     }
@@ -324,14 +383,14 @@ fn parse_u_plus(mencode: &str) -> Option<char> {
 
 // Gaiji descriptions (the text inside `「…」`) that resolve to a
 // canonical character without depending on the mencode tail. Sourced
-// from `crates/aozora-encoding/data/aozora-gaiji-chuki.tsv` (the
-// official 8th-edition 外字注記辞書, ~8 800 entries) plus
+// from `ab-validator/crates/ab-aozora-encoding/data/aozora-gaiji-chuki.tsv`
+// (the official 8th-edition 外字注記辞書) plus
 // `aozora-gaiji-special.tsv` (hand-curated 〓 / 〻 placeholders).
-// Generated by `xtask gaiji-gen` and exported from
-// `crate::jisx0213_table::DESCRIPTION_TO_CHAR` (alias-imported at
-// the top of this module).
+// `build.rs` generates the table as
+// `crate::jisx0213_table::DESCRIPTION_TO_CHAR` (imported at the top of
+// this module).
 
-/// Pretty-printer for tests and diagnostics. Returns
+/// Entry counts of the compiled tables, for tests and diagnostics:
 /// `(single_char_count, combo_count, description_count)`.
 #[must_use]
 pub fn table_sizes() -> (usize, usize, usize) {
@@ -342,17 +401,13 @@ pub fn table_sizes() -> (usize, usize, usize) {
     )
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Full-document / cursor-local gaiji scan + resolution
-// ────────────────────────────────────────────────────────────────────
-//
-// Single authority for pulling `※［＃…］` references out of raw source
-// and resolving each to its glyph. Editor surfaces (`aozora-wasm`
-// inlay hints / cursor hover) and batch callers (`aozora-py`
-// `gaiji_resolutions`) both drive this; the `ab_aozora_facade::json` projection
-// only serialises the [`GaijiResolution`] values produced here. Kept
-// next to [`lookup`] so the scan and the table it consults share one
-// home.
+// The functions below are the only code that extracts `※［＃…］`
+// references from raw source, for the full document or around a cursor,
+// and resolves each to its glyph. Editor surfaces (`aozora-wasm` inlay
+// hints and cursor hover) and batch callers (`aozora-py`
+// `gaiji_resolutions`) call them; the `ab_aozora_facade::json` projection
+// only serialises the [`GaijiResolution`] values produced here. They are
+// in the same module as [`lookup`], whose tables the scan consults.
 
 /// Opening delimiter of a *refmark* gaiji reference (`※［＃`).
 pub const GAIJI_OPEN: &str = "※［＃";
@@ -360,7 +415,7 @@ pub const GAIJI_OPEN: &str = "※［＃";
 ///
 /// Shared by the refmark form (`※` + this) and the standalone
 /// external-character form, which carries no `※`. The standalone form
-/// needs the [`recognize_gaiji_body`] gate to tell it apart from a plain
+/// needs the [`recognize_gaiji_body`] test to distinguish it from a plain
 /// directive (`［＃改ページ］`).
 pub const BRACKET_HASH: &str = "［＃";
 /// The refmark prefix (`※`) that distinguishes a refmark gaiji from the
@@ -369,8 +424,8 @@ pub const GAIJI_REFMARK: &str = "※";
 /// Closing delimiter of a gaiji reference (`］`).
 pub const GAIJI_CLOSE: &str = "］";
 /// Window half-width (bytes) for the cursor-local [`find_span`] scan. A
-/// real `※［＃…］` span is at most a few hundred bytes; capping the
-/// search makes per-cursor resolution O(window) rather than O(doc).
+/// `※［＃…］` span in the corpus is at most a few hundred bytes; the cap
+/// makes per-cursor resolution O(window) rather than O(doc).
 pub const MAX_GAIJI_SPAN_LEN: usize = 512;
 
 /// One resolved gaiji reference located in source.
@@ -394,9 +449,9 @@ pub struct GaijiResolution {
     pub resolved: Option<String>,
 }
 
-/// Split a gaiji body into `(description, mencode?)` — the single
-/// authority shared by the parser's recogniser, the LSP resolution
-/// view, and [`resolve_at`] (the `gaiji()` wire projection).
+/// Split a gaiji body into `(description, mencode?)`. The parser's
+/// recogniser, the LSP resolution view, and [`resolve_at`] (the `gaiji()`
+/// wire projection) all use this split.
 ///
 /// Two body shapes occur (Aozora annotation manual + corpus §6):
 ///
@@ -406,13 +461,13 @@ pub struct GaijiResolution {
 ///   re-adds it).
 /// * **Composed / bare** — everything else: the composed-glyph / 正字 /
 ///   屋号 forms (`「X」の「Y」に代えて「Z」、mencode`) and the quote-less
-///   `二の字点、1-2-23`. The body is split on `、` and walked **from the
-///   right**: the maximal trailing run of mencode-shaped tokens
+///   `二の字点、1-2-23`. The body is split on `、` and scanned from the
+///   right: the maximal trailing run of mencode-shaped tokens
 ///   ([`is_mencode_shaped`] / [`is_page_line_shaped`]) is the `mencode`;
 ///   everything before it is the `description`, kept verbatim (internal
-///   `「」` and `、` preserved). Scanning right-to-left keeps a `、` that
-///   belongs to the description (`…面から一、二画目をとったもの`) out of
-///   the split — the bug a naive first-`、` split hits on composed forms.
+///   `「」` and `、` preserved). The right-to-left scan does not split at a
+///   `、` that belongs to the description (`…面から一、二画目をとったもの`),
+///   which a split at the first `、` would do on composed forms.
 ///
 /// Returns borrowed slices of `body`. A body with no trailing
 /// mencode-shaped run (or none before it) yields the whole trimmed body
@@ -442,9 +497,9 @@ pub fn parse_gaiji_body(body: &str) -> GaijiBody<'_> {
         let tail = rest[close + '」'.len_utf8()..].trim();
         // A simple quoted gaiji has an empty tail, a `、mencode` tail, or
         // (shape 2) a mencode-shaped tail fused directly after `」` with no
-        // separating `、` (`「金＋夫」第3水準1-93-4`). The bare tail is gated on
-        // it actually being a mencode, so a non-mencode tail (e.g. a `に傍点`
-        // forward directive) falls through to the composed scan below.
+        // separating `、` (`「金＋夫」第3水準1-93-4`). The bare tail is accepted
+        // only when it is mencode-shaped, so a non-mencode tail (e.g. a `に傍点`
+        // forward directive) reaches the composed scan below.
         let bare_mencode_tail =
             !tail.is_empty() && is_mencode_shaped(mencode_resolution_token(tail));
         if !desc.is_empty()
@@ -494,34 +549,34 @@ pub fn parse_gaiji_body(body: &str) -> GaijiBody<'_> {
     while run_start > 0 && shaped(tokens[run_start - 1]) {
         run_start -= 1;
     }
-    // FP guard: a near-miss-only page-line token (one the canonical form
-    // rejects) is admitted only when the run is anchored by a real mencode
-    // token (第N水準 / U+ / bare N-N-N). This is what keeps a proofreader /
-    // 段組 directive tail (`、58-下15`) from being promoted to a gaiji, while
-    // the canonical description-anchored forms (`小書き片仮名ン、500-下-19`)
-    // keep resolving without a men-ku-ten.
+    // False-positive guard: a near-miss-only page-line token (one the
+    // canonical form rejects) is admitted only when the run also contains
+    // a mencode token (第N水準 / U+ / bare N-N-N). This condition excludes
+    // a proofreader / 段組 directive tail (`、58-下15`) from gaiji
+    // recognition, while the canonical description-anchored forms
+    // (`小書き片仮名ン、500-下-19`) resolve without a men-ku-ten.
     let run = &tokens[run_start..];
     // A locator the canonical page-line grammar rejects: a fused 上/中/下 or
-    // poetry form, or a page-segment-line triple whose middle names a column
-    // or a region. None of them resolves a character on its own.
+    // poetry form, or a page-segment-line triple whose middle segment is a
+    // column or a region. None of them resolves a character on its own.
     let uses_unresolvable_locator = run.iter().any(|t| {
         (is_near_miss_page_line_shaped(t) || is_page_segment_line_locator(t))
             && !is_page_line_shaped(t)
     });
     let anchored = run.iter().any(|t| is_mencode_shaped(t));
-    // A locator that only names a place in the 底本 resolves nothing on its
-    // own, so the description in front of it has to name the glyph. This is
-    // the whole discriminator between a gaiji and a proofreader's note ending
-    // in the same page reference.
+    // A locator that only identifies a place in the 底本 resolves no
+    // character, so the description before it must identify the glyph.
+    // This condition alone distinguishes a gaiji from a proofreader's note
+    // ending in the same page reference.
     let described_glyph_locator = run_start > 0
         && run_start < tokens.len()
         && run.iter().all(|t| is_page_segment_line_locator(t))
         && names_a_known_glyph(body[..commas[run_start - 1].0].trim());
-    // No separator-delimited run at all. Before giving up, the fused form:
-    // a men-ku-ten written directly onto the description's closing 」 with
-    // nothing between them. The simple quoted branch above already reads that
-    // shape; a description with nested 「」 never reaches it, which is the
-    // only reason 004643_000284 was missed.
+    // With no separator-delimited run, check for the fused form: a
+    // men-ku-ten written directly after the description's closing 」. The
+    // simple quoted branch above accepts that shape only for a description
+    // without nested 「」; this branch covers the nested case
+    // (`004643_000284`).
     if run_start == tokens.len()
         && let Some(end) = fused_mencode_boundary(body)
     {
@@ -552,11 +607,11 @@ pub fn parse_gaiji_body(body: &str) -> GaijiBody<'_> {
 /// Byte offset just past the description's outermost closing 」, when what
 /// follows it is a men-ku-ten and nothing else.
 ///
-/// `004643_000284` writes `「…「炎」」第4水準2-84-80` once and the same glyph
-/// with a separating 、 three times in the same file, so the missing separator
-/// is a slip rather than a second house form. Gated on the tail being
-/// mencode-shaped, which keeps a directive that merely follows a quote (`」に
-/// 傍点`) out.
+/// `004643_000284` contains `「…「炎」」第4水準2-84-80` once and the same
+/// glyph with a separating 、 three times, so the missing separator is a
+/// transcription error rather than a second convention. The tail must be
+/// mencode-shaped, which excludes a directive that follows a quote
+/// (`」に傍点`).
 fn fused_mencode_boundary(body: &str) -> Option<usize> {
     let mut depth = 0_u32;
     let mut outermost_close = None;
@@ -592,20 +647,28 @@ fn is_substitution_description(description: &str) -> bool {
         let (content, rest) = input.strip_prefix('「')?.split_once('」')?;
         (!content.is_empty() && !content.contains(['「', '［', '］'])).then_some(rest)
     }
-    quoted(description)
+    let replacement = quoted(description)
         .and_then(|rest| rest.strip_prefix("の"))
         .and_then(quoted)
         .and_then(|rest| rest.strip_prefix("に代えて"))
         .and_then(quoted)
-        .is_some_and(str::is_empty)
+        .is_some_and(str::is_empty);
+    let component_pair = description
+        .strip_prefix("偏が")
+        .and_then(quoted)
+        .and_then(|rest| rest.strip_prefix("で旁が"))
+        .and_then(quoted)
+        .is_some_and(str::is_empty);
+    replacement || component_pair
 }
 
-/// Whether a description names a glyph on its own, without a character code
-/// or a resolvable page reference to stand behind it.
+/// Whether a description identifies a glyph without a character code or a
+/// resolvable page reference.
 ///
-/// This is what separates a gaiji from a proofreader's remark when both end in
-/// the same page reference: `小書き片仮名ヱ、28-上段-1` names a character and
-/// `底本ルビは「もら」と誤記、175-上段-4` states something about the 底本.
+/// This test distinguishes a gaiji from a proofreader's remark when both end
+/// in the same page reference: `小書き片仮名ヱ、28-上段-1` identifies a
+/// character and `底本ルビは「もら」と誤記、175-上段-4` is a statement about
+/// the 底本.
 fn names_a_known_glyph(description: &str) -> bool {
     DESCRIPTION_TO_CHAR.contains_key(description)
         || roman_numeral_glyph(description).is_some()
@@ -613,12 +676,12 @@ fn names_a_known_glyph(description: &str) -> bool {
 }
 
 /// A `page-segment-line` reference into the 底本, where the middle segment
-/// names something other than a column number: 本文, 左, 右, a kanji column,
+/// is something other than a column number: 本文, 左, 右, a kanji column,
 /// a 段 register. The page may be a `コマ` frame of a scanned edition.
 ///
-/// Shape alone does not make one of these a gaiji reference: the same triple
-/// is how a proofreader's note points at the line it is about. Admission is
-/// decided by the description in front of it, in [`names_a_known_glyph`].
+/// Shape alone does not make one of these a gaiji reference: a proofreader's
+/// note uses the same triple to refer to its line.
+/// [`names_a_known_glyph`] decides admission from the description before it.
 fn is_page_segment_line_locator(value: &str) -> bool {
     let mut parts = value.split('-');
     matches!((parts.next(), parts.next(), parts.next(), parts.next()),
@@ -629,7 +692,7 @@ fn is_page_segment_line_locator(value: &str) -> bool {
 }
 
 /// Whether a gaiji `description` can be kept (it both serializes and
-/// round-trips); otherwise the bracket falls through to a plain directive.
+/// round-trips); otherwise the bracket is read as a plain directive.
 ///
 /// Rejects:
 ///   - an incomplete nested glyph reference, or a nested annotation without
@@ -637,17 +700,13 @@ fn is_page_segment_line_locator(value: &str) -> bool {
 ///   - a description carrying structural `「…」` quotes without a trailing
 ///     `、mencode` anchor or a complete component-substitution statement
 ///     (these distinguish glyph descriptions from text quotations). Anchored forms are
-///     kept VERBATIM — including editor quote typos with an orphan 「 or 」
+///     kept verbatim, including editor quote typos with an orphan 「 or 」
 ///     (`くさかんむり／（月＋曷）」、第3水準…`) — so serialization reproduces
 ///     the source bytes and the reference stays resolvable.
 #[must_use]
 pub fn gaiji_description_serializable(description: &str, has_mencode: bool) -> bool {
-    for (start, _) in description.match_indices(BRACKET_HASH) {
-        if !description[..start].ends_with(GAIJI_REFMARK)
-            || gaiji_marker_end(description, start).is_none()
-        {
-            return false;
-        }
+    if !nested_references_complete(description) {
+        return false;
     }
     if description.contains(['「', '」']) {
         return has_mencode || is_substitution_description(description);
@@ -655,11 +714,38 @@ pub fn gaiji_description_serializable(description: &str, has_mencode: bool) -> b
     true
 }
 
+/// Whether a description in free wording can be kept on a refmark gaiji.
+///
+/// The serializer writes a description that contains `「` or `」` verbatim
+/// and quotes any other, so only the former reproduces the source bytes.
+#[must_use]
+pub fn gaiji_statement_serializable(description: &str) -> bool {
+    nested_references_complete(description) && description.contains(['「', '」'])
+}
+
+/// Whether a refmark description states what the `※` before it stands for.
+///
+/// In `「※」は小書きの「ト」` the statement's subject is the refmark, so the
+/// annotation describes that glyph regardless of its other content.
+#[must_use]
+pub fn describes_refmark(description: &str) -> bool {
+    description
+        .strip_prefix("「※」は")
+        .is_some_and(|statement| !statement.trim_start_matches('、').trim().is_empty())
+}
+
+/// Whether every annotation nested in `description` is a complete glyph reference.
+fn nested_references_complete(description: &str) -> bool {
+    description.match_indices(BRACKET_HASH).all(|(start, _)| {
+        description[..start].ends_with(GAIJI_REFMARK)
+            && gaiji_marker_end(description, start).is_some()
+    })
+}
+
 /// Parse a `［＃…］` body and decide whether it is a recognised gaiji reference.
 ///
-/// The single recognition gate shared by the parser's recogniser, the
-/// standalone scan in [`gaiji_resolutions`] / [`resolve_at`], and the LSP /
-/// wire resolution view.
+/// The parser's recogniser, the standalone scan in [`gaiji_resolutions`] /
+/// [`resolve_at`], and the LSP / wire resolution view all apply this test.
 ///
 /// Returns the parsed [`GaijiBody`] iff the body is a gaiji; `None` for a
 /// plain directive (e.g. `改ページ`). A gaiji needs a non-empty description and
@@ -751,19 +837,20 @@ pub fn parse_menkuten(token: &str) -> Option<MenKuTen> {
         return None;
     }
     let mkt = MenKuTen { plane, ku, ten };
-    // Guard the byte-exact round-trip: a leading-zero or otherwise
-    // non-canonical source would not reproduce, so demand `token`
-    // already be the canonical form.
+    // A leading-zero or otherwise non-canonical source would not reproduce
+    // byte-exactly through `Display`, so `token` must already be in
+    // canonical form.
     (mkt.to_string() == token).then_some(mkt)
 }
 
 /// The typed canonical value of a gaiji reference.
 ///
-/// Replaces the former `(ucs, mencode)` pair on `Gaiji`: the resolved
-/// glyph is derived on demand via [`Self::resolve`] and the source
-/// mencode is reproduced via [`Self::write_mencode`], so there is a
-/// single source of truth and the defensive `is_mencode_shaped` /
-/// serializable validators dissolve into the variant choice.
+/// `Gaiji` stores this value rather than a `(ucs, mencode)` pair: the
+/// resolved glyph is derived on demand via [`Self::resolve`] and the
+/// source mencode is reproduced via [`Self::write_mencode`], so each fact
+/// has one representation, and the variant records the mencode shape that
+/// `is_mencode_shaped` and the serializability checks would otherwise
+/// test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GaijiCanonical<'src> {
     /// Structured `第N水準P-K-T` reference (clean form only).
@@ -774,7 +861,7 @@ pub enum GaijiCanonical<'src> {
     /// references, description-only gaiji. `None` when the source had no
     /// mencode tail at all.
     Unresolved {
-        /// The raw mencode tail, echoed unchanged on serialize.
+        /// The raw mencode tail, reproduced unchanged on serialization.
         mencode: Option<&'src str>,
     },
 }
@@ -796,8 +883,8 @@ impl<'src> GaijiCanonical<'src> {
         Self::Unresolved { mencode }
     }
 
-    /// Resolve to a concrete glyph via the single [`lookup`] authority,
-    /// consulting the JIS tables and the `description` fallback.
+    /// Resolve to a glyph through [`lookup`], which consults the JIS
+    /// tables and the `description` fallback.
     #[must_use]
     pub fn resolve(self, description: &str) -> Option<Resolved> {
         match self {
@@ -807,8 +894,8 @@ impl<'src> GaijiCanonical<'src> {
         }
     }
 
-    /// `true` when the source carried a mencode tail (drives the `、`
-    /// separator in serialization).
+    /// `true` when the source has a mencode tail; serialization writes the
+    /// `、` separator only in this case.
     #[must_use]
     pub fn has_mencode(self) -> bool {
         !matches!(self, Self::Unresolved { mencode: None })
@@ -816,7 +903,7 @@ impl<'src> GaijiCanonical<'src> {
 
     /// Write the canonical mencode token (without the leading `、`). The
     /// structured forms reproduce the clean `第N水準P-K-T` / `U+XXXX`
-    /// shape; `Unresolved` echoes the raw tail verbatim.
+    /// shape; `Unresolved` writes the raw tail verbatim.
     ///
     /// # Errors
     /// Propagates the writer's own errors.
@@ -840,14 +927,15 @@ pub fn is_mencode_shaped(s: &str) -> bool {
     // present, then validate the remainder as `N-N-N`. The remainder is
     // trimmed for the same reason resolution trims it, so a token this
     // admits is a token resolution can key on.
-    let rest = s
+    let normalized_level = normalized_level_prefix(s);
+    let rest = normalized_level
         .strip_prefix('第')
         .and_then(|after_dai| {
             let nondigit = after_dai.find(|c: char| !c.is_ascii_digit())?;
             let (_digits, tail) = after_dai.split_at(nondigit);
             Some(tail.strip_prefix("水準")?.trim_start())
         })
-        .unwrap_or(s);
+        .unwrap_or(&normalized_level);
     !rest.is_empty()
         && rest.chars().all(|c| c.is_ascii_digit() || c == '-')
         && rest.chars().any(|c| c.is_ascii_digit())
@@ -857,10 +945,10 @@ pub fn is_mencode_shaped(s: &str) -> bool {
 /// a digit run, a 上 / 中 / 下 column marker, or a volume marker
 /// (`144-上-9`, `372-10`, `7巻-42-下-10`, `（二）-27-3`).
 ///
-/// This is the strict form the description-anchored gaiji rely on (a
-/// `小書き片仮名ン、500-下-19` glyph carries only this provenance tail with no
-/// men-ku-ten), so it stays exact. The looser near-miss spellings live in
-/// the private `is_near_miss_page_line_shaped` (mencode-anchored).
+/// The description-anchored gaiji depend on this strict form (a
+/// `小書き片仮名ン、500-下-19` glyph has only this provenance tail and no
+/// men-ku-ten). The private `is_near_miss_page_line_shaped`
+/// (mencode-anchored) accepts the looser near-miss spellings.
 #[must_use]
 pub fn is_page_line_shaped(s: &str) -> bool {
     !s.is_empty() && s.split('-').all(is_page_line_part)
@@ -888,15 +976,15 @@ fn is_page_line_part(p: &str) -> bool {
 const COLUMN_MARKERS: [&str; 6] = ["上段", "中段", "下段", "上", "中", "下"];
 
 /// Whether `s` is a *near-miss* 底本ページ-行 reference — a superset of
-/// [`is_page_line_shaped`] that also tolerates the corpus-attested near-miss
+/// [`is_page_line_shaped`] that also accepts the corpus-attested near-miss
 /// spellings: a full-width U+FF0D `－` separator (`94－11`), a 上/中/下(+段)
 /// register fused directly to a digit run on either side (`下8`, `109下`,
 /// `下段5`), and the poetry/register locator (`P61`, `下段5首目`).
 ///
-/// These near-misses collide with proofreader / 段組 directive tails, so
-/// [`parse_gaiji_body`] admits a near-miss-only token only when the run is
-/// also anchored by a real mencode token. A bare 段 register (`上段`) is
-/// rejected because it functions as a 段組 directive operand rather than a page-line component.
+/// The same spellings occur in proofreader / 段組 directive tails, so
+/// [`parse_gaiji_body`] admits a near-miss-only token only when the run
+/// also contains a mencode token. A bare 段 register (`上段`) is rejected
+/// because it is a 段組 directive operand rather than a page-line component.
 fn is_near_miss_page_line_shaped(s: &str) -> bool {
     is_page_line_shaped(s)
         || (!s.is_empty() && s.split(['-', '－']).all(is_near_miss_page_line_part))
@@ -912,8 +1000,8 @@ fn is_near_miss_page_line_part(p: &str) -> bool {
     // (`P61`, `下段5首目`).
     let core = p.strip_prefix('P').unwrap_or(p);
     let core = core.strip_suffix("首目").unwrap_or(core);
-    // Bare marker stays the canonical set only; a bare 段 register (`上段`)
-    // is a 段組 operand and must not read as a page-line part.
+    // A bare marker is accepted only from the canonical set; a bare 段
+    // register (`上段`) is a 段組 operand, not a page-line part.
     if matches!(core, "上" | "中" | "下") {
         return true;
     }
@@ -940,9 +1028,9 @@ fn is_digit_run(p: &str) -> bool {
 ///
 /// The refmark `※` is itself the gaiji marker, so a `※［＃…］` span is always
 /// resolved. A standalone `［＃…］` must pass [`recognize_gaiji_body`] (else it
-/// is a plain directive like `［＃改ページ］` and yields `None`). Also `None`
-/// if the delimiters don't bracket a parseable body — defensive, since
-/// offsets from [`gaiji_resolutions`] / [`find_span`] always satisfy it.
+/// is a plain directive like `［＃改ページ］` and yields `None`). Also
+/// returns `None` if the delimiters do not enclose a parseable body;
+/// offsets from [`gaiji_resolutions`] / [`find_span`] always enclose one.
 #[must_use]
 pub fn resolve_at(source: &str, start: usize, end: usize) -> Option<GaijiResolution> {
     let span = source.get(start..end)?;
@@ -983,15 +1071,16 @@ pub fn resolve_at(source: &str, start: usize, end: usize) -> Option<GaijiResolut
     })
 }
 
-/// All gaiji references in `source`, resolved, in source order. Walks
-/// the source linearly once; cost is `O(source)`.
+/// All gaiji references in `source`, resolved, in source order. Each
+/// opener is scanned at most to the end of its line.
 #[must_use]
 pub fn gaiji_resolutions(source: &str) -> Vec<GaijiResolution> {
     let mut out = Vec::new();
     let mut cursor = 0usize;
-    // Scan the bracket-hash opener so both the refmark (`※［＃`) and the
-    // standalone (`［＃`)  forms are seen; `resolve_at` folds a preceding
-    // `※` into the span and gates the standalone form against recognition.
+    // Scan for the bracket-hash opener so both the refmark (`※［＃`) and
+    // the standalone (`［＃`) forms are found; the span includes a
+    // preceding `※`, and `resolve_at` applies recognition to the
+    // standalone form.
     while let Some(rel) = source[cursor..].find(BRACKET_HASH) {
         let hash_open = cursor + rel;
         let span_start = if source[..hash_open].ends_with(GAIJI_REFMARK) {
@@ -999,24 +1088,34 @@ pub fn gaiji_resolutions(source: &str) -> Vec<GaijiResolution> {
         } else {
             hash_open
         };
+        // After an annotation that is not a reference, the scan resumes just
+        // past its opener. After an unclosed opener, the scan resumes at the
+        // next line, so the references after it are still found while the
+        // components on its own line remain unrecognized.
+        cursor = hash_open + BRACKET_HASH.len();
         let Some(span_end) = gaiji_marker_end(source, hash_open) else {
-            break;
+            cursor = source[cursor..]
+                .find('\n')
+                .map_or(source.len(), |newline| cursor + newline);
+            continue;
         };
         if let Some(res) = resolve_at(source, span_start, span_end) {
             out.push(res);
+            cursor = span_end;
         }
-        cursor = span_end;
     }
     out
 }
 
 /// Locate a complete reference without ending at a nested component's closer.
+/// A reference does not cross a line break.
 fn gaiji_marker_end(source: &str, hash_open: usize) -> Option<usize> {
     let body_start = hash_open.checked_add(BRACKET_HASH.len())?;
     let mut depth = 1usize;
     for (relative, ch) in source.get(body_start..)?.char_indices() {
         let start = body_start + relative;
         match ch {
+            '\n' | '\r' => return None,
             '［' if source[start..].starts_with(BRACKET_HASH) => depth += 1,
             '］' => {
                 // A quoted delimiter is the supplied glyph, not a boundary.
@@ -1061,7 +1160,7 @@ pub fn find_span(source: &str, byte_offset: usize) -> Option<(usize, usize)> {
         let Some(end_in_win) = gaiji_marker_end(window, hash_in_win) else {
             continue;
         };
-        // Fold a preceding `※` into the span (refmark form).
+        // Include a preceding `※` in the span (refmark form).
         let start_in_win = if window[..hash_in_win].ends_with(GAIJI_REFMARK) {
             hash_in_win - GAIJI_REFMARK.len()
         } else {
@@ -1182,7 +1281,7 @@ mod tests {
             }
         );
         // Composed-glyph form: the whole description is kept verbatim,
-        // NOT cut at the first 、 — the right-to-left scan finds the mencode.
+        // not cut at the first 、; the right-to-left scan finds the mencode.
         assert_eq!(
             parse_gaiji_body("「廰」の「广」を「厂」に、第3水準1-15-94"),
             GaijiBody {
@@ -1191,7 +1290,7 @@ mod tests {
                 quoted: false,
             }
         );
-        // A 、 belonging to the description stays put (right-to-left scan).
+        // A 、 belonging to the description remains in it (right-to-left scan).
         assert_eq!(
             parse_gaiji_body("面から一、二画目をとったもの、第3水準1-15-94"),
             GaijiBody {
@@ -1254,7 +1353,7 @@ mod tests {
             assert!(!is_page_line_shaped(s), "canonical must reject {s}");
             assert!(is_near_miss_page_line_shaped(s), "near-miss accepts {s}");
         }
-        // A bare 段 register is a 段組 operand, NOT a page-line part — both
+        // A bare 段 register is a 段組 operand, not a page-line part; both
         // predicates reject it, so `［＃ここから２段組、上段］` stays a directive.
         for s in ["上段", "下段", "中段", "38-上段-1"] {
             assert!(!is_page_line_shaped(s), "canonical rejects bare 段 {s}");
@@ -1330,19 +1429,19 @@ mod tests {
 
     #[test]
     fn near_miss_page_line_requires_a_mencode_anchor() {
-        // A near-miss-only tail with no men-ku-ten anchor is NOT enough on its
-        // own — it collides with proofreader / 段組 directive tails, so it stays
-        // a directive rather than being promoted to a gaiji.
+        // A near-miss-only tail with no men-ku-ten anchor is not sufficient:
+        // proofreader / 段組 directive tails have the same shape, so the body
+        // stays a directive rather than becoming a gaiji.
         assert!(recognize_gaiji_body("「あ」に「い」、94－11").is_none());
         assert!(recognize_gaiji_body("「あ」に「い」、383-下8").is_none());
-        // Real proofreader / layout directives with a near-miss-shaped tail.
+        // Proofreader / layout directives with a near-miss-shaped tail.
         assert!(recognize_gaiji_body("ここから２段組、上段").is_none());
         assert!(recognize_gaiji_body("底本の閉じ括弧は「』」、58-下15").is_none());
         assert!(recognize_gaiji_body("底本ルビは「もら」と誤記、175-上段-4").is_none());
-        // WITH a men-ku-ten anchor the same near-miss tail IS a gaiji.
+        // With a men-ku-ten anchor the same near-miss tail is a gaiji.
         assert!(recognize_gaiji_body("「あ」に「い」、第3水準1-15-94、383-下8").is_some());
-        // A canonical description-anchored gaiji keeps resolving with only a
-        // page-line tail (no men-ku-ten) — the anchor rule never touches it.
+        // A canonical description-anchored gaiji with only a page-line tail
+        // (no men-ku-ten) is recognized; the anchor rule does not apply to it.
         assert!(recognize_gaiji_body("小書き片仮名ン、500-下-19").is_some());
         // Plain directives stay directives.
         assert!(recognize_gaiji_body("改ページ").is_none());
@@ -1356,8 +1455,8 @@ mod tests {
 
     #[test]
     fn gaiji_resolutions_resolves_single_char_description() {
-        // A description that is itself one glyph resolves via the smart
-        // fallback in `lookup`.
+        // A description that is itself one glyph resolves via the
+        // single-character fallback in `lookup`.
         let src = "前※［＃「々」］後";
         let res = gaiji_resolutions(src);
         assert_eq!(res.len(), 1);
@@ -1371,8 +1470,7 @@ mod tests {
 
     #[test]
     fn gaiji_resolutions_includes_standalone_form() {
-        // Standalone `［＃…］` (no `※`) external-character form:
-        // previously invisible to the resolution view.
+        // Standalone `［＃…］` (no `※`) external-character form.
         let src = "前［＃「木＋吶のつくり」、第3水準1-85-54］後";
         let res = gaiji_resolutions(src);
         assert_eq!(res.len(), 1);
@@ -1389,12 +1487,12 @@ mod tests {
 
     #[test]
     fn gaiji_resolutions_excludes_plain_directives() {
-        // A bracket-hash directive is NOT a gaiji — the standalone gate
-        // (recognize_gaiji_body) declines it, so it never enters the view.
+        // A bracket-hash directive is not a gaiji: `recognize_gaiji_body`
+        // rejects it, so `gaiji_resolutions` omits it.
         assert!(gaiji_resolutions("本文［＃改ページ］続き").is_empty());
         assert!(gaiji_resolutions("［＃ここから2字下げ］字下げ").is_empty());
         // A forward-reference bouten directive (balanced quotes, no mencode)
-        // is likewise declined.
+        // is also rejected.
         assert!(gaiji_resolutions("東京［＃「東京」に傍点］へ").is_empty());
     }
 
@@ -1412,11 +1510,43 @@ mod tests {
     }
 
     #[test]
+    fn gaiji_resolutions_continue_past_an_opener_that_bounds_no_reference() {
+        let src = "［＃改丁」\n瞼※［＃「目＋匡」、第3水準1-88-81、28-8］";
+        let res = gaiji_resolutions(src);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            &src[res[0].start..res[0].end],
+            "※［＃「目＋匡」、第3水準1-88-81、28-8］"
+        );
+        assert!(gaiji_resolutions("※［＃「目\n＋匡」、第3水準1-88-81］").is_empty());
+    }
+
+    #[test]
+    fn refmark_statements_keep_their_wording() {
+        for (description, refmark, kept) in [
+            ("「※」は小書きの「ト」", true, true),
+            ("「※」は、石へん＋乞", true, true),
+            ("「※」は", false, true),
+            ("「窗」の下に「心」", false, true),
+            ("もんがまえに真の正字", false, false),
+        ] {
+            assert_eq!(describes_refmark(description), refmark, "{description}");
+            assert_eq!(
+                gaiji_statement_serializable(description),
+                kept,
+                "{description}"
+            );
+        }
+        assert!(!gaiji_statement_serializable("「X」は※［＃「目"));
+    }
+
+    #[test]
     fn substitution_descriptions_keep_unknown_glyph_identity() {
         for body in [
             "「闃」の「目」に代えて「自」",
             "「贏」の「貝」に代えて「果」、（二）-27-3",
             "「壼」の「亞」に代えて「亜」、53-下-13",
+            "偏が「宛」で旁が「りっとう」",
         ] {
             let parsed = recognize_gaiji_body(body)
                 .unwrap_or_else(|| panic!("explicit glyph substitution: {body}"));
@@ -1429,6 +1559,8 @@ mod tests {
             "「闃」の「目」に代えて「自」らしい",
             "「闃」の「」に代えて「自」",
             "「闃」の「目」に代えて自",
+            "偏が「宛」で旁が「」",
+            "偏が「宛」で旁がりっとう",
             "「本文」は底本では「別文」",
         ] {
             assert!(recognize_gaiji_body(body).is_none(), "{body}");
@@ -1452,34 +1584,33 @@ mod tests {
 
     #[test]
     fn recognize_dictionary_description_with_unanchored_page_line() {
-        // A near-miss page-line locator (`87-16`) normally needs a real
-        // mencode anchor, but when the description itself is a dictionary
-        // entry the reference is unambiguous: the name alone resolves the
-        // glyph and the locator is provenance.
+        // A near-miss page-line locator (`87-16`) requires a mencode anchor
+        // unless the description is a dictionary entry: the description
+        // then resolves the glyph and the locator records provenance.
         let parsed = recognize_gaiji_body("小書き平仮名ん、87-16").expect("dictionary-described");
         assert_eq!(parsed.description, "小書き平仮名ん");
         assert_eq!(parsed.mencode, Some("87-16"));
         // A non-dictionary description with the same unanchored locator
-        // stays a plain directive (the original FP guard).
+        // stays a plain directive (the false-positive guard).
         assert!(recognize_gaiji_body("ルビの「おや」は底本では「をや」、58-下15").is_none());
     }
 
     #[test]
     fn recognize_unbalanced_quote_typo_with_mencode_anchor() {
-        // Editor typo: the opening 「 was dropped, but the trailing real
-        // mencode anchors the reference. The description is kept verbatim
-        // (orphan quote included) so serialization reproduces the source.
+        // Editor typo: the opening 「 is missing, but the trailing mencode
+        // anchors the reference. The description is kept verbatim (orphan
+        // quote included) so serialization reproduces the source.
         let parsed = recognize_gaiji_body("くさかんむり／（月＋曷）」、第3水準1-91-26")
             .expect("mencode-anchored typo");
         assert_eq!(parsed.description, "くさかんむり／（月＋曷）」");
         assert_eq!(parsed.mencode, Some("第3水準1-91-26"));
-        // Without a mencode anchor an unbalanced-quote body stays out.
+        // Without a mencode anchor an unbalanced-quote body is not recognized.
         assert!(recognize_gaiji_body("くさかんむり／（月＋曷）」").is_none());
     }
 
     #[test]
     fn roman_numeral_glyph_composes_from_the_u2160_block() {
-        // Standard roman spelling with single-letter atoms: 17 = X V I I.
+        // Standard roman spelling with single-letter code points: 17 = X V I I.
         assert_eq!(
             roman_numeral_glyph("ローマ数字17"),
             Some("\u{2169}\u{2164}\u{2160}\u{2160}")
@@ -1520,7 +1651,7 @@ mod tests {
     }
 
     #[test]
-    fn lookup_prefers_existing_ucs_when_already_set() {
+    fn lookup_returns_existing_ucs_before_table_lookup() {
         // The "existing" short-circuit returns the caller-provided
         // codepoint without consulting either table.
         assert_eq!(
@@ -1531,9 +1662,9 @@ mod tests {
 
     #[test]
     fn a_space_between_the_level_and_its_coordinates_resolves_the_same_glyph() {
-        // 060590_001938 writes `第4水準 2-13-28` where every other work and
-        // every table key writes it closed up. The clause is delimited by
-        // `、`, so the space separates nothing.
+        // 060590_001938 contains `第4水準 2-13-28`; every other work and
+        // every table key omits the space. The clause is delimited by `、`,
+        // so the space separates nothing.
         let description = "「插」でつくりの縦棒が下に突き抜けている";
         assert_eq!(
             lookup(None, Some("第4水準 2-13-28"), description),
@@ -1543,12 +1674,12 @@ mod tests {
             lookup(None, Some("第4水準 2-13-28"), description),
             Some(Resolved::Char('\u{63F7}'))
         );
-        // Admitted by the shape test too, or the marker never reaches
-        // resolution: the composed scan needs a mencode-shaped token to
-        // anchor the run.
+        // `is_mencode_shaped` must also accept the spaced token, because the
+        // composed scan needs a mencode-shaped token to anchor the run;
+        // otherwise the marker is never resolved.
         assert!(is_mencode_shaped("第4水準 2-13-28"));
-        // The spacing is not a structured form, so serialization still
-        // echoes the source token rather than rewriting it closed up.
+        // The spaced token is not a structured form, so serialization
+        // reproduces the source token with its space.
         assert!(parse_menkuten("第4水準 2-13-28").is_none());
     }
 
@@ -1563,9 +1694,10 @@ mod tests {
 
     #[test]
     fn a_reference_fused_to_a_nested_quote_description_is_still_the_reference() {
-        // 004643_000284 line 40 writes this glyph once with no separator and
-        // three times with one. The nested 「」 is what keeps it out of the
-        // simple quoted branch, which already reads the fused shape.
+        // 004643_000284 line 40 contains this glyph once with no separator
+        // and three times with one. The nested 「」 excludes it from the
+        // simple quoted branch, which accepts the fused shape only without
+        // nesting.
         let body = parse_gaiji_body("「（罪－非）／「厠」の「貝」に変えて「炎」」第4水準2-84-80");
         assert_eq!(
             body.description,
@@ -1577,9 +1709,9 @@ mod tests {
 
     #[test]
     fn a_directive_that_merely_follows_a_quote_is_not_a_reference() {
-        // The fused fallback is gated on the tail being mencode-shaped, so a
-        // forward directive after a closing quote stays part of the
-        // description and the marker keeps no reference at all.
+        // The fused fallback applies only when the tail is mencode-shaped, so
+        // a forward directive after a closing quote stays part of the
+        // description and the marker has no reference.
         let body = parse_gaiji_body("「厠」の「貝」に傍点");
         assert_eq!(body.mencode, None);
     }
@@ -1596,9 +1728,19 @@ mod tests {
     }
 
     #[test]
+    fn kanji_numbered_level_resolves_without_rewriting_the_reference() {
+        let source = "※［＃「※」は「歌記号」、第三水準1-3-28、107-16］";
+        let result = resolve_at(source, 0, source.len()).expect("gaiji occurrence");
+
+        assert_eq!(result.description, "「※」は「歌記号」");
+        assert_eq!(result.mencode.as_deref(), Some("第三水準1-3-28、107-16"));
+        assert_eq!(result.resolved.as_deref(), Some("〽"));
+    }
+
+    #[test]
     fn lookup_via_combo_table_returns_multi() {
         // 第3水準1-4-87 = か゚ = U+304B U+309A (combining handakuten).
-        // The combo path is the *only* way to honour these 25 cells.
+        // Only the combo table maps these 25 cells.
         assert_eq!(
             lookup(None, Some("第3水準1-4-87"), ""),
             Some(Resolved::Multi("\u{304B}\u{309A}"))
@@ -1607,8 +1749,8 @@ mod tests {
 
     #[test]
     fn combo_resolution_writes_both_codepoints() {
-        // End-to-end: combo lookup + write_to should yield the full
-        // 2-codepoint sequence (6 UTF-8 bytes for か + handakuten).
+        // Combo lookup followed by `write_to` yields the 2-codepoint
+        // sequence (6 UTF-8 bytes for か + handakuten).
         let resolved = lookup(None, Some("第3水準1-4-87"), "").expect("combo resolves");
         let mut s = String::new();
         resolved
@@ -1671,10 +1813,10 @@ mod tests {
 
     #[test]
     fn lookup_falls_back_to_description_self_when_single_char() {
-        // 丂 is in the JIS X 0213 plane 2 table at row 1 cell 2 — but
-        // a real-world author wrote `※[#「丂」、第4水準2-16-1]` with a
-        // mencode that doesn't exist in the table. The description IS
-        // the kanji itself, so the smart fallback resolves to it.
+        // 丂 is in the JIS X 0213 plane 2 table at row 1 cell 2, but a
+        // corpus text contains `※[#「丂」、第4水準2-16-1]`, whose mencode
+        // is not in the table. The description is the kanji itself, so the
+        // single-character fallback resolves to it.
         assert_eq!(
             lookup(None, Some("第4水準2-16-1"), "丂"),
             Some(Resolved::Char('\u{4E02}'))
@@ -1686,17 +1828,16 @@ mod tests {
 
     #[test]
     fn single_char_fallback_does_not_override_dictionary_hit() {
-        // `〓` is in the special-placeholder table mapping to
-        // `〓 U+3013`. (Yes, that's a no-op mapping, but it exercises
-        // the dictionary path winning over the single-char fallback.)
-        // If the fallback fired in spite of the table hit, the
-        // dictionary's value would still match here — so the contract
-        // is "fallback only fires when nothing else matched".
+        // `〓` is in the special-placeholder table, mapped to `〓 U+3013`,
+        // so the dictionary path returns before the single-char fallback.
+        // The fallback would return the same value, so this assertion does
+        // not distinguish the two paths; the contract is that the fallback
+        // applies only when nothing else matched.
         assert_eq!(lookup(None, None, "〓"), Some(Resolved::Char('\u{3013}')));
     }
 
     #[test]
-    fn single_char_fallback_does_not_fire_for_multi_char_descriptions() {
+    fn single_char_fallback_does_not_apply_to_multi_char_descriptions() {
         // Multi-char description not in any table → must still be None.
         // Confirms the early-return on `chars.next().is_none()`.
         assert_eq!(lookup(None, None, "未知の字形"), None);
@@ -1725,8 +1866,7 @@ mod tests {
 
     #[test]
     fn mencode_table_covers_the_fixture_gaiji() {
-        // Pin the corrected 罪と罰 fixture mapping (枘 U+6798, not the
-        // pre-regen hand-seed's wrong U+6903 椃).
+        // The 罪と罰 fixture reference maps to 枘 U+6798, not U+6903 椃.
         assert_eq!(
             JISX0213_MENCODE_TO_CHAR.get("第3水準1-85-54"),
             Some(&'\u{6798}')
@@ -1765,10 +1905,10 @@ mod tests {
 
     #[test]
     fn description_table_resolves_a_known_dictionary_entry() {
-        // 「木＋吶のつくり」 is a hallmark fixture description for 枘
+        // 「木＋吶のつくり」 is the fixture description for 枘
         // (U+6798, JIS X 0213 plane 1 row 85 cell 54). The dictionary
         // path resolves the same character as the mencode path, so a
-        // test with description-only (no mencode) must hit U+6798.
+        // description-only lookup (no mencode) returns U+6798.
         assert_eq!(
             lookup(None, None, "木＋吶のつくり"),
             Some(Resolved::Char('\u{6798}')),
@@ -1832,8 +1972,8 @@ mod tests {
 
     #[test]
     fn lookup_is_identity_on_the_ucs_input_when_set() {
-        // The "existing" short-circuit honours the caller-provided
-        // scalar without a wasted table probe.
+        // The "existing" short-circuit returns the caller-provided
+        // scalar without a table lookup.
         assert_eq!(
             lookup(Some('あ'), Some("anything"), "anything"),
             Some(Resolved::Char('あ'))
@@ -1913,9 +2053,9 @@ mod tests {
     }
 
     #[test]
-    fn gaiji_canonical_resolve_matches_legacy_lookup() {
-        // Men-ku-ten resolves through the table exactly as the raw-string
-        // lookup did (枘 U+6798).
+    fn gaiji_canonical_resolve_matches_raw_string_lookup() {
+        // Men-ku-ten resolves through the table to the same glyph as the
+        // raw-string lookup (枘 U+6798).
         assert_eq!(
             GaijiCanonical::from_mencode(Some("第3水準1-85-54")).resolve("木＋吶のつくり"),
             Some(Resolved::Char('\u{6798}'))
@@ -1957,4 +2097,15 @@ mod tests {
             .unwrap();
         assert!(!GaijiCanonical::from_mencode(None).has_mencode());
     }
+}
+#[test]
+fn reverse_jis_cell_finds_accented_latin() {
+    assert_eq!(
+        jis_cell('é'),
+        Some(JisCell {
+            plane: 1,
+            row: 9,
+            cell: 63,
+        })
+    );
 }

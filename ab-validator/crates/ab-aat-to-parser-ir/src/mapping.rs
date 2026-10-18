@@ -74,13 +74,13 @@ impl MappingDocument {
     }
 
     /// Fail-closed generation binding: callers (CLI flags, audit config) may
-    /// pin an expected `mapping_version` and/or content hash so that editing
-    /// the live mapping file out from under an in-flight invocation is
-    /// detected instead of silently changing what that invocation exercises.
-    /// `expect_mapping_hash` is compared against [`Self::document_hash`] —
+    /// pin an expected `mapping_version` and/or content hash so that a change
+    /// to the mapping file during an invocation is detected instead of
+    /// changing the mapping that invocation uses.
+    /// `expect_mapping_hash` is compared against [`Self::document_hash`],
     /// the same `abc_legacy_json_hash` the audit summary's registry row
-    /// already reports as `mapping_hash`, so there is exactly one hashing
-    /// scheme for this document.
+    /// reports as `mapping_hash`, so there is exactly one hashing scheme for
+    /// this document.
     pub fn check_expected_generation(
         &self,
         expect_mapping_version: Option<&str>,
@@ -317,12 +317,12 @@ fn path_exists(
     // node also declares its own `properties`:
     //   - No sibling `properties` (e.g. the ABC parser-IR schema's
     //     `{"allOf": [baseNode, {"type": "object", "properties": {...}}]}`):
-    //     the branches ARE the schema — descend into whichever branch
+    //     the branches are the schema; descend into whichever branch
     //     resolves the segment.
     //   - Sibling `properties` present (the AAT v2 `block_container` /
     //     `inline_container` conditional-requiredness pattern —
     //     `{"properties": {...}, "allOf": [{"if": ..., "then": {"required": [...]}}]}`):
-    //     the branches are `if`/`then` refinements of the SAME node, not
+    //     the branches are `if`/`then` refinements of the same node, not
     //     alternative property sets, so pointer resolution must fall through
     //     to the node's own `properties` below instead of searching them.
     if node.get("properties").is_none() {
@@ -418,7 +418,8 @@ mod tests {
 
     #[test]
     fn aat_pointer_checker_accepts_deep_recursive_inline_paths() {
-        let schema = read_json(&repo_root().join("data/aat-schema.json")).expect("schema reads");
+        let schema =
+            read_json(&repo_root().join("schemas/outputs/aat-schema.json")).expect("schema reads");
         let mut pointer = "blocks[]".to_owned();
         for _ in 0..80 {
             pointer.push_str(".content[]");

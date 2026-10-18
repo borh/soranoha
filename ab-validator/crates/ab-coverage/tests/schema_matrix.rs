@@ -1,26 +1,33 @@
 use std::path::PathBuf;
 
 use ab_coverage::matrix::RepresentabilityStatus;
-use ab_coverage::source_inventory::{inventory_document, patterns_from_rows};
+use ab_coverage::source_inventory::{
+    inventory_document, inventory_document_with_variants, patterns_from_rows,
+};
 use ab_coverage::{
-    AdapterCell, CorpusPrevalence, CoverageBasis, CoverageMatrix, ParserCell, Recognition,
-    RowAatFidelity, RowError, SchemaValidator, ValidationOptions,
+    AdapterCell, CorpusPrevalence, CoverageBasis, CoverageMatrix, ParserCell, ParserComparison,
+    ParserComparisonRow, Recognition, RowAatFidelity, RowError, SchemaValidator, ValidationOptions,
 };
 
-fn matrix_path() -> PathBuf {
+fn data_path(file: &str) -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
         .unwrap()
         .parent()
         .unwrap()
-        .join("data/aozora-syntax-coverage.toml")
+        .join("data")
+        .join(file)
+}
+
+fn matrix_path() -> PathBuf {
+    data_path("aozora-syntax-coverage.toml")
 }
 
 #[test]
 fn matrix_schema_valid() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
     assert!(
         errors.is_empty(),
         "matrix has {} schema errors:\n{}",
@@ -30,17 +37,34 @@ fn matrix_schema_valid() {
 }
 
 #[test]
-fn matrix_required_keys_present() {
+fn parser_comparison_covers_every_row_and_known_parser() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
+    let comparison = ParserComparison::from_toml(&data_path("historical-parser-comparison.toml"))
+        .expect("load parser comparison");
     let opts = ValidationOptions {
         allow_unknown: true,
         required_keys: &["aozora2", "aozora-rs", "aozora2html"],
     };
-    let errors = SchemaValidator::validate(&matrix, opts);
+    let errors = SchemaValidator::validate_parser_comparison(&comparison, &matrix, opts);
     assert!(
         errors.is_empty(),
         "every row must declare cells for the three known parser/adapter ids:\n{}",
         join_errors(&errors)
+    );
+    let compared = comparison
+        .row
+        .iter()
+        .map(|row| row.syntax_row_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let missing = matrix
+        .rows()
+        .iter()
+        .filter(|row| !compared.contains(row.id.as_str()))
+        .map(|row| row.id.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "rows without a parser comparison: {missing:?}"
     );
 }
 
@@ -281,7 +305,7 @@ fn source_inventory_classifies_next_high_volume_command_variants() {
         "indentation.jizume",
         "decoration.boten",
         "decoration.bousen",
-        "annotation.chuuki",
+        "source.bracket_note",
     ] {
         assert!(
             summary.row_counts.contains_key(row_id),
@@ -589,6 +613,7 @@ fn source_inventory_classifies_annotation_editor_notes() {
         "［＃原文まま］",
         "［＃初出時「………………………行ぐ奴からさかしまに……………やるまでよ！」］",
         "［＃初出の『四季』第四號・昭和十年二月號では「孤獨を愛する人にとつて」となっている］",
+        "［＃24刷時点では「〔場〕桃太郎」だが、63刷時点では「〔馬場〕桃太郎」に修正されている］",
         "［＃「弟」は誤訳で本当は「兄」］",
         "［＃「奥深く」は筑摩版では「奥深く広く」］",
         "［＃岩波文庫版では「殺され」］",
@@ -628,7 +653,7 @@ fn source_inventory_classifies_annotation_editor_notes() {
             .row_counts
             .get("annotation.chuuki")
             .map(|count| count.occurrences),
-        Some(50)
+        Some(51)
     );
 }
 
@@ -901,9 +926,9 @@ fn source_inventory_classifies_shorthand_directional_ruby() {
 fn kanbun_and_reference_rows_have_typed_representability() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
     for (row_id, expected_node, expected_projection) in [
-        ("kunten.kaeriten", "style", "kaeriten"),
-        ("kunten.okurigana", "ruby", "okurigana"),
-        ("reference.frontref", "style", "ref"),
+        ("kunten.kaeriten", "kunten", "return-mark"),
+        ("kunten.okurigana", "kunten", "okurigana"),
+        ("reference.frontref", "style", "hi"),
     ] {
         let row = matrix
             .rows()
@@ -997,6 +1022,30 @@ fn source_inventory_classifies_jisage_wording_variants() {
 }
 
 #[test]
+fn jisage_row_does_not_claim_embedded_command_text() {
+    let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
+    let row = matrix
+        .rows()
+        .iter()
+        .find(|row| row.id == "indentation.jisage_block")
+        .expect("jisage row");
+    assert!(
+        row.source_patterns
+            .iter()
+            .all(|pattern| pattern.starts_with('^') && pattern.ends_with('$'))
+    );
+
+    let patterns = patterns_from_rows(matrix.rows());
+    let summary = inventory_document(
+        "fixture",
+        "［＃「［＃ここから２字下げ］」は太字］",
+        &patterns,
+    );
+
+    assert!(!summary.row_counts.contains_key("indentation.jisage_block"));
+}
+
+#[test]
 fn source_inventory_classifies_chitsuki_alignment_corpus_variants() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
     let patterns = patterns_from_rows(matrix.rows());
@@ -1042,10 +1091,10 @@ fn indentation_rows_have_typed_representability() {
     for (row_id, node, projection) in [
         ("indentation.basic", "jisage_block", "rend"),
         ("indentation.jisage_block", "jisage_block", "jisage"),
-        ("indentation.jisage_oneline", "style", "jisage"),
-        ("indentation.chitsuki", "style", "chitsuki"),
-        ("indentation.jizume", "style", "jizume"),
-        ("indentation.burasage", "style", "burasage"),
+        ("indentation.jisage_oneline", "layout_block", "jisage"),
+        ("indentation.chitsuki", "layout_block", "chitsuki"),
+        ("indentation.jizume", "layout_block", "jizume"),
+        ("indentation.burasage", "layout_block", "burasage"),
     ] {
         let row = matrix
             .rows()
@@ -1108,6 +1157,74 @@ fn source_inventory_classifies_font_size_subscript_variants() {
             .get("decoration.font_size")
             .map(|count| count.occurrences),
         Some(15)
+    );
+}
+
+#[test]
+fn source_inventory_partitions_font_size_semantics_and_nested_occurrences() {
+    let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
+    let patterns = patterns_from_rows(matrix.rows());
+    let source = [
+        "小［＃「小」は１段階小さな文字］",
+        "［＃１段階大きな文字］大［＃大きな文字終わり］",
+        "右［＃行右小書き］注［＃行右小書き終わり］",
+        "１［＃「１」は下付き小文字］",
+        "っ［＃ここのみ拗音が小さい字「っ」になっている］",
+        "［＃「SO3［＃「3」は下付き小文字］」は底本では「SO1［＃「1」は上付き小文字］」］",
+    ]
+    .join("\n");
+    let summary = inventory_document_with_variants(
+        "fixture",
+        &source,
+        &patterns,
+        &["decoration.font_size".to_owned()],
+    );
+
+    assert_eq!(
+        summary.row_counts["decoration.font_size"].occurrences,
+        summary.row_variants["decoration.font_size"]
+            .values()
+            .map(|variant| variant.occurrences)
+            .sum::<u64>()
+    );
+    let partitions = &summary.row_semantic_partitions["decoration.font_size"];
+    for expected in [
+        "form:targeted",
+        "effect:relative-size",
+        "direction:smaller",
+        "direction:larger",
+        "magnitude:1",
+        "boundary:matched;family:relative-size",
+        "effect:small-script-right",
+        "boundary:matched;family:small-script-right",
+        "effect:baseline-position",
+        "position:lowered",
+        "position:raised",
+        "effect:qualitative-size",
+    ] {
+        assert!(partitions.contains_key(expected), "missing {expected}");
+    }
+    assert!(!partitions.contains_key("interpretation:unresolved"));
+
+    let variants = &summary.row_variants["decoration.font_size"];
+    let targeted = &variants["［＃「○○」はN段階小さな文字］"].semantic_partitions;
+    for expected in [
+        "form:targeted",
+        "effect:relative-size",
+        "direction:smaller",
+        "magnitude:1",
+        "selector:quoted;referent:adjacent-unique",
+    ] {
+        assert!(
+            targeted.contains_key(expected),
+            "missing {expected}: {targeted:?}"
+        );
+    }
+    assert_eq!(
+        variants["［＃大きな文字終わり］"]
+            .semantic_partitions
+            .get("boundary:matched;family:relative-size"),
+        Some(&1)
     );
 }
 
@@ -1456,6 +1573,9 @@ fn source_inventory_classifies_residual_layout_annotation_notes() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
     let patterns = patterns_from_rows(matrix.rows());
     let source = [
+        "［＃一字下げ忘れか？200-14］本文",
+        "［＃一字下げ忘れか？207-4］本文",
+        "［＃一字下げ忘れか？211-6］本文",
         "［＃「どこやらに」と「稻妻に」の句の上には、この二つの句を括る波括弧あり］",
         "［＃「堀割になれて」と「堀割に風の」の句の上には、この二つの句を括る波括弧あり］",
         "［＃「｝に等しく、」は前の５行にわたる］",
@@ -1477,7 +1597,7 @@ fn source_inventory_classifies_residual_layout_annotation_notes() {
             .row_counts
             .get("annotation.layout_note")
             .map(|count| count.occurrences),
-        Some(7)
+        Some(10)
     );
 }
 
@@ -2041,6 +2161,53 @@ fn source_inventory_classifies_page_center_layout_variants() {
 }
 
 #[test]
+fn selected_break_variants_exclude_quoted_apparatus_and_partition_semantics() {
+    let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
+    let patterns = patterns_from_rows(matrix.rows());
+    let source = [
+        "［＃改ページ］",
+        "［＃改頁］",
+        "［＃改丁、左寄せで］",
+        "［＃改段］",
+        "［＃改見開き右］",
+        "［＃改行］",
+        "［＃改ページ、２字下げで］",
+        "［＃「白よ、［＃改行］［＃改行］」は底本では「白よ、［＃改行］」］",
+    ]
+    .join("\n");
+    let summary = inventory_document_with_variants(
+        "fixture",
+        &source,
+        &patterns,
+        &["break.page_line".to_owned()],
+    );
+
+    assert_eq!(summary.row_counts["break.page_line"].occurrences, 6);
+    assert_eq!(
+        summary.row_variants["break.page_line"]
+            .values()
+            .map(|variant| variant.occurrences)
+            .sum::<u64>(),
+        6
+    );
+    let partitions = &summary.row_semantic_partitions["break.page_line"];
+    for expected in [
+        "kind:page",
+        "kind:recto",
+        "kind:column",
+        "kind:spread",
+        "spelling:改ページ",
+        "spelling:改頁",
+        "side:right",
+        "placement:left",
+        "indent:２",
+    ] {
+        assert!(partitions.contains_key(expected), "missing {expected}");
+    }
+    assert_eq!(partitions["kind:page"].occurrences, 3);
+}
+
+#[test]
 fn source_inventory_classifies_layout_and_inline_style_corpus_variants() {
     let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
     let patterns = patterns_from_rows(matrix.rows());
@@ -2052,6 +2219,8 @@ fn source_inventory_classifies_layout_and_inline_style_corpus_variants() {
         "［＃「引」は小書き右寄せ］",
         "［＃左に傍線］",
         "［＃左に傍線終わり］",
+        "［＃左に波線］",
+        "［＃左に波線終わり］",
         "［＃（一）は縦中横］",
         "［＃「Ａｎ」はそれぞれ縦中横、数字は上付き小書き］",
         "［＃「x2」、「y2」、「x2」はそれぞれ縦中横、すべての「2」は上付き小書き］",
@@ -2094,8 +2263,9 @@ fn source_inventory_classifies_layout_and_inline_style_corpus_variants() {
         ("indentation.burasage", 2),
         ("decoration.font_size", 12),
         ("decoration.bold_italic", 5),
-        ("decoration.bousen", 7),
-        ("layout.tcy", 6),
+        ("decoration.bousen", 9),
+        ("layout.tcy", 5),
+        ("layout.rotation", 1),
         ("layout.yokogumi", 5),
     ] {
         assert_eq!(
@@ -2107,6 +2277,21 @@ fn source_inventory_classifies_layout_and_inline_style_corpus_variants() {
             "expected source inventory row {row_id}"
         );
     }
+}
+
+#[test]
+fn bousen_inventory_excludes_figure_descriptions_and_keeps_table_rules() {
+    let matrix = CoverageMatrix::from_toml(&matrix_path()).expect("load matrix");
+    let patterns = patterns_from_rows(matrix.rows());
+    let source = [
+        "［＃手書きの波線の図（fig4833_03.png、横62×縦12）入る］",
+        "［＃次３行は、文字はゴシック体、罫線は全て波線］",
+    ]
+    .join("\n");
+    let summary = inventory_document("fixture", &source, &patterns);
+
+    assert_eq!(summary.row_counts["decoration.bousen"].occurrences, 1);
+    assert_eq!(summary.row_counts["figure.image_inline"].occurrences, 1);
 }
 
 #[test]
@@ -2365,10 +2550,7 @@ fn forbidden_combinations_rejected() {
         validation_properties: vec![],
         adapter_expectations: vec![],
         oracle_cases: vec![],
-        status: ab_coverage::RowStatus::NeedsResearch,
-        status_reason: String::new(),
-        parsers,
-        adapters,
+        notes: String::new(),
         representability: None,
         corpus_prevalence: Some(CorpusPrevalence {
             works_with_feature: 0,
@@ -2379,11 +2561,18 @@ fn forbidden_combinations_rejected() {
         }),
     };
     let dummy = make_matrix(vec![row]);
+    let comparison = ParserComparison {
+        row: vec![ParserComparisonRow {
+            syntax_row_id: "test.row".into(),
+            parsers,
+            adapters,
+        }],
+    };
     let opts = ValidationOptions {
         allow_unknown: false,
         required_keys: &[],
     };
-    let errors = SchemaValidator::validate(&dummy, opts);
+    let errors = SchemaValidator::validate_parser_comparison(&comparison, &dummy, opts);
     assert!(
         errors
             .iter()
@@ -2413,8 +2602,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.typed"
@@ -2459,8 +2646,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.typed_without_tei"
@@ -2469,7 +2654,7 @@ aat_nodes = ["ruby"]
 raw_fallback = true
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors.iter().any(|e| e.message.contains("tei_projection")),
@@ -2498,8 +2683,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.typed_without_aat"
@@ -2508,7 +2691,7 @@ aat_nodes = []
 raw_fallback = true
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors
@@ -2539,8 +2722,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.unsupported"
@@ -2548,7 +2729,7 @@ status = "unsupported"
 raw_fallback = true
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors.iter().any(|e| e.message.contains("raw_fallback")),
@@ -2577,8 +2758,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = ""
@@ -2586,7 +2765,7 @@ status = "needs_research"
 raw_fallback = true
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors
@@ -2617,8 +2796,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.representability]
 source_inventory_row = "fixture.missing"
@@ -2626,7 +2803,7 @@ status = "needs_research"
 raw_fallback = true
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors.iter().any(|e| e.message.contains("fixture.missing")),
@@ -2655,8 +2832,6 @@ plaintext_projection = ""
 comparison_projection = ""
 validation_properties = []
 adapter_expectations = []
-status = "needs_research"
-status_reason = "fixture"
 
 [syntax.corpus_prevalence]
 works_with_feature = 1
@@ -2666,7 +2841,7 @@ coverage_basis = "full_corpus"
 sample_works = ["work"]
 "#,
     );
-    let errors = SchemaValidator::validate(&matrix, ValidationOptions::lenient());
+    let errors = SchemaValidator::validate(&matrix);
 
     assert!(
         errors
@@ -2718,32 +2893,7 @@ fn serialize_row(row: &ab_coverage::matrix::Row) -> String {
     out.push_str("validation_properties = []\n");
     out.push_str("adapter_expectations = []\n");
     out.push_str("oracle_cases = []\n");
-    let status = match row.status {
-        ab_coverage::RowStatus::Covered => "covered",
-        ab_coverage::RowStatus::Partial => "partial",
-        ab_coverage::RowStatus::NotModeled => "not_modeled",
-        ab_coverage::RowStatus::NeedsResearch => "needs_research",
-    };
-    out.push_str(&format!("status = \"{status}\"\n"));
-    out.push_str(&format!("status_reason = {:?}\n", row.status_reason));
-    for (id, cell) in &row.parsers {
-        out.push_str(&format!("\n[syntax.parsers.\"{id}\"]\n"));
-        out.push_str(&format!(
-            "recognition = \"{}\"\n",
-            cell.recognition.as_str()
-        ));
-        out.push_str(&format!("evidence = {:?}\n", cell.evidence));
-        out.push_str(&format!("notes = {:?}\n", cell.notes));
-    }
-    for (id, cell) in &row.adapters {
-        out.push_str(&format!("\n[syntax.adapters.\"{id}\"]\n"));
-        out.push_str(&format!(
-            "aat_fidelity = \"{}\"\n",
-            cell.aat_fidelity.as_str()
-        ));
-        out.push_str(&format!("evidence = {:?}\n", cell.evidence));
-        out.push_str(&format!("notes = {:?}\n", cell.notes));
-    }
+    out.push_str(&format!("notes = {:?}\n", row.notes));
     if let Some(cell) = &row.representability {
         out.push_str("\n[syntax.representability]\n");
         out.push_str(&format!(
@@ -2785,6 +2935,37 @@ fn join_errors(errors: &[RowError]) -> String {
 
 mod edition_results {
     use std::{fs, process::Command};
+
+    fn run_inventory(
+        root: &std::path::Path,
+        matrix: &std::path::Path,
+        cache: &std::path::Path,
+        name: &str,
+        variant_row: bool,
+    ) -> std::process::ExitStatus {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ab-source-inventory"));
+        command
+            .args(["--index", root.join("index.json").to_str().unwrap()])
+            .args(["--corpus", root.to_str().unwrap()])
+            .args(["--matrix", matrix.to_str().unwrap()])
+            .args([
+                "--output-json",
+                root.join(format!("{name}.json")).to_str().unwrap(),
+            ])
+            .args([
+                "--report-md",
+                root.join(format!("{name}.md")).to_str().unwrap(),
+            ])
+            .args(["--cache-dir", cache.to_str().unwrap()]);
+        if variant_row {
+            command.args(["--variant-row", "gaiji.marker"]);
+        }
+        command.status().unwrap()
+    }
+
+    fn report(root: &std::path::Path, name: &str) -> serde_json::Value {
+        serde_json::from_slice(&fs::read(root.join(format!("{name}.json"))).unwrap()).unwrap()
+    }
 
     #[test]
     fn single_source_accountability_is_independent_of_corpus_and_parser_inputs() {
@@ -2868,6 +3049,95 @@ mod edition_results {
             serde_json::from_slice(&fs::read(root.join("report.json")).unwrap()).unwrap();
         assert_eq!(report["unknown_examples"].as_array().unwrap().len(), 100);
         assert_eq!(report["unknown_markers_total"], 125);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn edition_cache_reuses_only_complete_matching_content_and_classifier_results() {
+        let root = std::env::temp_dir().join(format!("edition-cache-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("source.txt"), "※［＃「口＋世」、U+546D］").unwrap();
+        fs::write(
+            root.join("index.json"),
+            r#"{"works":[{"id":"one","txt_path":"source.txt"}]}"#,
+        )
+        .unwrap();
+        let matrix = super::matrix_path();
+        let cache = root.join("cache");
+
+        assert!(run_inventory(&root, &matrix, &cache, "cold", false).success());
+        assert!(run_inventory(&root, &matrix, &cache, "warm", false).success());
+        let cold = report(&root, "cold");
+        let warm = report(&root, "warm");
+        assert_eq!(cold["cache"]["entries_computed"], 1);
+        assert_eq!(cold["cache"]["entries_reused"], 0);
+        assert_eq!(warm["cache"]["entries_computed"], 0);
+        assert_eq!(warm["cache"]["entries_reused"], 1);
+        assert_eq!(cold["rows"], warm["rows"]);
+        assert_eq!(cold["unknown_markers_total"], warm["unknown_markers_total"]);
+
+        fs::write(
+            root.join("source.txt"),
+            "※［＃「口＋世」、U+546D］※［＃「口＋世」、U+546D］",
+        )
+        .unwrap();
+        assert!(run_inventory(&root, &matrix, &cache, "changed", false).success());
+        let changed = report(&root, "changed");
+        assert_eq!(changed["cache"]["entries_computed"], 1);
+        assert_eq!(changed["rows"]["gaiji.marker"]["occurrences"], 2);
+
+        let alternate_matrix = root.join("matrix.toml");
+        let mut matrix_bytes = fs::read(&matrix).unwrap();
+        matrix_bytes.push(b'\n');
+        fs::write(&alternate_matrix, matrix_bytes).unwrap();
+        assert!(run_inventory(&root, &alternate_matrix, &cache, "matrix", false).success());
+        let matrix_only = report(&root, "matrix");
+        assert_eq!(matrix_only["cache"]["entries_computed"], 0);
+        assert_eq!(matrix_only["cache"]["entries_reused"], 1);
+        assert_ne!(
+            matrix_only["cache"]["matrix_sha256"],
+            warm["cache"]["matrix_sha256"]
+        );
+        assert_eq!(
+            matrix_only["cache"]["classifier_sha256"],
+            warm["cache"]["classifier_sha256"]
+        );
+
+        let classifier_matrix = root.join("classifier-matrix.toml");
+        let matrix_text = fs::read_to_string(&matrix).unwrap();
+        fs::write(
+            &classifier_matrix,
+            matrix_text.replacen(
+                "source_patterns = [",
+                "source_patterns = [\n  'CACHE_NEVER_MATCH',",
+                1,
+            ),
+        )
+        .unwrap();
+        assert!(run_inventory(&root, &classifier_matrix, &cache, "classifier", false).success());
+        assert_eq!(report(&root, "classifier")["cache"]["entries_computed"], 1);
+
+        assert!(run_inventory(&root, &matrix, &cache, "variants", true).success());
+        let variants = report(&root, "variants");
+        assert_eq!(variants["cache"]["entries_computed"], 1);
+        assert_eq!(
+            variants["rows"]["gaiji.marker"]["variants"]["※［＃…］"]["occurrences"],
+            2
+        );
+
+        let corrupt_cache = root.join("corrupt-cache");
+        assert!(run_inventory(&root, &matrix, &corrupt_cache, "valid", false).success());
+        let shard = fs::read_dir(&corrupt_cache)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let entry = fs::read_dir(shard).unwrap().next().unwrap().unwrap().path();
+        fs::write(entry, b"{").unwrap();
+        assert!(!run_inventory(&root, &matrix, &corrupt_cache, "corrupt", false).success());
+
         fs::remove_dir_all(root).unwrap();
     }
 }

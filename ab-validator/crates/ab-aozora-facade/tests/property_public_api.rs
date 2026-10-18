@@ -1,23 +1,19 @@
-//! Public-API totality + idempotence for [`Document::parse`].
+//! Totality and idempotence of [`Document::parse`] through the public API.
 //!
-//! Two complementary properties on the top-facade entry point:
+//! 1. **Totality**: [`Document::parse`] does not panic on any input. The lex
+//!    pipeline emits diagnostics rather than failing, and the facade is the
+//!    only entry point for the FFI, WASM and Python drivers, which pass user
+//!    input directly to the parser; a panic is a denial-of-service condition
+//!    for every downstream binding.
 //!
-//! 1. **Totality**: [`Document::parse`] must not panic on any input.
-//!    The lex pipeline emits diagnostics rather than failing, and the
-//!    facade is the sole entry point for FFI / WASM / Python drivers
-//!    that hand user input straight to the parser. A panic here is a
-//!    denial-of-service surface for every downstream binding.
-//!
-//! 2. **Parse → serialise → parse converges**: the second
-//!    `Document::parse` over the serialised output of the first
-//!    yields a tree whose own `serialize()` matches. Equivalent to
-//!    "the renderer's `serialize` is a parser fixed point" — a
-//!    quieter way to surface bugs that mutate documents on round-trip
-//!    (whitespace drift, character substitutions). Functionally
-//!    overlaps the `aozora-render` `property_serialize_idempotent`
-//!    test, but exercised here through the **public API only** to
-//!    catch facade regressions (e.g. a `Document` that builds an
-//!    inconsistent arena).
+//! 2. **Parse → serialise → parse converges**: the second `Document::parse`
+//!    over the serialised output of the first yields a tree whose
+//!    `serialize()` output matches, that is, the renderer's `serialize` is a
+//!    parser fixed point. A failure indicates a round-trip mutation such as
+//!    whitespace drift or character substitution. The `ab-aozora-render`
+//!    `property_serialize_idempotent` test checks the same property; this test
+//!    runs through the public API only, which covers facade defects such as a
+//!    `Document` that builds an inconsistent arena.
 
 use ab_aozora_facade::Document;
 use ab_notation_strategies::config::default_config;
@@ -44,10 +40,6 @@ fn assert_facade_round_trip_converges(source: &str) {
     );
 }
 
-// ----------------------------------------------------------------------
-// Hand-curated regression anchors.
-// ----------------------------------------------------------------------
-
 #[test]
 fn empty_input_round_trips() {
     assert_facade_round_trip_converges("");
@@ -73,34 +65,28 @@ fn paired_container_round_trips() {
 proptest! {
     #![proptest_config(default_config())]
 
-    /// `Document::parse` is total over the workhorse Aozora fragment
-    /// distribution. A panic here is a DoS surface for every public
-    /// caller — proptest is the decisive way to catch one.
+    /// `Document::parse` is total over the `aozora_fragment` distribution.
     #[test]
     fn aozora_fragment_parse_is_total(s in aozora_fragment(120)) {
         let doc = Document::new(s);
         let _tree = doc.parse();
     }
 
-    /// Parse → serialise → parse converges on the second pass. The
-    /// serialiser must produce a parser fixed point.
     #[test]
     fn aozora_fragment_round_trip_converges(s in aozora_fragment(120)) {
         assert_facade_round_trip_converges(&s);
     }
 
-    /// Pathological / unbalanced inputs — public parse must stay
-    /// total even when diagnostics fire.
+    /// Public parse is total on unbalanced inputs that produce diagnostics.
     #[test]
     fn pathological_input_parse_is_total(s in pathological_aozora(120)) {
         let doc = Document::new(s);
         let _tree = doc.parse();
     }
 
-    /// Unicode adversarial — combining marks, RTL overrides, PUA
-    /// bytes that the lexer reserves for sentinel use. Public parse
-    /// must stay total and preserve literal characters
-    /// rather than panicking.
+    /// Public parse is total on combining marks, RTL overrides, and the PUA
+    /// codepoints that the lexer reserves for sentinels, and keeps them as
+    /// literal characters.
     #[test]
     fn unicode_adversarial_parse_is_total(s in unicode_adversarial()) {
         let doc = Document::new(s);

@@ -2,7 +2,7 @@
 //! at rev 1a4f864603970983719655aa4af4525958ac2d38 (independent fork).
 //! Upstream crate: aozora-pipeline. License: MIT OR Apache-2.0 (see NOTICE).
 
-//! Aozora notation lex pipeline: owned-AST front door.
+//! Aozora notation lex pipeline: entry point to the owned AST.
 //!
 //! Both the orchestrator and the per-stage pipeline impl live in
 //! this single crate:
@@ -14,10 +14,9 @@
 //!   lifetime-free [`LexOutput`] (`Send + Sync`): the classify
 //!   stage builds the owned nodes directly into an
 //!   `ab_aozora_syntax::ast::NodeStore` (a string interner plus flat
-//!   content / segment pools addressed by `u32` handles); there is no
-//!   arena.
+//!   content / segment pools addressed by `u32` handles).
 //! - The stage implementations live under [`lexer`] (`lexer::sanitize`
-//!   through `lexer::classify`). External consumers should reach for
+//!   through `lexer::classify`). External consumers use
 //!   [`lex`] or the [`Pipeline`] state machine; the
 //!   per-stage functions are exposed for benchmarks and the
 //!   instrumentation feature.
@@ -31,7 +30,7 @@
 //! [`LexOutput`] *as observed externally*, even though the
 //! internal pipeline runs SIMD trigger scans over scratch buffers.
 //! The determinism + sentinel-alignment proptests in
-//! `tests/property_owned_output.rs` pin the contract.
+//! `tests/property_lex_output.rs` pin the contract.
 
 #![forbid(unsafe_code)]
 
@@ -56,22 +55,22 @@ pub use pipeline::{Paired, Pipeline, Sanitized, Source, Tokenized};
 /// Eagerly initialise every lazily-built parser table.
 ///
 /// Forces the tokenize-stage trigger automaton and the classify-stage
-/// annotation-classifier Aho-Corasick DFA, so the
-/// first [`lex`] does not pay the one-time build cost on its
-/// critical path. Idempotent and cheap to call repeatedly.
+/// annotation-classifier Aho-Corasick DFA, so that the first [`lex`]
+/// call does not include their one-time build cost. Idempotent and cheap
+/// to call repeatedly.
 ///
-/// Lexing stays lazy by default; this is opt-in for latency-sensitive
-/// front ends: the umbrella `ab_aozora_facade::prewarm` is the public entry point.
+/// Without this call, each table is built on first use. Latency-sensitive
+/// front ends call the public entry point `ab_aozora_facade::prewarm`.
 pub fn prewarm() {
     lexer::trigger_scan::prewarm();
     lexer::classify::prewarm();
 }
 
-/// Re-exports of the sanitize-stage decorative-rule isolator, surfaced
-/// so downstream `aozora-render::serialize` can run the same idempotent
-/// blank-line-injection pass on its output and converge to a parser
-/// fixed point in one cycle. The helpers are otherwise pipeline
-/// internals: keep the public surface narrow.
+/// Re-exports of the sanitize-stage decorative-rule isolator for
+/// `aozora-render::serialize`, which runs the same idempotent
+/// blank-line-injection pass on its output so that one serialize-parse
+/// cycle reaches a fixed point. The helpers are otherwise pipeline
+/// internals.
 pub use lexer::sanitize::{has_long_rule_line, isolate_decorative_rules};
 
 pub use ab_aozora_spec::{
@@ -84,9 +83,9 @@ pub use ab_aozora_spec::{
 mod tests {
     use super::*;
 
-    /// The trigger scan MUST yield the exact same byte offsets that the
-    /// tokenize-stage tokeniser uses for its trigger positions. We
-    /// cross-check at the [`LexOutput`] level: every PUA sentinel in
+    /// The trigger scan must yield the byte offsets that the
+    /// tokenize-stage tokeniser uses for its trigger positions. The test
+    /// checks this at the [`LexOutput`] level: every PUA sentinel in
     /// `normalized` must correspond to a consumed source trigger.
     #[test]
     fn lex_produces_normalized_with_pua_sentinels_for_trigger_inputs() {

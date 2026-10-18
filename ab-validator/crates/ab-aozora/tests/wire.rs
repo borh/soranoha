@@ -93,7 +93,7 @@ fn production_diagnostics_accept_literal_private_use_source() {
 
 #[test]
 fn mode_diagnostics_no_partial_stdout_contract_holds() {
-    // Unknown mode still exits 1 with empty stdout (contract unchanged).
+    // An unknown mode exits 1 with empty stdout.
     let out = Command::new(bin())
         .args(["--mode", "nodes"])
         .output()

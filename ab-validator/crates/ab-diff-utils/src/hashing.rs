@@ -22,8 +22,8 @@ pub fn hash_json(value: &Value) -> anyhow::Result<String> {
 
 /// Returns canonical JSON for ABC hashable values that do not contain floats.
 ///
-/// This helper is intentionally conservative: it supports the JSON value kinds
-/// used by alignment configs and returns an error for floating-point numbers.
+/// Supports the JSON value kinds used by alignment configs and returns an
+/// error for floating-point numbers.
 #[must_use = "canonical_json_string returns canonical bytes as a string"]
 pub fn canonical_json_string(value: &Value) -> anyhow::Result<String> {
     Ok(match value {
@@ -73,9 +73,8 @@ pub fn hash_json_canonical(value: &Value) -> anyhow::Result<String> {
 /// Hashes a sequence of strings using length-prefixing.
 ///
 /// Each string is prefixed with its 4-byte little-endian length before hashing,
-/// so `[
-/// "a", "b"]` differs from `["ab"]` and strings containing null bytes are
-/// unambiguous.
+/// so `["a", "b"]` differs from `["ab"]` and strings containing null bytes
+/// are unambiguous.
 #[must_use]
 pub fn hash_string_sequence(values: &[String]) -> String {
     let digest = hash_string_sequence_raw(values);
@@ -89,7 +88,7 @@ pub fn hash_string_sequence(values: &[String]) -> String {
 }
 
 /// Raw 32-byte digest variant of [`hash_string_sequence`], for callers
-/// that key maps by digest without paying for hex strings.
+/// that key maps by digest without allocating hex strings.
 #[must_use]
 pub fn hash_string_sequence_raw(values: &[String]) -> [u8; 32] {
     let mut hasher = Sha256::new();

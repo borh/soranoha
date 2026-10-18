@@ -1,52 +1,41 @@
 //! Non-canonical directive catalogue for the notation-hygiene lint.
 //!
 //! [`canonical_directive`] maps a `［＃…］` directive body that the parser
-//! keeps as `DirectiveKind::Unknown` (because it is spelled as a *verified
-//! near-miss* of a recognized construct: 送り仮名 drift, a synonym, or a
+//! keeps as `DirectiveKind::Unknown` (because it is spelled as a verified
+//! near-miss of a recognized construct: a 送り仮名 variant, a synonym, or a
 //! malformed prefix / close) to its canonical spelling. It returns `None`
-//! for a genuine editorial Unknown, so the lint that consumes it fires only
-//! on the closed, parser-verified catalogue below.
+//! for a genuine editorial Unknown, so the lint that consumes it reports only
+//! bodies in the closed, parser-verified catalogue below.
 //!
-//! Zero false positives by construction: the catalogue is a fixed map, not a
-//! fuzzy matcher, and the `lint_catalogue` self-test in the `aozora` crate
-//! pins the invariant that every suggested canonical parses
-//! to a non-Unknown node while every catalogue key still parses to Unknown;
-//! so the map can never rot into suggesting a form the parser rejects, nor
-//! target a body the parser already recognizes.
+//! The catalogue is a fixed map, not a fuzzy matcher, so it has no false
+//! positives outside its keys. The `lint_catalogue` test in `ab-aozora-facade`
+//! asserts that every suggested canonical parses to a non-Unknown node
+//! and every catalogue key still parses to Unknown, so the map cannot suggest
+//! a form the parser rejects or match a body the parser already recognizes.
 //!
-//! Single authority (the [`crate::accent`] precedent): the pipeline lint
-//! (`aozora-pipeline`), the `aozora fmt --fix` autofix
-//! (`aozora-render`), and the LSP quick-fix all resolve the canonical form
-//! here, on the trimmed body string, with no `DirectiveKind` dependency.
+//! As [`crate::accent`] is for accents, this module is the single source of
+//! canonical directive forms: the pipeline lint in `ab-aozora-pipeline` and
+//! the `Canonical` serializer rewrite in `ab-aozora-render` both resolve the
+//! canonical form here, on the trimmed body string, with no
+//! `DirectiveKind` dependency.
 
 use std::borrow::Cow;
 
 /// Literal whole-body variant → canonical maps.
 const EXACT: &[(&str, &str)] = &[
-    // 字下げ close: okurigana / 文字下げ / bare-with-N drift of ここで字下げ終わり.
+    // 字下げ close: okurigana, 文字下げ, and bare-with-N variants of ここで字下げ終わり.
     ("字下げ終り", "ここで字下げ終わり"),
     ("字下げおわり", "ここで字下げ終わり"),
     ("文字下げ終わり", "ここで字下げ終わり"),
     ("二字下げ終わり", "ここで字下げ終わり"),
-    // Marker / synonym drift.
-    ("中央寄せ", "中央揃え"),
+    // Marker and synonym variants.
     ("斜体字", "斜体"),
     ("中中見出し", "中見出し"),
     // ゴチック → ゴシック体 (the parser recognises ゴシック体 as a first-class
-    // gothic construct; ゴチック is the corpus-vanishing variant spelling).
+    // gothic construct; ゴチック is a variant spelling rare in the corpus).
     ("ゴチック", "ゴシック体"),
     ("ここからゴチック", "ここからゴシック体"),
     ("ここでゴチック終わり", "ここでゴシック体終わり"),
-    // 傍点 marker-suffix spellings → the canonical mark-prefix keyword.
-    ("傍点（白丸）", "白丸傍点"),
-    ("傍点◎", "二重丸傍点"),
-    // Region-close synonyms: okurigana drift / 文字下げ / 横書き=横組み, all
-    // resolving to the canonical `ここで…終わり` close. `ここで横組みの表終わり`
-    // is not among them: it is read as a table close carrying the direction it
-    // names, and rewriting it to `ここで表終わり` would drop that direction.
-    ("ここで左から右への横組み終わり", "ここで横組み終わり"),
-    // Misspelled end-alignment marker.
-    ("こ地付き", "地付き"),
 ];
 
 /// Map a non-canonical `［＃…］` directive body to its canonical spelling, or
@@ -70,40 +59,21 @@ pub(crate) fn is_digit_run(s: &str) -> bool {
 }
 
 /// Digit-preserving rules: the `{N}` run is copied verbatim. Grouped by the
-/// scope each family normalises (font-size / region-open / region-close /
-/// alignment); the first group to claim the body wins.
+/// scope each family normalises (region-open / region-close / alignment); the
+/// result of the first group that matches the body is returned.
 fn parameterized(body: &str) -> Option<String> {
-    parameterized_font_size(body)
-        .or_else(|| parameterized_indent_open(body))
+    parameterized_indent_open(body)
         .or_else(|| parameterized_region_close(body))
         .or_else(|| parameterized_align(body))
 }
 
-/// `{N}回り大きな/小さな文字` → `{N}段階…文字`.
-fn parameterized_font_size(body: &str) -> Option<String> {
-    for size in ["大きな文字", "小さな文字"] {
-        if let Some(n) = body
-            .strip_suffix(size)
-            .and_then(|head| head.strip_suffix("回り"))
-            && is_digit_run(n)
-        {
-            return Some(format!("{n}段階{size}"));
-        }
-    }
-    None
-}
-
-/// Region-open indent synonyms → canonical `ここから{N}字下げ`.
+/// A truncated region-open prefix → canonical `ここから{N}字下げ`.
 fn parameterized_indent_open(body: &str) -> Option<String> {
-    // ここか / 以下 {N}字下げ (malformed or 以下-prefixed open).
-    for bad in ["ここか", "以下"] {
-        if let Some(n) = body
-            .strip_prefix(bad)
-            .and_then(|rest| rest.strip_suffix("字下げ"))
-            && is_digit_run(n)
-        {
-            return Some(format!("ここから{n}字下げ"));
-        }
+    let n = body
+        .strip_prefix("ここか")
+        .and_then(|rest| rest.strip_suffix("字下げ"))?;
+    if is_digit_run(n) {
+        return Some(format!("ここから{n}字下げ"));
     }
     None
 }
@@ -130,15 +100,6 @@ fn parameterized_align(body: &str) -> Option<String> {
     {
         return Some(format!("{n}字下げ"));
     }
-    // この行{N}字下げ → {N}字下げ (the digit-run guard excludes editorial
-    // `この行は…N字下げ` prose).
-    if let Some(n) = body
-        .strip_prefix("この行")
-        .and_then(|r| r.strip_suffix("字下げ"))
-        && is_digit_run(n)
-    {
-        return Some(format!("{n}字下げ"));
-    }
     None
 }
 
@@ -148,53 +109,18 @@ fn forward_form(body: &str) -> Option<String> {
         return None;
     }
 
-    // Keyword drift after the target: swap the trailing variant keyword. Each
+    // Variant keyword after the target: replace it with the canonical keyword. Each
     // suffix is distinct and anchored at the body end, so the already-canonical
     // forms (e.g. `は下付き小文字`) cannot re-match (idempotent).
     for (variant_kw, canonical_kw) in [
         ("は斜体字", "は斜体"),
         ("は中中見出し", "は中見出し"),
-        ("の部分はイタリック体", "は斜体"),
-        ("の縦中横", "は縦中横"),
         ("は上付き", "は上付き小文字"),
-        ("はすべて下付き小文字", "は下付き小文字"),
-        ("は地付け", "は地付き"),
-        ("は枠囲い", "は枠囲み"),
-        ("に枠囲い", "は枠囲み"),
-        ("は横一列", "は縦中横"),
-        ("に傍点（白丸）", "に白丸傍点"),
-        ("に傍点◎", "に二重丸傍点"),
     ] {
         if let Some(head) = body.strip_suffix(variant_kw) {
             return Some(format!("{head}{canonical_kw}"));
         }
     }
-
-    // Sic-marker annotation notes → the recognised `に「Y」の注記` marginNote
-    // form. Bare `ママ` is quoted (scoped to that literal token); a `と注記`
-    // tail gains the `の`. Both preserve the `「X」`/`「Y」` targets.
-    if let Some(head) = body.strip_suffix("にママの注記") {
-        return Some(format!("{head}に「ママ」の注記"));
-    }
-    if let Some(head) = body.strip_suffix("と注記")
-        && head.ends_with('」')
-    {
-        return Some(format!("{head}の注記"));
-    }
-
-    // Missing `は` before `ゴシック体`; `の小文字` drift (only when the head is a
-    // bare `「X」` target; excludes the editorial `…ローマ数字の小文字`).
-    if let Some(head) = body.strip_suffix("ゴシック体")
-        && head.ends_with('」')
-    {
-        return Some(format!("{head}はゴシック体"));
-    }
-    if let Some(head) = body.strip_suffix("の小文字")
-        && head.ends_with('」')
-    {
-        return Some(format!("{head}は小文字"));
-    }
-
     None
 }
 
@@ -209,50 +135,26 @@ pub const CATALOGUE_SAMPLES: &[&str] = &[
     "字下げおわり",
     "文字下げ終わり",
     "二字下げ終わり",
-    "中央寄せ",
     "斜体字",
     "中中見出し",
-    "３回り大きな文字",
-    "ここか２字下げ",
     "２字下げて",
     "「梅」は斜体字",
-    // Forward keyword / particle drift.
-    "「文」の部分はイタリック体",
-    "「12」の縦中横",
+    // Forward keyword / particle variants.
     "「2」は上付き",
-    "「abc」はすべて下付き小文字",
-    "「幕。」は地付け",
-    "「GHQ」の小文字",
-    "「強調」ゴシック体",
-    // the parser declines these; the lint suggests the canonical.
+    // The parser keeps these as Unknown; the lint suggests the canonical.
     "ゴチック",
     "ここでゴチック終わり",
-    "傍点（白丸）",
-    "傍点◎",
-    "「梅」に枠囲い",
-    "「!?」は横一列",
-    "「意志」に傍点（白丸）",
-    "「意志」に傍点◎",
-    // Sic-marker annotation notes.
-    "「甫」にママの注記",
-    "「甫」に「ママ」と注記",
-    // Region-close synonyms (EXACT + parameterized).
-    "ここで左から右への横組み終わり",
+    // Region-close synonym (parameterized).
     "ここで字下げ終わり」",
-    // Region-open synonyms.
-    "こ地付き",
-    "以下2字下げ",
-    // 字下げ numeric.
-    "この行2字下げ",
 ];
 
-/// Bodies that MUST stay a lossless `Unknown`: the negative catalogue that
-/// anchors the zero-false-positive invariant from the *other* side.
+/// Bodies that stay a lossless `Unknown`: the negative catalogue for the
+/// zero-false-positive invariant, listing bodies that no rule may match.
 ///
 /// Drawn from the occurrence-ranked corpus residue (`corpus/render-digest.json`
-/// `unknown_shapes_top`), these are the three families that dominate the tail
-/// and that neither Tier1 ([`canonical_directive`]) nor Tier2
-/// ([`crate::degraded::degraded_directive`]) may ever match:
+/// `unknown_shapes_top`), these are the three families that account for most
+/// of the tail and that neither Tier1 ([`canonical_directive`]) nor Tier2
+/// ([`crate::degraded::degraded_directive`]) may match:
 ///
 /// - **Editorial prose**: bibliographic / collation / conjecture / semantic
 ///   notes (edition names, `では`, `誤記か`, `伏字`, `注釈番号`, `正字`) and
@@ -265,9 +167,9 @@ pub const CATALOGUE_SAMPLES: &[&str] = &[
 ///   by the 外字 layer, not the directive catalogues.
 ///
 /// The `catalogue_refuses_every_editorial_body` self-test in the `aozora` crate
-/// asserts both catalogues return `None` for every entry. Catalog additions include
-/// adjacent editorial bodies, ensuring a future rule that over-generalizes fails
-/// this check rather than misclassifying prose.
+/// asserts both catalogues return `None` for every entry. Each catalogue
+/// addition adds its adjacent editorial bodies here, so a rule that
+/// over-generalizes fails this check before it misclassifies prose.
 pub const EDITORIAL_MUST_STAY_UNKNOWN: &[&str] = &[
     // Editorial prose: bibliographic / collation / conjecture / semantic.
     "底本では「蒼空」",
@@ -281,17 +183,9 @@ pub const EDITORIAL_MUST_STAY_UNKNOWN: &[&str] = &[
     "「甲」の「乙」に代えて「丙」",
     "一つ目の「甲」は「乙」付き",
     "「甲」は「乙」の右側に注記するような形で",
-    // Spatial / layout descriptions without vertical core construct modeling:
-    // ruby/annotation attaches only right (default) or 左に (left), never 上に
-    // (above); "上部に出ている" / "下にポイントを下げて…行で" are free-form position
-    // prose. Folding any onto a real leaf would be a spatial lie, so they stay
-    // inert: the decoys adjacent to Tier2's 下げて… indent rule (D6).
+    // Unsupported spatial description: ruby/annotation attaches only right
+    // (default) or 左に (left), never 上に (above).
     "「甲」は上に「乙」付き",
-    "「甲」は上部に出ている",
-    "「甲」は「乙」の下にポイントを下げて2行で",
-    // Reducing a multi-axis compound to one directive would lose an axis.
-    "「甲」は上付き小文字、「乙」は分数",
-    "「甲」は縦中横、「乙」は上付き小書き",
     // Gaiji-composition descriptions: owned by the 外字 layer.
     "「窗」の下に「心」",
     "「甲」の中に「乙」",
@@ -309,14 +203,12 @@ mod tests {
     #[test]
     fn exact_maps_resolve() {
         assert_eq!(canonical_directive("斜体字").as_deref(), Some("斜体"));
-        assert_eq!(canonical_directive("中央寄せ").as_deref(), Some("中央揃え"));
         assert_eq!(
             canonical_directive("字下げおわり").as_deref(),
             Some("ここで字下げ終わり")
         );
         // 中文字、ゴシック体 is lossy (gothic→bold erases the spelling the parser
-        // keeps Unknown to preserve), so it is not Tier1; it moved to
-        // [`crate::degraded`] (Tier2, opt-in render only). Pin the boundary.
+        // keeps Unknown to preserve), so Tier1 excludes it.
         assert_eq!(canonical_directive("中文字、ゴシック体"), None);
     }
 
@@ -327,10 +219,6 @@ mod tests {
 
     #[test]
     fn parameterized_preserves_n() {
-        assert_eq!(
-            canonical_directive("３回り大きな文字").as_deref(),
-            Some("３段階大きな文字")
-        );
         assert_eq!(
             canonical_directive("ここか２字下げ").as_deref(),
             Some("ここから２字下げ")
@@ -352,39 +240,20 @@ mod tests {
     }
 
     #[test]
-    fn forward_keyword_particle_drift() {
-        for (v, c) in [
-            ("「文」の部分はイタリック体", "「文」は斜体"),
-            ("「12」の縦中横", "「12」は縦中横"),
-            ("「2」は上付き", "「2」は上付き小文字"),
-            ("「abc」はすべて下付き小文字", "「abc」は下付き小文字"),
-            ("「幕。」は地付け", "「幕。」は地付き"),
-            ("「GHQ」の小文字", "「GHQ」は小文字"),
-            ("「強調」ゴシック体", "「強調」はゴシック体"),
-        ] {
-            assert_eq!(canonical_directive(v).as_deref(), Some(c), "variant {v:?}");
-            // Idempotent: the emitted canonical is not itself a catalogue key.
-            assert_eq!(canonical_directive(c), None, "canonical {c:?} re-matched");
-        }
-    }
-
-    #[test]
-    fn sic_annotation_notes_normalise() {
-        for v in ["「甫」にママの注記", "「甫」に「ママ」と注記"] {
-            assert_eq!(
-                canonical_directive(v).as_deref(),
-                Some("「甫」に「ママ」の注記"),
-                "note variant {v:?}"
-            );
-        }
-        assert_eq!(canonical_directive("「甫」に「ママ」の注記"), None);
-        assert_eq!(canonical_directive("「甫」に「ママ」注記"), None);
+    fn forward_keyword_particle_variants_resolve() {
+        assert_eq!(
+            canonical_directive("「2」は上付き").as_deref(),
+            Some("「2」は上付き小文字")
+        );
+        // Idempotent: the emitted canonical is not itself a catalogue key.
+        assert_eq!(canonical_directive("「2」は上付き小文字"), None);
+        assert_eq!(canonical_directive("「abc」はすべて下付き小文字"), None);
     }
 
     #[test]
     fn parenthesized_tcy_needs_no_spelling_repair() {
         assert_eq!(canonical_directive("（一）は縦中横"), None);
-        // Already-quoted and compound-tail forms are left alone.
+        // Already-quoted and compound-tail forms are not mapped.
         assert_eq!(canonical_directive("「（一）」は縦中横"), None);
         assert_eq!(
             canonical_directive("（十一）は縦中横、「十一」は縦組み"),
@@ -393,49 +262,34 @@ mod tests {
     }
 
     #[test]
-    fn small_letter_drift_excludes_editorial() {
-        // `の小文字` only fires when the head is a bare 「…」 target, so the
-        // editorial `…ローマ数字の小文字` prose is never rewritten.
-        assert_eq!(
-            canonical_directive("「xxxiii」は33を表すローマ数字の小文字"),
-            None
-        );
-    }
-
-    #[test]
-    fn region_synonyms_resolve() {
-        assert_eq!(canonical_directive("こ地付き").as_deref(), Some("地付き"));
+    fn recognized_historical_alignment_is_not_a_lint_repair() {
+        assert_eq!(canonical_directive("こ地付き"), None);
         assert_eq!(canonical_directive("地付き"), None, "canonical re-matched");
     }
 
     #[test]
     fn region_numeric_parameterized() {
-        for (v, c) in [
-            ("ここで字下げ終わり」", "ここで字下げ終わり"),
-            ("以下2字下げ", "ここから2字下げ"),
-            ("この行2字下げ", "2字下げ"),
-        ] {
-            assert_eq!(canonical_directive(v).as_deref(), Some(c), "variant {v:?}");
-            assert_eq!(canonical_directive(c), None, "canonical {c:?} re-matched");
-        }
+        let variant = "ここで字下げ終わり」";
+        let canonical = "ここで字下げ終わり";
+        assert_eq!(canonical_directive(variant).as_deref(), Some(canonical));
+        assert_eq!(canonical_directive(canonical), None);
     }
 
     #[test]
     fn region_numeric_excludes_editorial_and_compound() {
-        // digit-run guard: editorial `この行は…N字下げ` prose never matches.
         assert_eq!(canonical_directive("この行は底本では３字下げ"), None);
-        // A `、`-bearing compound close keeps its second axis (not folded away).
+        // A `、`-bearing compound close is not mapped, so its second axis is kept.
         assert_eq!(canonical_directive("ここで小文字、字下げ終わり"), None);
     }
 
     #[test]
     fn genuine_editorial_unknown_returns_none() {
-        // Real editorial notes must never match: zero-FP anchor.
+        // Editorial notes do not match (the zero-false-positive invariant).
         assert!(canonical_directive("底本では「青空」").is_none());
         assert!(canonical_directive("入力者注").is_none());
         assert!(canonical_directive("「」は「」の「」").is_none());
         assert!(canonical_directive("未完").is_none());
-        // Already-canonical forms are not our business (never Unknown anyway).
+        // Already-canonical forms parse to recognized nodes and are not keys.
         assert!(canonical_directive("ここで字下げ終わり").is_none());
         assert!(canonical_directive("地より2字上げ").is_none());
     }

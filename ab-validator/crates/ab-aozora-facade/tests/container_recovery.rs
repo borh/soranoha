@@ -1,4 +1,5 @@
-//! Container recovery stays observable without manufacturing source pairs.
+//! Unclosed, unmatched and mismatched container markers produce diagnostics and
+//! no container pairs.
 
 use ab_aozora_facade::{Document, Severity};
 

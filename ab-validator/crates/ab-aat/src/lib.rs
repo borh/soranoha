@@ -1,5 +1,7 @@
 //! AAT (Aozora AST Transform) projection of native source interpretation.
 
+mod formatting_instruction;
+
 use std::borrow::Cow;
 use std::{
     cmp::Reverse,
@@ -14,39 +16,42 @@ use std::{
 
 use ab_aozora_pipeline::lexer::sanitize::{SanitizeMaps, normalize_line_endings, sanitize_mapped};
 use ab_aozora_pipeline::text_variant::{
-    EditionNoteKind, EditionRangeBoundary, EditionRangeLocation, EditionRangeMarker, TextVariant,
-    TextVariantTarget, base_edition_concealed_characters, concealed_placeholder,
-    contextual_reading, edition_note, edition_range_marker, edition_statement,
-    formatted_text_variant, formatting_edition_note, gaiji_edition_note, image_edition_note,
-    text_variant,
+    EditionNoteKind, EditionRangeBoundary, EditionRangeLocation, EditionRangeMarker,
+    OmissionNoteCertainty, SicTarget, TextVariant, TextVariantTarget,
+    base_edition_concealed_characters, concealed_placeholder, contextual_reading, edition_note,
+    edition_range_marker, edition_statement, formatted_text_variant, formatting_edition_note,
+    gaiji_edition_note, image_edition_note, implicit_base_correction, layout_clause_statement,
+    located_figure_note, named_text_apparatus, omission_note_certainty, ruby_reading_annotation,
+    sic_target, source_legibility_note, text_variant, uncertain_correction,
 };
 use ab_aozora_pipeline::{LexOutput, Pipeline};
 use anyhow::Result;
-use encoding_rs::SHIFT_JIS;
 use regex::Regex;
 use serde_json::{Value, json};
 
 use sha2::{Digest, Sha256};
 
 use ab_aozora_facade::syntax::external_table_reference::external_table_filename;
-use ab_aozora_facade::syntax::parse_image_dimensions;
+use ab_aozora_facade::syntax::{indentation_question_locator, parse_image_dimensions};
 use ab_aozora_facade::{
-    self, BoutenKind, BoutenPosition, Diagnostic, DirectiveKind, ForwardAttr, Node, NodeKind,
-    NodeRef, RegionClose, RegionFormat, SectionKind, Severity, encoding, json as aozora_json,
+    self, BoutenKind, BoutenPosition, DecorationPosition, Diagnostic, DirectiveKind, ForwardAttr,
+    Node, NodeKind, NodeRef, QualifiedBreak, QualifiedBreakKind, RegionClose, RegionFormat,
+    SectionKind, Severity, encoding, json as aozora_json,
 };
-// Body/tail boundary detection is the shared `ab-source-syntax` authority
-// so the checker's comparison source (`ab-check::body_text`) can never
-// drift from the parser's own cut.
+// Body/tail boundary detection uses the shared `ab-source-syntax` function,
+// so the checker's comparison source (`ab-check::body_text`) uses the same
+// cut as the parser.
 use ab_aozora_facade::syntax::{
     AbsoluteSize, BlockPurpose, BlockStyles, CaptionScope, EnclosureKind, HeadingStyle,
     IndentBlock, IndentLayout, LineAlignment, LineFormat, MarginNoteKind, MarginNotePosition,
-    MarkAnchor, RelativePlacement,
+    MarkAnchor, PageVerticalPlacement, RelativePlacement,
     accent::{compose_accent, compose_accent_dots, decompose_fragment},
     ast::{
-        ContainerEnd, ContainerPair, Content, ContentRange, IterationMark, KuntenKind, NodeStore,
-        Ruby, Segment,
+        ContainerEnd, ContainerPair, Content, ContentRange, FormattingInstruction,
+        GaijiMarkerPlacement, IterationMark, KuntenKind, NodeStore, Ruby, Segment,
     },
 };
+use ab_encoding::{AppliedEmendation, emendation::emend};
 use ab_source_syntax::{RegionError, SourceRegions, aozora_body_range};
 
 /// Sanitization and parsing share the native diagnostic type.
@@ -58,34 +63,30 @@ pub type AozoraSanitizeDiagnostic = Diagnostic;
 /// `ruby_node`'s fallback branch). The captured base is then enriched from
 /// the gaiji scan: a base that is exactly one gaiji marker emits the
 /// resolved glyph as `base` plus a structured `base_content` gaiji node,
-/// instead of v1's verbatim marker text (which leaked `※［＃…］` into
-/// every downstream text projection and hid the gaiji from
-/// `gaiji_resolution` accounting).
+/// instead of the verbatim marker text, which would insert `※［＃…］` into
+/// every downstream text projection and exclude the gaiji from
+/// `gaiji_resolution` accounting.
 static RUBY_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^｜?(?P<base>.+?)《(?P<reading>[^》]+)》$").unwrap());
 
 /// Decoded source text and its byte-coordinate basis.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DecodedSource {
     /// Realized accent-scope extents in normalized body coordinates.
     pub accent_scopes: Vec<ab_aozora_facade::Span>,
-    /// Decoded text.
+    /// Decoded text after the source emendations in `emendations`.
     pub text: String,
     /// Decoded text with sanitization for span alignment.
     pub span_text: String,
     /// Complete sanitized text before the body/tail projection.
-    ///
-    /// `pub` (not `pub(crate)`) so a reader outside this crate can align
-    /// spans against it. Nothing inside `ab-aat` reads it, so `pub(crate)`
-    /// would be dead code here.
     pub sanitized_text: String,
     /// The encoding that was successfully decoded (utf-8, utf-8-bom, windows-31j, or lossy variant).
     pub encoding: &'static str,
     /// Hex-encoded SHA256 hash of the input bytes.
     pub source_hash: String,
-    /// Sanitize-stage diagnostics (accent decomposition notes) generated
-    /// before parsing, since parsing rewritten text cannot rediscover
-    /// them. Spans are full-sanitized-text byte offsets.
+    /// Source emendations applied to `text`, with extents in `text`.
+    pub emendations: Vec<AppliedEmendation>,
+    /// Sanitize-stage diagnostics use full-sanitized-text byte offsets.
     pub sanitize_diagnostics: Vec<AozoraSanitizeDiagnostic>,
     /// Sanitized source apparatus from `aozora_body_range`'s tail-start line,
     /// including an explicit body-end marker when present. Starts at the
@@ -99,7 +100,7 @@ pub struct DecodedSource {
     pub tail_offset: usize,
     /// Sanitize offset maps + body offset + line index for span rebasing
     /// for full decoded-source offsets and real 1-based line numbers.
-    /// Sanitized→decoded span-mapping context. `pub` so the extracted
+    /// Sanitized→decoded span-mapping context. `pub` so the
     /// classified-source capture crate can rebase spans (see `SpanContext`).
     pub span_ctx: SpanContext,
 }
@@ -140,24 +141,24 @@ impl DecodedSource {
 /// `pub` (with `pub` `maps`/`body_offset`/`to_decoded`) so a reader outside
 /// this crate can compose sanitized→decoded offsets through this context. The
 /// remaining members stay private (used only within this crate).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SpanContext {
     /// Sanitized→decoded byte-offset maps.
     pub maps: SanitizeMaps,
-    /// Byte offset of the body slice within the SANITIZED text.
+    /// Byte offset of the body slice within the sanitized text.
     pub body_offset: usize,
-    /// Byte offsets of line starts in the DECODED text (`text`).
+    /// Byte offsets of line starts in the decoded text (`text`).
     line_starts: Vec<usize>,
 }
 
 impl SpanContext {
-    /// Map a body-relative sanitized offset to its DECODED-text offset.
+    /// Map a body-relative sanitized offset to its decoded-text offset.
     #[must_use]
     pub fn to_decoded(&self, body_offset: usize) -> usize {
         self.maps.to_source_offset(body_offset + self.body_offset)
     }
 
-    /// Map a body-relative sanitized end offset to its DECODED-text offset.
+    /// Map a body-relative sanitized end offset to its decoded-text offset.
     #[must_use]
     pub fn to_decoded_end(&self, body_end: usize) -> usize {
         self.maps.to_source_end(body_end + self.body_offset)
@@ -169,17 +170,17 @@ impl SpanContext {
 }
 
 /// Byte offsets of line starts in `text`, treating every terminator the
-/// decoded source can actually carry as a boundary: `\n`, `\r\n` (ONE
+/// decoded source can contain as a boundary: `\n`, `\r\n` (one
 /// boundary, after the pair), and bare `\r`.
 ///
-/// The decoded source keeps its original terminators — sanitize's CR/LF
-/// normalization only rewrites the text the PARSER sees. A `\n`-only
+/// The decoded source keeps its original terminators; sanitize's CR/LF
+/// normalization only rewrites the text the parser reads. A `\n`-only
 /// index therefore synthesizes line 1 for every span of a classic-Mac
 /// bare-CR source (zero `\n` in the whole file), losing its
 /// real line numbers. Counting `\r\n` as one boundary keeps CRLF
 /// sources' boundary set byte-identical to a `\n`-only index (the
 /// boundary sits after the pair, exactly where `\n`+1 put it), and
-/// treating lone `\r` as a terminator mirrors sanitize's lone-`\r`→`\n`
+/// treating lone `\r` as a terminator matches sanitize's lone-`\r`→`\n`
 /// rewrite, so decoded-source lines and sanitized-text lines agree in
 /// count for every input.
 fn line_starts(text: &str) -> Vec<usize> {
@@ -218,11 +219,11 @@ fn terminator_ends(text: &str) -> Vec<usize> {
     ends
 }
 
-/// Terminator-INCLUSIVE `(start, end)` byte ranges of every line in
+/// Terminator-inclusive `(start, end)` byte ranges of every line in
 /// `text`, built from the same boundary set as `line_starts`/
 /// `terminator_ends`. Unlike `split_inclusive('\n')` (which only splits on
-/// `\n`, missing bare-CR tails — see the `line_starts` doc comment),
-/// this honors `\n`, `\r\n`, and bare `\r`. A final line lacking a
+/// `\n`, missing bare-CR tails; see the `line_starts` doc comment),
+/// this splits on `\n`, `\r\n`, and bare `\r`. A final line lacking a
 /// terminator (the text doesn't end in one) still yields one last range
 /// ending at `text.len()`.
 ///
@@ -245,7 +246,7 @@ fn line_ranges(text: &str) -> Vec<Range<usize>> {
 /// a blank run stays with the paragraph it ends rather than forming a
 /// whitespace-only paragraph of its own. A gap that begins with a terminator
 /// keeps that terminator as its own leading range: it ends the line the
-/// PREVIOUS inline node (e.g. a line-final ruby) sits on, and the paragraph
+/// previous inline node (e.g. a line-final ruby) is on, and the paragraph
 /// accumulator attaches it there.
 fn paragraph_segments(source: &str) -> Vec<Range<usize>> {
     let mut out: Vec<Range<usize>> = Vec::new();
@@ -284,6 +285,19 @@ struct NoteAssociation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct NamedApparatusWitness {
+    label: String,
+    span: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NamedApparatusReading {
+    witnesses: Vec<NamedApparatusWitness>,
+    text: String,
+    text_span: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ProjectedKind {
     Illustration {
         file: String,
@@ -306,6 +320,7 @@ enum ProjectedKind {
         target: String,
         note_span: Option<Span>,
         target_span: Option<Span>,
+        pair_open_span: Option<Span>,
     },
     IterationMark(IterationMark),
     Accent {
@@ -324,25 +339,38 @@ enum ProjectedKind {
     },
     Node(NodeKind),
     Section(SectionKind),
+    QualifiedBreak(QualifiedBreak),
     Format(ForwardAttr),
     FormatMany(Vec<ForwardAttr>),
+    FormattingInstruction(FormattingInstruction),
     Region(RegionFormat),
     RegionClose(RegionClose),
     Line(LineFormat),
     Directive(DirectiveKind),
     TextVariant {
+        witness_kind: EditionNoteKind,
         target: TextVariantTarget,
         current: String,
         base_text: String,
         current_span: Range<usize>,
         base_spans: Vec<Range<usize>>,
         editorial_statement: Option<String>,
+        source_locator: Option<String>,
+    },
+    NamedTextApparatus {
+        current: String,
+        current_span: Range<usize>,
+        readings: Vec<NamedApparatusReading>,
     },
     BaseEditionConcealment {
         quantity: NonZeroU32,
     },
     ConcealedPlaceholder {
         target: String,
+    },
+    BaseCorrection {
+        base_text: String,
+        base_span: Range<usize>,
     },
     EditorialNote {
         kind: EditionNoteKind,
@@ -368,11 +396,13 @@ impl ProjectedKind {
             Self::Accent { .. } => "supplied-diacritic",
             Self::AccentReference => "accent-annotation",
             Self::FormattingReference => "formatting-annotation",
+            Self::FormattingInstruction(_) => "formatting-instruction",
             Self::Heading { .. } => "headingHint",
             Self::Kunten { .. } => "kunten",
             Self::MarginNote { .. } | Self::TranscribedNotes { .. } => "sideNote",
             Self::Node(kind) => kind.as_json_tag(),
             Self::Section(_) => "sectionBreak",
+            Self::QualifiedBreak(_) => "layoutBreak",
             Self::Line(line) => Node::Line(*line).kind().as_json_tag(),
             Self::Region(_) => "containerOpen",
             Self::RegionClose(_) => "containerClose",
@@ -381,14 +411,20 @@ impl ProjectedKind {
             Self::Format(_) | Self::FormatMany(_) => "emphasis",
             Self::Directive(DirectiveKind::WarichuOpen) => "warichuOpen",
             Self::Directive(DirectiveKind::WarichuClose) => "warichuClose",
+            Self::Directive(DirectiveKind::WarigakiOpen) => "warigakiOpen",
+            Self::Directive(DirectiveKind::WarigakiClose) => "warigakiClose",
+            Self::Directive(DirectiveKind::RubyPairOpen) => "rubyPairOpen",
+            Self::Directive(DirectiveKind::RubyPairClose) => "rubyPairClose",
             Self::Directive(_)
             | Self::TextVariant { .. }
+            | Self::NamedTextApparatus { .. }
             | Self::EditorialNote { .. }
             | Self::EditorialRangeMarker(_)
             | Self::EditorialRange { .. }
             | Self::EditorialRangeClose
             | Self::BaseEditionConcealment { .. }
-            | Self::ConcealedPlaceholder { .. } => "directive",
+            | Self::ConcealedPlaceholder { .. }
+            | Self::BaseCorrection { .. } => "directive",
             Self::QuoteOpen => "angleQuoteOpen",
             Self::QuoteClose => "angleQuoteClose",
             Self::LiteralReferenceSign => "text",
@@ -405,6 +441,7 @@ struct AozoraNode {
     target_quote: Option<Span>,
     container_scope: Option<NativeScope>,
     layout_clauses: Vec<Span>,
+    layout_instructions: Vec<FormattingInstruction>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -434,6 +471,10 @@ struct LocatedAnnotation {
 
 #[derive(Debug, Clone)]
 enum NestedAnnotation {
+    Gaiji {
+        marker: Span,
+        placement: GaijiMarkerPlacement,
+    },
     Accent {
         text: String,
         marker: Span,
@@ -445,10 +486,14 @@ enum NestedAnnotation {
         marker: Option<Span>,
     },
     Directive(DirectiveKind),
+    FormattingInstruction(FormattingInstruction),
     Format {
         attrs: Vec<ForwardAttr>,
         marker: Option<Span>,
     },
+    /// A figure or a noted target whose node is the projection of its own
+    /// source extent.
+    Fragment,
 }
 
 fn project_text_variant(kind: ProjectedKind, source: &str, span: Span) -> ProjectedKind {
@@ -465,6 +510,38 @@ fn project_text_variant(kind: ProjectedKind, source: &str, span: Span) -> Projec
         if let Some(target) = concealed_placeholder(&source[span.start..span.end]) {
             return ProjectedKind::ConcealedPlaceholder {
                 target: target.to_owned(),
+            };
+        }
+        if let Some(correction) = implicit_base_correction(&source[span.start..span.end]) {
+            return ProjectedKind::BaseCorrection {
+                base_text: correction.base_text.to_owned(),
+                base_span: span.start + correction.base_span.start
+                    ..span.start + correction.base_span.end,
+            };
+        }
+        if let Some(apparatus) = named_text_apparatus(&source[span.start..span.end]) {
+            return ProjectedKind::NamedTextApparatus {
+                current: apparatus.current.to_owned(),
+                current_span: span.start + apparatus.current_span.start
+                    ..span.start + apparatus.current_span.end,
+                readings: apparatus
+                    .readings
+                    .into_iter()
+                    .map(|reading| NamedApparatusReading {
+                        witnesses: reading
+                            .witnesses
+                            .into_iter()
+                            .map(|witness| NamedApparatusWitness {
+                                label: witness.label.to_owned(),
+                                span: span.start + witness.span.start
+                                    ..span.start + witness.span.end,
+                            })
+                            .collect(),
+                        text: reading.text.to_owned(),
+                        text_span: span.start + reading.text_span.start
+                            ..span.start + reading.text_span.end,
+                    })
+                    .collect(),
             };
         }
         text_variant(&source[span.start..span.end]).map_or_else(
@@ -485,7 +562,9 @@ fn project_text_variant(kind: ProjectedKind, source: &str, span: Span) -> Projec
 
 fn projected_variant(variant: TextVariant<'_>, start: usize) -> ProjectedKind {
     ProjectedKind::TextVariant {
+        witness_kind: variant.witness_kind,
         editorial_statement: variant.editorial_statement.map(str::to_owned),
+        source_locator: variant.source_locator.map(str::to_owned),
         target: variant.target,
         current: variant.current.to_owned(),
         base_text: format!(
@@ -630,6 +709,13 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                     target: margin_note_target(&tree.store, note.base),
                     note_span: note.note_span.map(|span| span.span().into()),
                     target_span: note.target_span.map(|span| span.span().into()),
+                    pair_open_span: note.pair.map(|pair| {
+                        tree.store
+                            .resolve_margin_note_pair(pair)
+                            .open_span
+                            .span()
+                            .into()
+                    }),
                 },
                 NodeRef::Inline(Node::IterationMark(mark)) => ProjectedKind::IterationMark(mark),
                 NodeRef::Inline(Node::HeadingHint(hint)) => ProjectedKind::Heading {
@@ -655,15 +741,27 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                 | NodeRef::BlockLeaf(Node::SectionBreak(section)) => {
                     ProjectedKind::Section(section)
                 }
+                NodeRef::Inline(Node::QualifiedBreak(break_))
+                | NodeRef::BlockLeaf(Node::QualifiedBreak(break_)) => {
+                    ProjectedKind::QualifiedBreak(break_)
+                }
                 NodeRef::BlockOpen(region) => ProjectedKind::Region(region),
                 NodeRef::BlockClose(close) => ProjectedKind::RegionClose(close),
                 NodeRef::Inline(Node::Line(line)) | NodeRef::BlockLeaf(Node::Line(line)) => {
                     ProjectedKind::Line(line)
                 }
                 NodeRef::Inline(Node::Directive(directive))
-                | NodeRef::BlockLeaf(Node::Directive(directive)) => {
-                    ProjectedKind::Directive(directive.kind)
-                }
+                | NodeRef::BlockLeaf(Node::Directive(directive)) => match directive.kind {
+                    DirectiveKind::GaijiDeclaration | DirectiveKind::MarginNotePairOpenResolved => {
+                        ProjectedKind::FormattingReference
+                    }
+                    DirectiveKind::FormattingInstruction(id) => {
+                        ProjectedKind::FormattingInstruction(
+                            tree.store.resolve_formatting_instruction(id).clone(),
+                        )
+                    }
+                    kind => ProjectedKind::Directive(kind),
+                },
                 node => ProjectedKind::Node(node.kind()),
             };
             if let NodeRef::Inline(Node::Format(format))
@@ -730,18 +828,48 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                 | NodeRef::BlockLeaf(
                     Node::MarginNote(_) | Node::HeadingHint(_) | Node::Kunten(_),
                 ) => Some(ab_aozora_facade::PairKind::Bracket),
-                NodeRef::Inline(Node::Ruby(_)) | NodeRef::BlockLeaf(Node::Ruby(_)) => {
-                    Some(ab_aozora_facade::PairKind::Ruby)
+                NodeRef::Inline(Node::Gaiji(gaiji)) | NodeRef::BlockLeaf(Node::Gaiji(gaiji))
+                    if gaiji.replaced.is_some() =>
+                {
+                    Some(ab_aozora_facade::PairKind::Bracket)
+                }
+                NodeRef::Inline(Node::Ruby(ruby)) | NodeRef::BlockLeaf(Node::Ruby(ruby)) => {
+                    Some(if ruby.side == ab_aozora_facade::RubySide::Left {
+                        ab_aozora_facade::PairKind::Bracket
+                    } else {
+                        ab_aozora_facade::PairKind::Ruby
+                    })
                 }
                 _ => None,
             };
-            let mut marker_span = if let NodeRef::Inline(Node::Format(format)) = source_node.node
+            let mut marker_span = if let NodeRef::Inline(Node::Gaiji(gaiji))
+            | NodeRef::BlockLeaf(Node::Gaiji(gaiji)) = source_node.node
+                && let Some(declaration) = gaiji.declaration_span
+            {
+                Some(Span::from(declaration.span()))
+            } else if let NodeRef::Inline(Node::Format(format)) = source_node.node
                 && format.origin == ab_aozora_facade::ForwardOrigin::Detached
                 && detached_formatting.contains(&(format.target.start, format.target.len))
             {
                 format_references
                     .get(&(format.target.start, format.target.len))
                     .copied()
+            } else if let NodeRef::Inline(Node::Ruby(ruby)) | NodeRef::BlockLeaf(Node::Ruby(ruby)) =
+                source_node.node
+                && ruby.side == ab_aozora_facade::RubySide::Right
+            {
+                tree.pairs
+                    .iter()
+                    .filter(|pair| {
+                        pair.kind == ab_aozora_facade::PairKind::Ruby
+                            && pair.open.start >= source_node.source_span.start
+                            && pair.close.end <= source_node.source_span.end
+                    })
+                    .min_by_key(|pair| pair.open.start)
+                    .map(|pair| Span {
+                        start: pair.open.start as usize,
+                        end: pair.close.end as usize,
+                    })
             } else {
                 pairs
                     .get(&span.end)
@@ -757,14 +885,18 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
             };
             if marker_kind == Some(ab_aozora_facade::PairKind::Ruby)
                 && tree.sanitized[span.start..span.end].starts_with('｜')
-                && marker_span.is_some()
+                && let Some(marker) = marker_span
             {
-                marker_span = Some(span);
+                marker_span = Some(Span {
+                    start: span.start,
+                    end: marker.end,
+                });
             }
             let partial = match &kind {
                 ProjectedKind::Region(RegionFormat::Indent(block)) => block.partial,
                 ProjectedKind::Region(RegionFormat::Columns(block)) => block.partial,
                 ProjectedKind::Region(RegionFormat::Table(block)) => block.partial,
+                ProjectedKind::RegionClose(RegionClose::Indent { partial, .. }) => *partial,
                 _ => None,
             };
             let layout_clauses = partial
@@ -778,7 +910,13 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                         .collect()
                 })
                 .unwrap_or_default();
-            let target_quote = if matches!(kind, ProjectedKind::TextVariant { .. }) {
+            let layout_instructions = partial
+                .map(|id| tree.store.resolve_partial_layout(id).instructions.clone())
+                .unwrap_or_default();
+            let target_quote = if matches!(
+                kind,
+                ProjectedKind::TextVariant { .. } | ProjectedKind::NamedTextApparatus { .. }
+            ) {
                 pairs
                     .get(&span.start)
                     .filter(|pair| pair.kind == ab_aozora_facade::PairKind::Quote)
@@ -787,12 +925,13 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                         end: pair.close.start as usize,
                     })
             } else {
-                matches!(
+                (matches!(
                     kind,
                     ProjectedKind::Format(_)
                         | ProjectedKind::FormatMany(_)
                         | ProjectedKind::Heading { .. }
-                )
+                ) || (matches!(kind, ProjectedKind::Node(NodeKind::Ruby))
+                    && marker_kind == Some(ab_aozora_facade::PairKind::Bracket)))
                 .then(|| {
                     let marker = marker_span?;
                     pairs.range(marker.start..marker.end).find_map(|(_, pair)| {
@@ -813,6 +952,7 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                 target_quote,
                 container_scope: None,
                 layout_clauses,
+                layout_instructions,
             }
         })
         .flat_map(|node| expand_native_scopes(node, &container_scopes))
@@ -827,6 +967,7 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                 target_quote: None,
                 container_scope: None,
                 layout_clauses: Vec::new(),
+                layout_instructions: Vec::new(),
             })
         }))
         .chain(
@@ -846,6 +987,7 @@ fn node_projection(tree: &LexOutput) -> Vec<AozoraNode> {
                             target_quote: None,
                             container_scope: None,
                             layout_clauses: Vec::new(),
+                            layout_instructions: Vec::new(),
                         },
                     )
                 }),
@@ -896,6 +1038,7 @@ fn expand_native_scopes(
         });
         if mem::discriminant(&pair.kind) != mem::discriminant(&original) {
             projected.layout_clauses.clear();
+            projected.layout_instructions.clear();
         }
         result.push(projected);
     }
@@ -932,6 +1075,10 @@ fn referenced_dot_markers(tree: &LexOutput) -> BTreeMap<(u32, u32), Span> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one match maps every segment kind a ruby can contain"
+)]
 fn ruby_annotations(
     tree: &LexOutput,
     ruby: &Ruby,
@@ -948,6 +1095,19 @@ fn ruby_annotations(
         })
         .flatten()
         .filter_map(|segment| match segment {
+            Segment::Gaiji {
+                value,
+                target_span,
+                marker_span,
+                placement,
+                ..
+            } if value.replaced.is_some() => Some(LocatedAnnotation {
+                span: (*target_span).into(),
+                payload: NestedAnnotation::Gaiji {
+                    marker: (*marker_span).into(),
+                    placement: *placement,
+                },
+            }),
             Segment::IterationMark { value, source_span } => Some(LocatedAnnotation {
                 span: (*source_span).into(),
                 payload: NestedAnnotation::IterationMark(*value),
@@ -976,7 +1136,21 @@ fn ruby_annotations(
                     store.content_range_as_plain(value.target)?,
                     store.resolve_str(value.annotation_body?),
                 )?;
-                let marker = *accent_markers.get(&(value.target.start, value.target.len))?;
+                let marker = accent_markers
+                    .get(&(value.target.start, value.target.len))
+                    .copied()
+                    .or_else(|| {
+                        pairs
+                            .get(&source_span.end)
+                            .filter(|pair| {
+                                value.origin == ab_aozora_facade::ForwardOrigin::Reclaimed
+                                    && pair.kind == ab_aozora_facade::PairKind::Bracket
+                            })
+                            .map(|pair| Span {
+                                start: pair.open.start as usize,
+                                end: pair.close.end as usize,
+                            })
+                    })?;
                 Some(LocatedAnnotation {
                     span: (*source_span).into(),
                     payload: NestedAnnotation::Accent { text, marker },
@@ -997,8 +1171,21 @@ fn ruby_annotations(
             }),
             Segment::Directive { value, source_span } => Some(LocatedAnnotation {
                 span: (*source_span).into(),
-                payload: NestedAnnotation::Directive(value.kind),
+                payload: match value.kind {
+                    DirectiveKind::FormattingInstruction(id) => {
+                        NestedAnnotation::FormattingInstruction(
+                            store.resolve_formatting_instruction(id).clone(),
+                        )
+                    }
+                    kind => NestedAnnotation::Directive(kind),
+                },
             }),
+            Segment::Illustration { source_span, .. } | Segment::MarginNote { source_span, .. } => {
+                Some(LocatedAnnotation {
+                    span: (*source_span).into(),
+                    payload: NestedAnnotation::Fragment,
+                })
+            }
             _ => None,
         })
         .collect()
@@ -1019,7 +1206,18 @@ fn ruby_projection(tree: &LexOutput) -> Result<Vec<AozoraRubyEntry>> {
         else {
             continue;
         };
-        let annotations = ruby_annotations(tree, &ruby, &pairs, &accent_markers);
+        let mut annotations = ruby_annotations(tree, &ruby, &pairs, &accent_markers);
+        annotations.retain(|annotation| match &annotation.payload {
+            NestedAnnotation::Gaiji {
+                placement: GaijiMarkerPlacement::Detached,
+                ..
+            } => true,
+            NestedAnnotation::Gaiji { marker, .. } => {
+                source_node.source_span.start as usize <= marker.start
+                    && marker.end <= source_node.source_span.end as usize
+            }
+            _ => true,
+        });
         let plain = (
             store.content_range_as_plain(ruby.base),
             store.content_range_as_plain(ruby.reading),
@@ -1027,7 +1225,19 @@ fn ruby_projection(tree: &LexOutput) -> Result<Vec<AozoraRubyEntry>> {
         let (base, reading, windows) = if let (Some(base), Some(reading)) = plain {
             (base.to_owned(), reading.to_owned(), None)
         } else if !annotations.is_empty() {
-            let Some(pair) = pairs.get(&source_node.source_span.end) else {
+            let pair = if ruby.side == ab_aozora_facade::RubySide::Left {
+                pairs.get(&source_node.source_span.end).copied()
+            } else {
+                tree.pairs
+                    .iter()
+                    .filter(|pair| {
+                        pair.kind == ab_aozora_facade::PairKind::Ruby
+                            && pair.open.start >= source_node.source_span.start
+                            && pair.close.end <= source_node.source_span.end
+                    })
+                    .min_by_key(|pair| pair.open.start)
+            };
+            let Some(pair) = pair else {
                 continue;
             };
             let mut base = Span {
@@ -1070,53 +1280,12 @@ fn ruby_projection(tree: &LexOutput) -> Result<Vec<AozoraRubyEntry>> {
 ///
 /// # Errors
 ///
-/// Returns an error if UTF-8 decoding with BOM fails unexpectedly.
+/// Returns an error if UTF-8 decoding with BOM fails, if the source
+/// emendation table is invalid, or if two emendations overlap.
 pub fn decode_source_bytes(bytes: &[u8]) -> Result<DecodedSource> {
     let source_hash = format!("sha256:{}", hex_sha256(bytes));
-    if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
-        let text = str::from_utf8(&bytes[3..])?.to_owned();
-        let sanitized = sanitize_for_aat(&text);
-        let span_ctx = SpanContext {
-            maps: sanitized.maps,
-            body_offset: sanitized.body_offset,
-            line_starts: line_starts(&text),
-        };
-        return Ok(DecodedSource {
-            text,
-            span_text: sanitized.body,
-            accent_scopes: sanitized.accent_scopes,
-            sanitized_text: sanitized.full,
-            encoding: "utf-8-bom",
-            source_hash,
-            sanitize_diagnostics: sanitized.diagnostics,
-            sanitized_tail: sanitized.tail,
-            tail_offset: sanitized.tail_offset,
-            span_ctx,
-        });
-    }
-    if let Ok(text) = str::from_utf8(bytes) {
-        let text = text.to_owned();
-        let sanitized = sanitize_for_aat(&text);
-        let span_ctx = SpanContext {
-            maps: sanitized.maps,
-            body_offset: sanitized.body_offset,
-            line_starts: line_starts(&text),
-        };
-        return Ok(DecodedSource {
-            text,
-            span_text: sanitized.body,
-            accent_scopes: sanitized.accent_scopes,
-            sanitized_text: sanitized.full,
-            encoding: "utf-8",
-            source_hash,
-            sanitize_diagnostics: sanitized.diagnostics,
-            sanitized_tail: sanitized.tail,
-            tail_offset: sanitized.tail_offset,
-            span_ctx,
-        });
-    }
-    let (cow, _, had_errors) = SHIFT_JIS.decode(bytes);
-    let text = cow.into_owned();
+    let (text, encoding) = ab_encoding::decode_text(bytes)?;
+    let (text, emendations) = emend(&text)?.unwrap_or((text, Vec::new()));
     let sanitized = sanitize_for_aat(&text);
     let span_ctx = SpanContext {
         maps: sanitized.maps,
@@ -1128,12 +1297,9 @@ pub fn decode_source_bytes(bytes: &[u8]) -> Result<DecodedSource> {
         span_text: sanitized.body,
         accent_scopes: sanitized.accent_scopes,
         sanitized_text: sanitized.full,
-        encoding: if had_errors {
-            "windows-31j-lossy"
-        } else {
-            "windows-31j"
-        },
+        encoding,
         source_hash,
+        emendations,
         sanitize_diagnostics: sanitized.diagnostics,
         sanitized_tail: sanitized.tail,
         tail_offset: sanitized.tail_offset,
@@ -1141,21 +1307,17 @@ pub fn decode_source_bytes(bytes: &[u8]) -> Result<DecodedSource> {
     })
 }
 
-/// Intermediate result of the sanitize + body/tail split stage — a named
-/// struct rather than a wide tuple so `decode_source_bytes`'s three
-/// branches read as field access, not positional unpacking (added
-/// the tail fields; a tuple would have grown to six positional slots).
+/// Intermediate result of the sanitize + body/tail split stage.
 struct SanitizedForAat {
     accent_scopes: Vec<ab_aozora_facade::Span>,
-    /// The BODY slice (`sanitized[body_range]`), same content
-    /// `sanitize_for_aat` always returned as its first element.
+    /// The body slice (`sanitized[body_range]`).
     body: String,
     full: String,
     diagnostics: Vec<AozoraSanitizeDiagnostic>,
     maps: SanitizeMaps,
     /// `body_range.start`, sanitized coordinates.
     body_offset: usize,
-    /// The TAIL slice (`sanitized[tail_start..]`) — see
+    /// The tail slice (`sanitized[tail_start..]`); see
     /// `DecodedSource::sanitized_tail`'s doc comment for why this is
     /// anchored on the `底本：` line, not `body_range.end`.
     tail: String,
@@ -1200,7 +1362,8 @@ fn sanitize_for_aat(text: &str) -> SanitizedForAat {
 
 #[allow(
     clippy::type_complexity,
-    reason = "one tuple per typed projection consumed by build_aat"
+    clippy::too_many_lines,
+    reason = "one iterative projection traversal keeps nested quote rebasing atomic"
 )]
 fn projections(
     span_text: &str,
@@ -1246,6 +1409,7 @@ fn projections(
             target_quote: None,
             container_scope: None,
             layout_clauses: Vec::new(),
+            layout_instructions: Vec::new(),
             span: Span {
                 start: node.span.start,
                 end: start,
@@ -1257,6 +1421,7 @@ fn projections(
             target_quote: None,
             container_scope: None,
             layout_clauses: Vec::new(),
+            layout_instructions: Vec::new(),
             span: Span {
                 start: end,
                 end: node.span.end,
@@ -1293,6 +1458,9 @@ fn projections(
             }
             rebase_projected_spans(&mut inner.kind, start);
             rebase_partial_layout(&mut inner.layout_clauses, start);
+            for instruction in &mut inner.layout_instructions {
+                formatting_instruction::rebase(instruction, start);
+            }
             pending.push(inner);
         }
         let inner_ruby = ruby_projection(&inner_tree)?;
@@ -1354,21 +1522,46 @@ pub fn aat_json_from_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
     let (nodes, diagnostics, gaiji, ruby, retained_accents) =
         projections(&decoded.span_text, &decoded.accent_scopes)?;
     let mut aat = build_aat(&decoded, &nodes, &diagnostics, &gaiji, &ruby);
-    if !retained_accents.is_empty() {
-        aat["meta"]["interpretation_problems"] = Value::Array(
-            retained_accents
-                .iter()
-                .map(|span| {
-                    let start = decoded.span_ctx.to_decoded(span.start);
-                    let end = decoded.span_ctx.to_decoded_end(span.end);
-                    json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation",
-                "raw": &decoded.text[start..end],
-                "source_span": {"coordinate_system":"decoded_utf8", "start":start, "end":end,
-                    "line":decoded.span_ctx.line_of(start)},
-                "aspects":["content","layout"], "influence":{"kind":"document"}})
+    let problem = |start: usize, end: usize, aspects: &[&str]| {
+        json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation",
+            "raw": &decoded.text[start..end],
+            "source_span": {"coordinate_system":"decoded_utf8", "start":start, "end":end,
+                "line":decoded.span_ctx.line_of(start)},
+            "aspects":aspects, "influence":{"kind":"document"}})
+    };
+    let mut problems = retained_accents
+        .iter()
+        .map(|span| {
+            problem(
+                decoded.span_ctx.to_decoded(span.start),
+                decoded.span_ctx.to_decoded_end(span.end),
+                &["content", "layout"],
+            )
+        })
+        .collect::<Vec<_>>();
+    problems.extend(
+        decoded
+            .sanitize_diagnostics
+            .iter()
+            .filter_map(|diagnostic| {
+                let Diagnostic::UnresolvedAccentNotation { span, .. } = diagnostic else {
+                    return None;
+                };
+                let start = span.start as usize;
+                let end = span.end as usize;
+                (start >= decoded.span_ctx.body_offset
+                    && end <= decoded.span_ctx.body_offset + decoded.span_text.len())
+                .then(|| {
+                    problem(
+                        decoded.span_ctx.maps.to_source_offset(start),
+                        decoded.span_ctx.maps.to_source_end(end),
+                        &["content"],
+                    )
                 })
-                .collect(),
-        );
+            }),
+    );
+    if !problems.is_empty() {
+        aat["meta"]["interpretation_problems"] = Value::Array(problems);
     }
     let mut out = Vec::new();
     serde_json::to_writer(&mut out, &aat)?;
@@ -1406,10 +1599,8 @@ fn rebase_spans(
 /// One wire diagnostics envelope (`{"data": […], "schemaVersion": 3}`)
 /// per input — the `--mode diagnostics` payload.
 ///
-/// Single owner of the diagnostics path: decoding,
-/// sanitization, and body selection use `decode_source_bytes`, as for AAT.
-/// The parser consumes that normalized body without sanitizing it again.
-/// Entry order is sanitize-stage diagnostics, then parser diagnostics.
+/// Decoding, sanitization, body selection, and semantic projection are shared
+/// with AAT. Entry order is sanitize-stage diagnostics, then parser diagnostics.
 ///
 /// # Errors
 ///
@@ -1417,15 +1608,13 @@ fn rebase_spans(
 /// serialization fails.
 pub fn diagnostics_json_from_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
     let decoded = decode_source_bytes(bytes)?;
-    let tree = Pipeline::from_sanitized(&decoded.span_text, decoded.accent_scopes.clone())
-        .tokenize()
-        .pair()
-        .build();
+    let (nodes, diagnostics, gaiji, ruby, _) =
+        projections(&decoded.span_text, &decoded.accent_scopes)?;
+    let aat = build_aat(&decoded, &nodes, &diagnostics, &gaiji, &ruby);
     let mut data = serde_json::to_value(aozora_json::diagnostic_entries(
         &decoded.sanitize_diagnostics,
     ))?;
-    let mut parser_entries =
-        serde_json::to_value(aozora_json::diagnostic_entries(&tree.diagnostics))?;
+    let mut parser_entries = serde_json::to_value(aozora_json::diagnostic_entries(&diagnostics))?;
     // Sanitize-stage entries carry full-sanitized-text offsets → through
     // the maps directly (no body offset). Parser entries carry
     // body-relative offsets → body offset + maps. Both land in decoded-
@@ -1440,6 +1629,18 @@ pub fn diagnostics_json_from_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
         |o| decoded.span_ctx.to_decoded(o),
         |o| decoded.span_ctx.to_decoded_end(o),
     );
+    if let Some(entries) = parser_entries.as_array_mut() {
+        entries.retain(|entry| {
+            entry["code"] != "forward-referent-not-stylable"
+                || aat["meta"]["warnings"].as_array().is_some_and(|warnings| {
+                    warnings.iter().any(|warning| {
+                        warning["code"] == entry["code"]
+                            && warning["span"]["byte_start"] == entry["span"]["start"]
+                            && warning["span"]["byte_end"] == entry["span"]["end"]
+                    })
+                })
+        });
+    }
     if let (Some(items), Some(more)) = (data.as_array_mut(), parser_entries.as_array()) {
         items.extend(more.iter().cloned());
     }
@@ -1455,6 +1656,7 @@ pub fn diagnostics_json_from_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
 
 #[derive(Clone, Copy)]
 enum EstablishedInterpretation {
+    Accent,
     BaselinePosition,
     Exponent,
     Ruby,
@@ -1490,25 +1692,16 @@ impl EstablishedInterpretation {
             .as_array()
             .is_some_and(|children| !children.is_empty());
         match node["kind"].as_str() {
-            Some("chitsuki") if has_content => Some(Self::LineLayout),
+            Some("accent") if Self::has_text(node, "resolved") => Some(Self::Accent),
+            Some("chitsuki" | "jisage") if has_content => Some(Self::LineLayout),
             Some("baseline_position") if has_content => Some(Self::BaselinePosition),
             Some("exponent") if has_content => Some(Self::Exponent),
             Some("keigakomi" | "yokogumi" | "fraction") if has_content => Some(Self::Layout),
-            Some("ruby")
-                if node["base"].as_str().is_some_and(|text| !text.is_empty())
-                    && node["reading"]
-                        .as_str()
-                        .is_some_and(|text| !text.is_empty()) =>
-            {
+            Some("ruby") if Self::has_text(node, "base") && Self::has_text(node, "reading") => {
                 Some(Self::Ruby)
             }
-            Some("gaiji")
-                if node["resolved"]
-                    .as_str()
-                    .is_some_and(|text| !text.is_empty()) =>
-            {
-                Some(Self::Gaiji)
-            }
+            Some("ruby_reading") if Self::has_text(node, "reading") => Some(Self::Ruby),
+            Some("gaiji") if Self::has_text(node, "resolved") => Some(Self::Gaiji),
             Some("style") if Self::is_emphasis_style(node) && has_content => Some(Self::Emphasis),
             Some("typography_block")
                 if node["children"]
@@ -1564,10 +1757,10 @@ impl EstablishedInterpretation {
                 Some(Self::ExternalTableReference)
             }
             Some("editorial_note") => Some(Self::EditorialNote),
-            // A block that supplies only a role has that role to claim. A block
-            // that also supplies indentation earns the line-layout claim its
-            // geometry stands for, and states the role as a further fact
-            // alongside it, the way a formula scope does.
+            // A block that supplies only a role asserts only that role. A
+            // block that also supplies indentation asserts the line-layout
+            // claim for its geometry and states the role as a further fact
+            // alongside it, as a formula scope does.
             Some("layout_block") if node["role"] == "table" && node["indent"].is_null() => {
                 Some(Self::Table)
             }
@@ -1582,6 +1775,10 @@ impl EstablishedInterpretation {
             Some("layout_block") => Some(Self::LineLayout),
             _ => None,
         }
+    }
+
+    fn has_text(node: &Value, field: &str) -> bool {
+        node[field].as_str().is_some_and(|text| !text.is_empty())
     }
 
     fn only_layout_unresolved(node: &Value) -> bool {
@@ -1601,6 +1798,7 @@ impl EstablishedInterpretation {
                 "bold"
                     | "gothic"
                     | "textbook"
+                    | "handwritten"
                     | "italic"
                     | "superscript"
                     | "subscript"
@@ -1612,6 +1810,7 @@ impl EstablishedInterpretation {
 
     fn kind(self) -> &'static str {
         match self {
+            Self::Accent => "accent",
             Self::BaselinePosition => "baseline-position",
             Self::Exponent => "exponent",
             Self::Ruby => "ruby",
@@ -1656,7 +1855,9 @@ impl EstablishedInterpretation {
             Self::Ruby | Self::GaijiRuby | Self::TextVariant | Self::EditorialNote => {
                 &["content", "structure"]
             }
-            Self::Gaiji | Self::IterationMark | Self::SuppliedDiacritic => &["content"],
+            Self::Accent | Self::Gaiji | Self::IterationMark | Self::SuppliedDiacritic => {
+                &["content"]
+            }
             Self::BaselinePosition | Self::Emphasis | Self::Layout | Self::LineLayout => {
                 &["layout"]
             }
@@ -1711,6 +1912,54 @@ fn gaiji_ruby_facts(ruby: &Value) -> Vec<Value> {
     facts
 }
 
+fn ranged_gaiji_ruby_facts(group: &Value) -> Vec<Value> {
+    fn collect<'a>(
+        nodes: &'a [Value],
+        offset: &mut usize,
+        gaiji: &mut Vec<(Range<usize>, &'a Value)>,
+    ) {
+        for node in nodes {
+            let start = *offset;
+            let end = start
+                + fragment_text(node, FragmentTextPolicy::Interpreted).map_or(0, |text| text.len());
+            if node["kind"] == "gaiji" {
+                gaiji.push((start..end, node));
+            }
+            if let Some(children) = node["content"].as_array() {
+                collect(children, offset, gaiji);
+            }
+            *offset = end;
+        }
+    }
+    let mut gaiji = Vec::new();
+    collect(
+        group["base_content"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice),
+        &mut 0,
+        &mut gaiji,
+    );
+    group["readings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|reading| {
+            let mut ruby = reading.clone();
+            ruby["base_content"] = json!(
+                gaiji
+                    .iter()
+                    .filter_map(|(range, node)| {
+                        let start = reading["base_range"]["start"].as_u64()?;
+                        let end = reading["base_range"]["end"].as_u64()?;
+                        (start <= range.start as u64 && range.end as u64 <= end).then_some(*node)
+                    })
+                    .collect::<Vec<_>>()
+            );
+            gaiji_ruby_facts(&ruby)
+        })
+        .collect()
+}
+
 /// Every interpretation one node establishes: what the node is, plus the roles
 /// and formatting it supplies alongside that. A supplied role sits beside the
 /// geometry claim rather than replacing it, so a marker that states both is
@@ -1731,7 +1980,7 @@ fn node_interpretations(
             && !node["indent"].is_null()
             && matches!(node["role"].as_str(), Some("table" | "figure-table")))
         .then_some(EstablishedInterpretation::Table),
-        // A quotation or letter role always arrives on a scope that also
+        // A quotation or letter role always occurs on a scope that also
         // supplies indentation, so it is only ever the second claim of the two.
         (node["kind"] == "layout_block")
             .then(|| match node["role"].as_str() {
@@ -1743,6 +1992,86 @@ fn node_interpretations(
     ]
 }
 
+fn supplemental_formatting(node: &Value) -> (bool, bool) {
+    if node["kind"] != "layout_block" {
+        return (false, false);
+    }
+    let mut font = false;
+    let mut layout = node["direction"] == "horizontal" || node.get("relative_placement").is_some();
+    for attribute in
+        iter::once(&node["formatting"]).chain(node["formatting"].as_array().into_iter().flatten())
+    {
+        font |= EstablishedInterpretation::is_font_formatting(attribute);
+        layout |= attribute["kind"] == "keigakomi";
+    }
+    (font, layout)
+}
+
+fn accent_interpretation_fact(node: &Value) -> Option<Value> {
+    let markers = node["interpretation_marker_spans"].as_array()?;
+    let (first, last) = (markers.first()?, markers.last()?);
+    let (start, end) = (first["byte_start"].as_u64()?, last["byte_end"].as_u64()?);
+    (start < end).then(|| {
+        json!({"kind":"accent", "outcome":"established", "aspects":["content"],
+            "source_span":{"start":start,"end":end,"line":first["line_start"],"coordinate_system":"decoded_utf8"}})
+    })
+}
+
+fn interpretation_spans(node: &Value, interpretation: EstablishedInterpretation) -> Vec<&Value> {
+    let mut spans = if node["kind"] == "kunten"
+        && let Some(markers) = node["interpretation_marker_spans"].as_array()
+    {
+        markers.iter().collect()
+    } else if matches!(interpretation, EstablishedInterpretation::LayoutBreak)
+        || matches!(
+            node["kind"].as_str(),
+            Some(
+                "gaiji"
+                    | "iteration-mark"
+                    | "kunten"
+                    | "text-variant"
+                    | "annotated_text"
+                    | "figure"
+                    | "editorial_note"
+                    | "layout_break"
+            )
+        )
+    {
+        node.get("span").into_iter().collect()
+    } else {
+        node["interpretation_marker_spans"]
+            .as_array()
+            .map_or_else(Vec::new, |spans| spans.iter().collect())
+    };
+    if node["kind"] == "editorial_note" {
+        spans.extend(
+            node["interpretation_marker_spans"]
+                .as_array()
+                .into_iter()
+                .flatten(),
+        );
+    }
+    if node["kind"] == "layout_block" {
+        // The opener parts around an unresolved clause do not establish the opener.
+        let clauses: Vec<Span> = node["children"][0]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|clause| {
+                clause["kind"] == "raw" && clause.get("x-source-marker-kind").is_none()
+            })
+            .filter_map(value_source_span)
+            .collect();
+        spans.retain(|marker| {
+            !clauses.iter().any(|clause| {
+                marker["byte_end"].as_u64() == u64::try_from(clause.start).ok()
+                    || marker["byte_start"].as_u64() == u64::try_from(clause.end).ok()
+            })
+        });
+    }
+    spans
+}
+
 fn established_interpretations(blocks: &[Value]) -> Vec<Value> {
     let mut facts = Vec::new();
     let mut pending = blocks.iter().rev().collect::<Vec<_>>();
@@ -1752,59 +2081,23 @@ fn established_interpretations(blocks: &[Value]) -> Vec<Value> {
         {
             facts.extend(current.iter().cloned());
         }
-        let interpretation = EstablishedInterpretation::for_node(node);
-        let mut font_formatting = false;
-        let mut layout_formatting = false;
-        if node["kind"] == "layout_block" {
-            layout_formatting =
-                node["direction"] == "horizontal" || node.get("relative_placement").is_some();
-            for attribute in iter::once(&node["formatting"])
-                .chain(node["formatting"].as_array().into_iter().flatten())
-            {
-                font_formatting |= EstablishedInterpretation::is_font_formatting(attribute);
-                layout_formatting |= attribute["kind"] == "keigakomi";
-            }
-        }
+        facts.extend(formatting_instruction::interpretation_facts(node));
+        let mut interpretation = EstablishedInterpretation::for_node(node);
+        let (font_formatting, layout_formatting) = supplemental_formatting(node);
         if matches!(interpretation, Some(EstablishedInterpretation::Ruby)) {
             facts.extend(gaiji_ruby_facts(node));
+        }
+        if node["kind"] == "ruby_group" {
+            facts.extend(ranged_gaiji_ruby_facts(node));
+        }
+        if matches!(interpretation, Some(EstablishedInterpretation::Accent)) {
+            facts.extend(accent_interpretation_fact(node));
+            interpretation = None;
         }
         if let Some(interpretation) = interpretation {
             let interpretations =
                 node_interpretations(node, interpretation, font_formatting, layout_formatting);
-            let mut spans = if node["kind"] == "kunten"
-                && let Some(markers) = node["interpretation_marker_spans"].as_array()
-            {
-                markers.iter().collect::<Vec<_>>()
-            } else if matches!(interpretation, EstablishedInterpretation::LayoutBreak)
-                || matches!(
-                    node["kind"].as_str(),
-                    Some(
-                        "gaiji"
-                            | "iteration-mark"
-                            | "kunten"
-                            | "text-variant"
-                            | "annotated_text"
-                            | "figure"
-                            | "editorial_note"
-                            | "layout_break"
-                    )
-                )
-            {
-                node.get("span").into_iter().collect::<Vec<_>>()
-            } else {
-                node["interpretation_marker_spans"]
-                    .as_array()
-                    .map_or_else(Vec::new, |spans| spans.iter().collect())
-            };
-            if node["kind"] == "editorial_note" {
-                spans.extend(
-                    node["interpretation_marker_spans"]
-                        .as_array()
-                        .into_iter()
-                        .flatten(),
-                );
-            }
-            for span in spans {
+            for span in interpretation_spans(node, interpretation) {
                 if let (Some(start), Some(end)) =
                     (span["byte_start"].as_u64(), span["byte_end"].as_u64())
                     && start < end
@@ -1823,13 +2116,20 @@ fn established_interpretations(blocks: &[Value]) -> Vec<Value> {
             "lower",
             "base_content",
             "reading_content",
+            "readings",
             "annotation_content",
+            "source_instructions",
         ] {
             if let Some(children) = node.get(key).and_then(Value::as_array) {
                 pending.extend(children.iter().rev());
             }
         }
     }
+    sort_facts(&mut facts);
+    facts
+}
+
+fn sort_facts(facts: &mut Vec<Value>) {
     facts.sort_by_key(|fact| {
         (
             fact["source_span"]["start"].as_u64(),
@@ -1838,6 +2138,30 @@ fn established_interpretations(blocks: &[Value]) -> Vec<Value> {
         )
     });
     facts.dedup();
+}
+
+/// Facts a note's current quotation establishes. A quoted gaiji reference
+/// that resolves to no character establishes its structure alone.
+fn quotation_interpretations(current: &[Value]) -> Vec<Value> {
+    let mut facts = established_interpretations(current);
+    let mut pending = current.iter().collect::<Vec<_>>();
+    while let Some(node) = pending.pop() {
+        if node["kind"] == "gaiji"
+            && !EstablishedInterpretation::has_text(node, "resolved")
+            && EstablishedInterpretation::has_text(node, "description")
+            && let (Some(start), Some(end)) = (
+                node["span"]["byte_start"].as_u64(),
+                node["span"]["byte_end"].as_u64(),
+            )
+            && start < end
+        {
+            facts.push(json!({"kind":EstablishedInterpretation::Gaiji.kind(), "outcome":"established",
+                "aspects":["structure"],
+                "source_span":{"start":start,"end":end,"line":node["span"]["line_start"],"coordinate_system":"decoded_utf8"}}));
+        }
+        pending.extend(node["content"].as_array().into_iter().flatten());
+    }
+    sort_facts(&mut facts);
     facts
 }
 
@@ -1846,6 +2170,32 @@ fn value_source_span(node: &Value) -> Option<Span> {
         start: usize::try_from(node["span"]["byte_start"].as_u64()?).ok()?,
         end: usize::try_from(node["span"]["byte_end"].as_u64()?).ok()?,
     })
+}
+
+fn principal_source_start(node: &Value) -> Option<(u64, u64)> {
+    if let Some(first) = node["content"]
+        .as_array()
+        .and_then(|children| children.first())
+    {
+        return principal_source_start(first);
+    }
+    Some((
+        node["span"]["byte_start"].as_u64()?,
+        node["span"]["line_start"].as_u64()?,
+    ))
+}
+
+fn principal_source_end(node: &Value) -> Option<(u64, u64)> {
+    if let Some(last) = node["content"]
+        .as_array()
+        .and_then(|children| children.last())
+    {
+        return principal_source_end(last);
+    }
+    Some((
+        node["span"]["byte_end"].as_u64()?,
+        node["span"]["line_end"].as_u64()?,
+    ))
 }
 
 fn remove_apparatus_lines(
@@ -1959,7 +2309,7 @@ fn adopt_transcribed_note_groups(
         let mut complete = true;
         for note in notes {
             let annotation = json!([{"kind":"text", "value":source_slice(&decoded.span_text,&note.note), "span":span_json(&note.note,&decoded.span_ctx)}]);
-            let wrapper = |children: &[Value]| json!({"kind":"annotated_text", "content":children,"annotation_content":annotation,"note_kind":"gloss","position":match note.position {MarginNotePosition::Left=>"left",MarginNotePosition::Right=>"right"},"span":span_json(&node.span,&decoded.span_ctx)});
+            let wrapper = |children: &[Value]| json!({"kind":"annotated_text", "content":children,"annotation_content":annotation,"note_kind":"gloss","position":match note.position {MarginNotePosition::Left=>"left",MarginNotePosition::Right=>"right",MarginNotePosition::Margin=>"margin"},"span":span_json(&node.span,&decoded.span_ctx)});
             if !annotate_source_target(&mut candidate, note.target, decoded, &wrapper) {
                 complete = false;
                 break;
@@ -1989,18 +2339,29 @@ fn build_aat(
         .collect::<BTreeMap<_, _>>();
     // Block assembly consumes native scopes across source lines; remaining
     // inline scopes are paired within their resulting paragraph or container.
-    let mut blocks = pair_bare_toggles_in_blocks(blocks_from_inline_content(
-        adopt_transcribed_note_groups(
-            inline_content(decoded, nodes, &gaiji_by_start, &ruby_by_span),
+    let mut blocks = apply_line_gothic_in_blocks(
+        pair_bare_toggles_in_blocks(blocks_from_inline_content(
+            bound_layout_policies(
+                adopt_transcribed_note_groups(
+                    inline_content(decoded, nodes, &gaiji_by_start, &ruby_by_span),
+                    decoded,
+                    nodes,
+                ),
+                decoded,
+            ),
             decoded,
-            nodes,
-        ),
+        )),
         decoded,
-    ));
+    );
+    blocks = resolve_ruby_references(blocks, decoded);
     let quoted_targets = nodes
         .iter()
         .filter_map(|node| {
-            matches!(node.kind, ProjectedKind::TextVariant { .. }).then_some(())?;
+            matches!(
+                node.kind,
+                ProjectedKind::TextVariant { .. } | ProjectedKind::NamedTextApparatus { .. }
+            )
+            .then_some(())?;
             Some((
                 decoded.span_ctx.to_decoded(node.span.start),
                 node.target_quote?,
@@ -2011,6 +2372,7 @@ fn build_aat(
         resolve_text_variants_in_blocks(blocks, decoded, &quoted_targets),
         &decoded.text,
     );
+    formatting_instruction::realize_adjacent_kunten(&mut blocks, &decoded.text);
     let mut warnings = diagnostics
         .iter()
         .map(|diagnostic| diagnostic_warning(diagnostic, &decoded.span_ctx))
@@ -2018,7 +2380,33 @@ fn build_aat(
     let (source_notes, tail_warnings) = source_notes_from_tail(decoded);
     blocks.extend(source_notes);
     warnings.extend(tail_warnings);
-    let facts = established_interpretations(&blocks);
+    let mut facts = established_interpretations(&blocks);
+    facts.extend(decoded.accent_scopes.iter().filter_map(|scope| {
+        let markers = accent_scope_markers(decoded, *scope)?;
+        let first = markers.first()?;
+        let last = markers.last()?;
+        Some(
+            json!({"kind":"accent", "outcome":"established", "aspects":["content"],
+            "source_span":{"start":first["byte_start"], "end":last["byte_end"],
+                "line":first["line_start"], "coordinate_system":"decoded_utf8"}}),
+        )
+    }));
+    facts.sort_by_key(|fact| {
+        (
+            fact["source_span"]["start"].as_u64(),
+            fact["source_span"]["end"].as_u64(),
+            fact["kind"].as_str().unwrap_or_default().to_owned(),
+        )
+    });
+    facts.dedup();
+    warnings.retain(|warning| {
+        warning["code"] != "forward-referent-not-stylable"
+            || !facts.iter().any(|fact| {
+                fact["kind"] == "emphasis"
+                    && fact["source_span"]["start"] == warning["span"]["byte_start"]
+                    && fact["source_span"]["end"] == warning["span"]["byte_end"]
+            })
+    });
     let mut aat = json!({
         "version": 2,
         "work_id": "stdin",
@@ -2036,7 +2424,21 @@ fn build_aat(
     if !facts.is_empty() {
         aat["meta"]["interpretation_facts"] = json!(facts);
     }
+    if !decoded.emendations.is_empty() {
+        aat["meta"]["emendations"] = emendations_json(&decoded.emendations);
+    }
     aat
+}
+
+fn emendations_json(emendations: &[AppliedEmendation]) -> Value {
+    emendations
+        .iter()
+        .map(|item| {
+            json!({"id": item.id, "transcribed": item.transcribed, "emended": item.emended,
+                "span": {"byte_start": item.byte_start, "byte_end": item.byte_end,
+                    "line_start": item.line_start, "line_end": item.line_end}})
+        })
+        .collect()
 }
 
 /// Tail classification separates source attribution from transcription metadata.
@@ -2045,8 +2447,8 @@ fn build_aat(
 enum TailLineClass {
     TerminalProvenance,
     Colophon,
-    /// The `［＃本文終わり］` line. Aozora Bunko writes it to say the main body
-    /// has ended and the colophon follows, so it is a boundary between two
+    /// The `［＃本文終わり］` line. Aozora Bunko writes it to mark the end of
+    /// the main body before the colophon, so it is a boundary between two
     /// regions rather than a line of either one. Kept as its own class so the
     /// consumer can encode the boundary structurally instead of republishing
     /// the directive as prose about the source edition.
@@ -2111,7 +2513,7 @@ fn classify_tail(lines: &[&str]) -> (Vec<TailLineClass>, Vec<usize>) {
 /// Byte-offset span of a tail-relative range, composed exactly like
 /// `diagnostics_json_from_bytes`'s sanitize-stage rebase (lib.rs's
 /// `rebase_spans` call with `maps.to_source_offset`/`to_source_end`
-/// directly — NO `body_offset` added, since `tail_offset` is already a
+/// directly, with no `body_offset` added, since `tail_offset` is already a
 /// full-sanitized-text coordinate, the same coordinate system
 /// `sanitize_diagnostics` spans use).
 fn tail_span_json(range: &Range<usize>, tail_offset: usize, ctx: &SpanContext) -> Value {
@@ -2131,9 +2533,6 @@ fn tail_span_json(range: &Range<usize>, tail_offset: usize, ctx: &SpanContext) -
     })
 }
 
-/// Group nonblank tail lines into source notes. Attribution and colophon keep
-/// distinct region classes; blanks and class changes end a group. Content
-/// values and spans retain the source lines, including their terminators.
 fn source_notes_from_tail(decoded: &DecodedSource) -> (Vec<Value>, Vec<Value>) {
     if decoded.sanitized_tail.is_empty() {
         return (Vec::new(), Vec::new());
@@ -2144,6 +2543,14 @@ fn source_notes_from_tail(decoded: &DecodedSource) -> (Vec<Value>, Vec<Value>) {
         .map(|range| &decoded.sanitized_tail[range.clone()])
         .collect::<Vec<_>>();
     let (classes, unclassifiable) = classify_tail(&lines);
+    let mut tail = decoded.clone();
+    tail.span_text = mem::take(&mut tail.sanitized_tail);
+    tail.span_ctx.body_offset = decoded.tail_offset;
+    tail.tail_offset = tail.sanitized_text.len();
+    tail.accent_scopes = accent_scopes_in(
+        &sanitize_mapped(&decoded.text).accent_scopes,
+        decoded.tail_offset..decoded.sanitized_text.len(),
+    );
     let warnings = unclassifiable
         .iter()
         .map(|&index| {
@@ -2158,6 +2565,7 @@ fn source_notes_from_tail(decoded: &DecodedSource) -> (Vec<Value>, Vec<Value>) {
     let mut blocks = Vec::new();
     let mut group = Vec::new();
     let mut group_region = None;
+    let mut group_start = 0;
     for index in 0..classes.len() {
         let region = match classes[index] {
             TailLineClass::TerminalProvenance => Some("terminal_provenance"),
@@ -2169,10 +2577,15 @@ fn source_notes_from_tail(decoded: &DecodedSource) -> (Vec<Value>, Vec<Value>) {
             blocks.push(source_note_block(
                 mem::take(&mut group),
                 group_region.expect("nonempty group has a region"),
+                &tail,
+                group_start..ranges[index].start,
             ));
         }
         group_region = region;
         if region.is_some() {
+            if group.is_empty() {
+                group_start = ranges[index].start;
+            }
             group.push(json!({
                 "kind": "text",
                 "value": lines[index],
@@ -2184,22 +2597,40 @@ fn source_notes_from_tail(decoded: &DecodedSource) -> (Vec<Value>, Vec<Value>) {
         blocks.push(source_note_block(
             group,
             group_region.expect("nonempty group has a region"),
+            &tail,
+            group_start..tail.span_text.len(),
         ));
     }
     (blocks, warnings)
 }
 
-/// One back-matter `source_note` block from a non-empty run of
-/// `{kind: "text", value, span}` content nodes. The block `span`
-/// aggregates the first content span's `byte_start`/`line_start` and the
-/// last content span's `byte_end`/`line_end`.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "content is consumed (moved into the returned block); a slice would force an extra clone at the one call site"
 )]
-fn source_note_block(content: Vec<Value>, region_class: &str) -> Value {
+fn source_note_block(
+    mut content: Vec<Value>,
+    region_class: &str,
+    decoded: &DecodedSource,
+    range: Range<usize>,
+) -> Value {
     let first_span = content[0]["span"].clone();
     let last_span = content[content.len() - 1]["span"].clone();
+    if region_class != "body_end_boundary" {
+        if let Some(parsed) = parsed_fragment(decoded, range.clone(), FragmentContext::SourceNote) {
+            if parsed.iter().any(|node| node["kind"] != "text")
+                || content_structured_text(&parsed) != content_structured_text(&content)
+            {
+                content = parsed;
+            }
+        } else {
+            let source = &decoded.text[decoded.span_ctx.to_decoded(range.start)
+                ..decoded.span_ctx.to_decoded_end(range.end)];
+            content.push(json!({"kind":"raw", "source":source,
+                "span":span_json(&Span {start:range.start,end:range.end}, &decoded.span_ctx),
+                "interpretation_problem":{"kind":"uninterpreted-notation", "code":"uninterpreted-notation", "aspects":["content","structure"], "influence":{"kind":"document"}}}));
+        }
+    }
     json!({
         "kind": "source_note",
         "placement": "back",
@@ -2251,25 +2682,25 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
         if let Some(close_index) = native_scopes.get(&index).copied()
             && let Some(attributes) = node.get("x-heading")
         {
-            // A heading can own block layout containers: the source opens them
+            // A heading can contain block layout containers: the source opens them
             // inside the heading scope and closes them inside it in reverse
             // order, so they state the geometry of the heading's own lines. A
             // heading's content is inline and a container is a block, so the
-            // container cannot go in the content, and the assembly below never
-            // sees these markers. Wrapping the heading in them expresses the
+            // container cannot go in the content, and the assembly below does
+            // not receive these markers. Wrapping the heading in them expresses the
             // same scope with what the schema already has and keeps both marker
             // spans of every container. Each becomes a layout scope whose range
             // is the heading node alone, and the publisher renders those as
             // nested divisions around the head, outermost container outermost,
             // each carrying its own source span. Only a heading that stands as
             // its own block can be wrapped, so an inline `dogyo` heading is
-            // left exactly as it was.
+            // left unchanged.
             let mut containers: Vec<(Value, Value)> = Vec::new();
             let (mut first, mut last) = (index + 1, close_index);
             if attributes["style"] == "normal" {
                 // Each marker sits on its own source line, so the line breaks
                 // between them appear as text nodes on both sides of the pair
-                // being peeled. They are the same breaks `strip_boundary_newlines`
+                // being removed. They are the same breaks `strip_boundary_newlines`
                 // drops from the heading's content below.
                 let blank = |node: &Value| {
                     node["kind"] == "text"
@@ -2302,6 +2733,7 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
             let mut inner = content[first..last].to_vec();
             if attributes["style"] == "normal" {
                 strip_boundary_newlines(&mut inner, source);
+                inner = indent_heading_lines(&inner, source);
             }
             let close = &content[close_index];
             let mut heading = json!({
@@ -2324,7 +2756,11 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
                 // container this loop closes.
                 strip_next_leading_newline = marker_ends_source_line(&content[close_index], source);
                 push_paragraph_if_not_empty(&mut blocks, mem::take(&mut paragraph));
-                blocks.push(wrap_in_layout_containers(heading, containers));
+                blocks.push(wrap_in_layout_containers(
+                    heading,
+                    containers,
+                    &decoded.text,
+                ));
             }
             index = close_index + 1;
             continue;
@@ -2388,7 +2824,9 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
 
         if let Some(layout) = node.get("x-layout").cloned() {
             let is_region = node["x-source-marker-kind"] == "containerOpen";
-            let is_page = layout.get("page_placement").is_some() && !is_region;
+            let is_page = (layout.get("page_placement").is_some()
+                || layout.get("page_vertical_placement").is_some())
+                && !is_region;
             let replacement = node.get("x-native-end-before-span").and_then(|span| {
                 source_positions
                     .get(&(span["byte_start"].as_u64()?, span["byte_end"].as_u64()?))
@@ -2455,28 +2893,69 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
                 strip_boundary_newlines(&mut inner, source);
                 let mut block = layout.clone();
                 block["kind"] = json!("layout_block");
+                let mut source_instructions = node["x-source-instructions"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                if explicit_close
+                    && let Some(instructions) =
+                        content[boundary]["x-source-instructions"].as_array()
+                {
+                    source_instructions.extend(instructions.iter().cloned());
+                }
+                if !source_instructions.is_empty() {
+                    block["source_instructions"] = json!(source_instructions);
+                }
+                if is_page && layout.get("page_vertical_placement").is_none() {
+                    block["page_spacing"] = page_spacing(&content, index, boundary, source);
+                }
                 let mut children = if explicit_close {
                     blocks_inside_native_scope(inner, decoded, &content[boundary])
                 } else {
                     blocks_from_inline_content(inner, decoded)
                 };
                 let annotations = node["x-layout-annotations"].as_array();
-                let unresolved =
-                    annotations.is_some_and(|notes| notes.iter().any(|note| note["kind"] == "raw"));
+                let raw_clauses: Vec<Span> = annotations
+                    .into_iter()
+                    .flatten()
+                    .filter(|note| note["kind"] == "raw")
+                    .filter_map(value_source_span)
+                    .collect();
+                let mut page_spacing_undetermined = false;
                 if let Some(annotations) = annotations {
                     let mut annotations = annotations.clone();
-                    if !unresolved {
+                    if raw_clauses.is_empty() {
                         for annotation in &mut annotations {
                             annotation["interpretation_marker_spans"] = json!([node["span"]]);
                         }
                     }
                     children.insert(0, json!({"kind":"paragraph", "content":annotations}));
                 }
+                if is_page && block["page_spacing"]["position"] == "undetermined" {
+                    page_spacing_undetermined = true;
+                    children.insert(
+                        0,
+                        json!({"kind":"paragraph", "content":[{
+                        "kind":"raw", "source":node["source"], "span":node["span"],
+                        "x-source-marker-kind":"undetermined-page-spacing",
+                        "interpretation_problem":{"kind":"uninterpreted-notation",
+                            "code":"uninterpreted-notation", "aspects":["layout"],
+                                "influence":{"kind":"document"}}
+                        }]}),
+                    );
+                }
                 block["children"] = json!(children);
-                let mut markers = if unresolved || node["x-native-marker-partial"] == true {
-                    Vec::new()
-                } else {
-                    vec![node["span"].clone()]
+                let mut markers = match value_source_span(&node) {
+                    Some(opener)
+                        if !page_spacing_undetermined
+                            && node["x-native-marker-partial"] != true =>
+                    {
+                        span_excluding(opener, &raw_clauses)
+                            .into_iter()
+                            .map(|part| decoded_span_json(part, &decoded.span_ctx))
+                            .collect()
+                    }
+                    _ => Vec::new(),
                 };
                 if let Some(marker) = repeated_marker {
                     markers.push(marker);
@@ -2498,10 +2977,16 @@ fn blocks_from_inline_content(content: Vec<Value>, decoded: &DecodedSource) -> V
                     block["source_end"] =
                         json!({"kind":"page-break", "span":content[boundary]["span"]});
                 }
+                formatting_instruction::realize_block_kunten(&mut block, &decoded.text);
                 blocks.push(block);
                 strip_next_leading_newline = explicit_close;
                 index = boundary + usize::from(explicit_close);
                 continue;
+            }
+            if is_page {
+                node["interpretation_problem"] = json!({"kind":"uninterpreted-notation",
+                    "code":"uninterpreted-notation", "aspects":["layout"],
+                    "influence":{"kind":"document"}});
             }
         }
 
@@ -2565,7 +3050,7 @@ fn place_normal_headings(nodes: Vec<Value>, source: &str) -> Vec<Value> {
     blocks
 }
 
-// A line-initial and line-final assertion own the same text only when no
+// A line-initial and line-final assertion apply to the same text only when no
 // intervening native scope boundary gives either marker a different target.
 fn coalesce_line_end_alignment(
     content: &mut Vec<Value>,
@@ -2607,12 +3092,73 @@ fn coalesce_line_end_alignment(
     None
 }
 
+fn page_spacing(content: &[Value], open: usize, close: usize, source: &str) -> Value {
+    let start = value_source_span(&content[open])
+        .expect("page marker has a source span")
+        .end;
+    let end = value_source_span(&content[close])
+        .expect("page boundary has a source span")
+        .start;
+    let between = source
+        .get(start..end)
+        .expect("page scope lies within decoded source")
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    let lines = between
+        .strip_prefix('\n')
+        .and_then(|s| s.strip_suffix('\n'));
+    let (before, after, has_content) = lines.map_or((0, 0, false), |lines| {
+        let rows: Vec<_> = lines.split('\n').collect();
+        (
+            rows.iter().take_while(|line| line.is_empty()).count(),
+            rows.iter().rev().take_while(|line| line.is_empty()).count(),
+            rows.iter().any(|line| !line.is_empty()),
+        )
+    });
+    let previous = content[..open].iter().rev().find(|node| {
+        node["kind"] != "text" || node["value"].as_str().is_none_or(|s| !s.trim().is_empty())
+    });
+    let at_page_start = previous.is_none_or(|node| {
+        node["kind"] == "layout_break"
+            && matches!(node["break_kind"].as_str(), Some("page" | "kaicho"))
+    });
+    let position = if has_content
+        && at_page_start
+        && marker_starts_source_line(&content[open], source)
+        && marker_ends_source_line(&content[close], source)
+        && matches!(
+            content[close]["break_kind"].as_str(),
+            Some("page" | "kaicho")
+        ) {
+        match (before, after) {
+            (2, 2) => "center",
+            (1, 3) => "right-of-center",
+            (3, 1) => "left-of-center",
+            _ => "undetermined",
+        }
+    } else {
+        "undetermined"
+    };
+    if has_content {
+        json!({"before_blank_lines":before, "after_blank_lines":after, "position":position})
+    } else {
+        json!({"position":"undetermined"})
+    }
+}
+
 fn marker_starts_source_line(node: &Value, source: &str) -> bool {
     node["span"]["byte_start"]
         .as_u64()
         .and_then(|n| usize::try_from(n).ok())
         .and_then(|start| source.get(..start))
-        .is_some_and(|before| before.rsplit('\n').next().unwrap_or("").trim().is_empty())
+        .is_some_and(|before| {
+            before
+                .rsplit(['\r', '\n'])
+                .next()
+                .unwrap_or("")
+                .trim()
+                .is_empty()
+        })
 }
 
 fn marker_ends_source_line(node: &Value, source: &str) -> bool {
@@ -2620,7 +3166,14 @@ fn marker_ends_source_line(node: &Value, source: &str) -> bool {
         .as_u64()
         .and_then(|n| usize::try_from(n).ok())
         .and_then(|end| source.get(end..))
-        .is_some_and(|after| after.split('\n').next().unwrap_or("").trim().is_empty())
+        .is_some_and(|after| {
+            after
+                .split(['\r', '\n'])
+                .next()
+                .unwrap_or("")
+                .trim()
+                .is_empty()
+        })
 }
 
 /// Share the actual ending event only with inner scopes that native pairing
@@ -2639,8 +3192,6 @@ fn blocks_inside_native_scope(
     blocks_from_inline_content(content, decoded)
 }
 
-/// Resolve native-established scope extents against this source-node sequence.
-/// Indexing exact spans once avoids rescanning siblings for each opening marker.
 /// Wrap a block in the layout containers the source opened around it, from the
 /// innermost outwards.
 ///
@@ -2648,12 +3199,15 @@ fn blocks_inside_native_scope(
 /// own open and close marker. Each becomes a `layout_block` carrying the
 /// geometry the marker states and both marker spans, over the extent the two
 /// markers delimit.
-fn wrap_in_layout_containers(block: Value, containers: Vec<(Value, Value)>) -> Value {
+fn wrap_in_layout_containers(block: Value, containers: Vec<(Value, Value)>, source: &str) -> Value {
     containers
         .into_iter()
         .rev()
         .fold(block, |child, (open, close)| {
             let mut container = open["x-layout"].clone();
+            if let Some(instructions) = open.get("x-source-instructions") {
+                container["source_instructions"] = instructions.clone();
+            }
             container["kind"] = json!("layout_block");
             container["span"] = json!({
                 "byte_start": open["span"]["byte_start"], "byte_end": close["span"]["byte_end"],
@@ -2661,10 +3215,127 @@ fn wrap_in_layout_containers(block: Value, containers: Vec<(Value, Value)>) -> V
             });
             container["interpretation_marker_spans"] = json!([open["span"], close["span"]]);
             container["children"] = json!([child]);
+            formatting_instruction::realize_block_kunten(&mut container, source);
             container
         })
 }
 
+/// Indentation stated by a layout policy that a later closer can end:
+/// ［＃「X」全体、天よりN字下げ］, ［＃改行ごとにN字下げ］ or ［＃改ページ、N字下げで］.
+fn closable_policy_indent(node: &Value) -> Option<u64> {
+    if node["kind"] == "layout_break" {
+        return node["following_indent"]
+            .as_u64()
+            .filter(|indent| *indent > 0);
+    }
+    let [operation] = node["operations"].as_array()?.as_slice() else {
+        return None;
+    };
+    let effect = &operation["effect"];
+    (node["kind"] == "formatting_instruction"
+        && effect["kind"] == "layout-policy"
+        && effect["horizontal"] == false
+        && effect["align_end"] == false
+        && matches!(
+            operation["selector"]["kind"].as_str(),
+            Some("quoted-whole" | "each-line")
+        ))
+    .then(|| effect["indent"].as_u64())
+    .flatten()
+    .filter(|indent| *indent > 0)
+}
+
+/// Bound a closable layout policy by the first indentation closer after it
+/// that no opener claims, when no container marker lies between them, the
+/// policy ends its line and the closer begins its line. The policy stays a
+/// statement; a container marker at its span opens the block that the closer
+/// ends. A closer that states its amount must state the policy's.
+fn bound_layout_policies(mut content: Vec<Value>, decoded: &DecodedSource) -> Vec<Value> {
+    let span_key = |span: &Value| Some((span["byte_start"].as_u64()?, span["byte_end"].as_u64()?));
+    let claimed: BTreeSet<_> = content
+        .iter()
+        .filter_map(|node| span_key(node.get("x-native-close-span")?))
+        .collect();
+    let container_marker = |node: &Value| {
+        matches!(
+            node["x-source-marker-kind"].as_str(),
+            Some("containerOpen" | "containerClose")
+        )
+    };
+    let mut pairs = Vec::new();
+    for (close, node) in content.iter().enumerate() {
+        let Some(source) = node["source"].as_str().filter(|_| node["kind"] == "raw") else {
+            continue;
+        };
+        let stated = if source == "［＃ここで字下げ終わり］"
+            && node["x-source-marker-kind"] == "containerClose"
+            && !span_key(&node["span"]).is_some_and(|key| claimed.contains(&key))
+        {
+            None
+        } else if node["x-source-marker-kind"] == "directive"
+            && let Some(amount) = source
+                .strip_prefix("［＃")
+                .and_then(|body| body.strip_suffix("字下げ終わり］"))
+            && let Some(amount) = parse_kanji_number_before(amount).filter(|_| {
+                amount
+                    .chars()
+                    .all(|ch| kanji_digit_value(ch).is_some() || ch == '十')
+            })
+        {
+            Some(amount)
+        } else {
+            continue;
+        };
+        let Some(open) = (0..close).rev().find(|index| {
+            container_marker(&content[*index])
+                || pairs.iter().any(|(_, paired, _)| paired == index)
+                || closable_policy_indent(&content[*index]).is_some()
+        }) else {
+            continue;
+        };
+        let Some(indent) = closable_policy_indent(&content[open]) else {
+            continue;
+        };
+        let line_bounded = span_key(&content[open]["span"])
+            .zip(span_key(&node["span"]))
+            .is_some_and(|((_, open_end), (close_start, _))| {
+                let bytes = decoded.text.as_bytes();
+                let (Ok(open_end), Ok(close_start)) =
+                    (usize::try_from(open_end), usize::try_from(close_start))
+                else {
+                    return false;
+                };
+                bytes
+                    .get(open_end..)
+                    .is_some_and(|rest| rest.starts_with(b"\n") || rest.starts_with(b"\r\n"))
+                    && bytes
+                        .get(..close_start)
+                        .is_some_and(|head| head.ends_with(b"\n"))
+            });
+        if open + 1 < close && line_bounded && stated.is_none_or(|amount| amount == indent) {
+            pairs.push((open, close, indent));
+        }
+    }
+    for (open, close, indent) in pairs.into_iter().rev() {
+        content[close]["x-source-marker-kind"] = json!("containerClose");
+        let span = content[open]["span"].clone();
+        let source = span_key(&span)
+            .and_then(|(start, end)| {
+                decoded
+                    .text
+                    .get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)
+            })
+            .unwrap_or_default();
+        let marker = json!({"kind":"raw", "source":source, "span":span,
+            "x-provenance":"parser-derived", "x-source-marker-kind":"containerOpen",
+            "x-layout":{"indent":indent}, "x-native-close-span":content[close]["span"]});
+        content.insert(open + 1, marker);
+    }
+    content
+}
+
+/// Map the index of each node that carries `x-native-close-span` to the index
+/// of the later `containerClose` node whose span has the same byte range.
 fn native_scope_pairs(content: &[Value]) -> BTreeMap<usize, usize> {
     if !content
         .iter()
@@ -2831,6 +3502,103 @@ fn heading_from_content(
     })
 }
 
+/// Give each line of a heading block that opens with a one-line indentation
+/// marker an inline `jisage` scope over the rest of that line, since a
+/// heading's content cannot hold a layout block. A marker alone on its line,
+/// or one whose line continues into a multi-line node, stays raw.
+fn indent_heading_lines(content: &[Value], source: &str) -> Vec<Value> {
+    let mut lines = Vec::with_capacity(content.len());
+    let mut index = 0;
+    while index < content.len() {
+        let marker = &content[index];
+        let Some(indent) = heading_line_indent(marker, source) else {
+            lines.push(marker.clone());
+            index += 1;
+            continue;
+        };
+        let line = &marker["span"]["line_start"];
+        let on_line =
+            |node: &Value| node["span"]["line_start"] == *line && node["span"]["line_end"] == *line;
+        let mut end = index + 1;
+        while end < content.len()
+            && on_line(&content[end])
+            && !ends_source_line(&content[end], source)
+        {
+            end += 1;
+        }
+        let ends_line = content
+            .get(end)
+            .is_some_and(|node| on_line(node) && ends_source_line(node, source));
+        let mut scoped = content[index + 1..end].to_vec();
+        let mut terminator = None;
+        if ends_line {
+            let (text, newline) = split_line_terminator(&content[end]);
+            scoped.extend(text);
+            terminator = Some(newline);
+            end += 1;
+        }
+        let last = scoped
+            .iter()
+            .rev()
+            .find(|node| node["kind"] != "text" || node["value"] != "");
+        let Some(last) = last.filter(|_| ends_line || end == content.len()) else {
+            lines.push(marker.clone());
+            index += 1;
+            continue;
+        };
+        let span = json!({
+            "byte_start": marker["span"]["byte_start"], "byte_end": last["span"]["byte_end"],
+            "line_start": marker["span"]["line_start"], "line_end": last["span"]["line_end"]
+        });
+        lines.push(json!({
+            "kind": "jisage", "indent": indent, "content": scoped, "span": span,
+            "interpretation_marker_spans": [marker["span"]]
+        }));
+        lines.extend(terminator);
+        index = end;
+    }
+    lines
+}
+
+fn heading_line_indent(node: &Value, source: &str) -> Option<u64> {
+    if node["kind"] != "raw"
+        || node["x-source-marker-kind"] != "indent"
+        || node.get("interpretation_problem").is_some()
+        || !marker_starts_source_line(node, source)
+    {
+        return None;
+    }
+    let layout = node["x-layout"].as_object()?;
+    if layout.len() != 1 {
+        return None;
+    }
+    layout.get("indent")?.as_u64().filter(|indent| *indent > 0)
+}
+
+/// Split a text node that ends its source line into the text before the line
+/// terminator, when there is any, and the terminator.
+fn split_line_terminator(node: &Value) -> (Option<Value>, Value) {
+    let value = node["value"].as_str().unwrap_or("");
+    let text = value.trim_end_matches(['\r', '\n']);
+    let (Some(start), Some(end)) = (
+        node["span"]["byte_start"].as_u64(),
+        node["span"]["byte_end"].as_u64(),
+    ) else {
+        return (None, node.clone());
+    };
+    let split = end.saturating_sub((value.len() - text.len()) as u64);
+    let mut newline = node.clone();
+    newline["value"] = json!(&value[text.len()..]);
+    newline["span"]["byte_start"] = json!(split);
+    if text.is_empty() || split <= start {
+        return (None, newline);
+    }
+    let mut before = node.clone();
+    before["value"] = json!(text);
+    before["span"]["byte_end"] = json!(split);
+    (Some(before), newline)
+}
+
 fn heading_indent_marker(node: &Value) -> Option<u64> {
     if node.get("kind").and_then(Value::as_str) != Some("raw")
         || node.get("x-source-marker-kind").and_then(Value::as_str) != Some("indent")
@@ -2907,6 +3675,9 @@ fn rebase_region_anchor(region: &mut RegionFormat, offset: usize) {
 }
 
 fn rebase_projected_spans(kind: &mut ProjectedKind, offset: usize) {
+    if let ProjectedKind::FormattingInstruction(instruction) = kind {
+        formatting_instruction::rebase(instruction, offset);
+    }
     if let ProjectedKind::Region(region) = kind {
         rebase_region_anchor(region, offset);
     }
@@ -2929,10 +3700,14 @@ fn rebase_projected_spans(kind: &mut ProjectedKind, offset: usize) {
     if let ProjectedKind::MarginNote {
         note_span,
         target_span,
+        pair_open_span,
         ..
     } = kind
     {
-        for span in [note_span, target_span].into_iter().flatten() {
+        for span in [note_span, target_span, pair_open_span]
+            .into_iter()
+            .flatten()
+        {
             span.start += offset;
             span.end += offset;
         }
@@ -2963,6 +3738,23 @@ fn rebase_projected_spans(kind: &mut ProjectedKind, offset: usize) {
             span.end += offset;
         }
     }
+    if let ProjectedKind::NamedTextApparatus {
+        current_span,
+        readings,
+        ..
+    } = kind
+    {
+        current_span.start += offset;
+        current_span.end += offset;
+        for reading in readings {
+            reading.text_span.start += offset;
+            reading.text_span.end += offset;
+            for witness in &mut reading.witnesses {
+                witness.span.start += offset;
+                witness.span.end += offset;
+            }
+        }
+    }
 }
 
 // Source fragments reuse the native inline interpreter, restricted to their
@@ -2988,6 +3780,7 @@ fn witness_fragment(decoded: &DecodedSource, range: Range<usize>) -> Option<Vec<
             "content",
             "base_content",
             "reading_content",
+            "readings",
             "annotation_content",
         ] {
             pending.extend(node[key].as_array().into_iter().flatten());
@@ -2997,6 +3790,35 @@ fn witness_fragment(decoded: &DecodedSource, range: Range<usize>) -> Option<Vec<
 }
 
 fn parsed_source_fragment(decoded: &DecodedSource, range: Range<usize>) -> Option<Vec<Value>> {
+    parsed_fragment(decoded, range, FragmentContext::Inline)
+}
+
+#[derive(Clone, Copy)]
+enum FragmentContext {
+    Inline,
+    SourceNote,
+}
+
+fn parsed_fragment(
+    decoded: &DecodedSource,
+    range: Range<usize>,
+    region: FragmentContext,
+) -> Option<Vec<Value>> {
+    let literal_references: Vec<usize> = if matches!(region, FragmentContext::SourceNote) {
+        let text = &decoded.span_text[range.clone()];
+        line_ranges(text)
+            .into_iter()
+            .filter_map(|line| {
+                let text = &text[line.clone()];
+                let prefix = text.trim_start();
+                prefix
+                    .starts_with('※')
+                    .then_some(range.start + line.start + text.len() - prefix.len())
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let (mut nodes, _diagnostics, mut gaiji, mut ruby, accents) = projections(
         decoded.span_text.get(range.clone())?,
         &accent_scopes_in(&decoded.accent_scopes, range.clone()),
@@ -3008,6 +3830,11 @@ fn parsed_source_fragment(decoded: &DecodedSource, range: Range<usize>) -> Optio
     for node in &mut nodes {
         node.span.start += range.start;
         node.span.end += range.start;
+        if literal_references.contains(&node.span.start)
+            && decoded.span_text.get(node.span.start..node.span.end) == Some("※")
+        {
+            node.kind = ProjectedKind::LiteralReferenceSign;
+        }
         if let Some(marker) = &mut node.marker_span {
             marker.start += range.start;
             marker.end += range.start;
@@ -3032,6 +3859,9 @@ fn parsed_source_fragment(decoded: &DecodedSource, range: Range<usize>) -> Optio
             marker.end += range.start;
         }
         rebase_partial_layout(&mut node.layout_clauses, range.start);
+        for instruction in &mut node.layout_instructions {
+            formatting_instruction::rebase(instruction, range.start);
+        }
     }
     for entry in &mut gaiji {
         entry.start += range.start;
@@ -3049,6 +3879,9 @@ fn parsed_source_fragment(decoded: &DecodedSource, range: Range<usize>) -> Optio
         for mark in &mut entry.annotations {
             mark.span.start += range.start;
             mark.span.end += range.start;
+            if let NestedAnnotation::FormattingInstruction(instruction) = &mut mark.payload {
+                formatting_instruction::rebase(instruction, range.start);
+            }
         }
     }
     let gaiji = gaiji
@@ -3059,8 +3892,50 @@ fn parsed_source_fragment(decoded: &DecodedSource, range: Range<usize>) -> Optio
         .into_iter()
         .map(|entry| ((entry.span.start, entry.span.end), entry))
         .collect();
-    let content = pair_bare_toggles(inline_content_range(decoded, &nodes, &gaiji, &ruby, range));
-    Some(content)
+    let content = inline_content_range(decoded, &nodes, &gaiji, &ruby, range);
+    let content = if matches!(region, FragmentContext::SourceNote) {
+        source_note_formatting(&content, decoded)
+    } else {
+        content
+    };
+    Some(resolve_ruby_references(pair_bare_toggles(content), decoded))
+}
+
+fn source_note_formatting(content: &[Value], decoded: &DecodedSource) -> Vec<Value> {
+    let scopes = native_scope_pairs(content);
+    let mut output = Vec::new();
+    let mut index = 0;
+    while index < content.len() {
+        let open = &content[index];
+        if let Some(close) = scopes.get(&index).copied()
+            && open["source"].as_str().is_some_and(|source| {
+                source.starts_with("［＃ここから") || source.starts_with("[#ここから")
+            })
+            && let Some(kind) = open["x-formatting"]["kind"].as_str()
+            && matches!(
+                kind,
+                "style"
+                    | "formatting"
+                    | "font_size"
+                    | "baseline_position"
+                    | "small_script"
+                    | "exponent"
+                    | "keigakomi"
+                    | "yokogumi"
+            )
+        {
+            let mut inner = source_note_formatting(&content[index + 1..close], decoded);
+            if marker_starts_source_line(open, &decoded.text) {
+                strip_boundary_newlines(&mut inner, &decoded.text);
+            }
+            output.push(bare_toggle_container(kind, inner, open, &content[close]));
+            index = close + 1;
+        } else {
+            output.push(content[index].clone());
+            index += 1;
+        }
+    }
+    output
 }
 
 fn inline_content(
@@ -3078,16 +3953,469 @@ fn inline_content(
     )
 }
 
+fn add_source_condition_fields(
+    statement: &mut Value,
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+    kind: DirectiveKind,
+    raw: &str,
+    text: &str,
+) {
+    if kind == DirectiveKind::UncertainCorrection {
+        let correction = uncertain_correction(text.trim())
+            .expect("classified uncertain correction retains its grammar");
+        let body_start = node.span.start + text.as_ptr().addr() - raw.as_ptr().addr();
+        let proposed_span = Span {
+            start: body_start + correction.proposed_span.start,
+            end: body_start + correction.proposed_span.end,
+        };
+        if let Some(content) = source_fragment(decoded, proposed_span.start..proposed_span.end)
+            && let Some(proposed_text) = content_structured_text(&content)
+        {
+            statement["proposed_text"] = json!(proposed_text);
+            if content.iter().any(|node| node["kind"] != "text") {
+                statement["proposed_content"] = json!(content);
+            }
+        } else {
+            statement["proposed_text"] = json!(correction.proposed_text);
+        }
+        statement["proposed_source_span"] = json!(span_json(&proposed_span, &decoded.span_ctx,));
+        statement["certainty"] = json!("uncertain");
+        if let Some(source_locator) = correction.source_locator {
+            statement["source_locator"] = json!(source_locator);
+        }
+        if let Some(target_span) = correction.target_span {
+            let target_span = Span {
+                start: body_start + target_span.start,
+                end: body_start + target_span.end,
+            };
+            if let Some(content) = source_fragment(decoded, target_span.start..target_span.end)
+                && let Some(target_text) = content_structured_text(&content)
+            {
+                statement["target_text"] = json!(target_text);
+            } else if let Some(target_text) = correction.target_text {
+                statement["target_text"] = json!(target_text);
+            }
+        }
+    }
+    if kind == DirectiveKind::Sic
+        && let Some(sic) = sic_target(text.trim())
+    {
+        let body_start = node.span.start + text.trim().as_ptr().addr() - raw.as_ptr().addr();
+        let range = body_start + sic.target_span.start..body_start + sic.target_span.end;
+        if let Some(content) = source_fragment(decoded, range)
+            && let Some(target_text) = content_structured_text(&content)
+        {
+            statement["target_text"] = json!(target_text);
+        }
+        if let Some(correction) = sic.correction_span {
+            let proposed_span = Span {
+                start: body_start + correction.start,
+                end: body_start + correction.end,
+            };
+            statement["proposed_text"] = json!(&text.trim()[correction]);
+            statement["proposed_source_span"] = json!(span_json(&proposed_span, &decoded.span_ctx));
+        }
+    }
+    if kind == DirectiveKind::SourceLegibilityNote {
+        statement["source_locator"] = json!(
+            source_legibility_note(text.trim())
+                .expect("classified source-legibility note retains its locator")
+        );
+    }
+}
+
+fn ruby_retarget_target(body: &str) -> Option<&str> {
+    let Some(rest) = body.strip_prefix("ルビは「") else {
+        let rest = body.strip_prefix('「')?;
+        return rest
+            .strip_suffix("」のルビ")
+            .or_else(|| rest.strip_suffix("」全体にかかるルビ"))
+            .filter(|target| !target.is_empty() && !target.contains(['「', '」']));
+    };
+    ["」にかかる", "」に掛かる", "」に付く"]
+        .into_iter()
+        .find_map(|suffix| rest.strip_suffix(suffix))
+        .filter(|target| !target.is_empty())
+}
+
+fn ruby_attached_target(body: &str) -> Option<&str> {
+    body.strip_prefix('「')?
+        .strip_suffix("」にルビ")
+        .filter(|target| !target.is_empty())
+}
+
+fn ruby_base_content(ruby: &Value, base: &str, decoded: &DecodedSource) -> Option<Vec<Value>> {
+    if let Some(content) = ruby.get("base_content").and_then(Value::as_array) {
+        return Some(content.clone());
+    }
+    let marker_start = ruby["interpretation_marker_spans"].as_array()?.first()?["byte_start"]
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())?;
+    let start = marker_start.checked_sub(base.len())?;
+    (decoded.text.get(start..marker_start) == Some(base)).then(|| {
+        vec![json!({"kind":"text", "value":base,
+            "span":decoded_span_json(Span { start, end:marker_start }, &decoded.span_ctx)})]
+    })
+}
+
+fn resolve_typed_ruby_retarget(
+    content: &mut Vec<Value>,
+    target: &str,
+    decoded: &DecodedSource,
+) -> Option<(Span, Span)> {
+    let ruby_index = content.iter().rposition(|node| node["kind"] == "ruby")?;
+    if !content[ruby_index + 1..].iter().all(|node| {
+        node["kind"] == "text"
+            && node["value"]
+                .as_str()
+                .is_some_and(|text| text.chars().all(|ch| "」』”\"".contains(ch)))
+    }) {
+        return None;
+    }
+    let mut candidate = content.clone();
+    let mut tail = candidate.split_off(ruby_index);
+    let mut ruby = tail.remove(0);
+    let base = ruby["base"].as_str()?.to_owned();
+    let prefix = target.strip_suffix(&base)?;
+    let mut base_content = if prefix.is_empty() {
+        Vec::new()
+    } else {
+        take_visible_suffix_matching(&mut candidate, prefix, decoded, None)?
+    };
+    base_content.extend(ruby_base_content(&ruby, &base, decoded)?);
+    let target_span = Span {
+        start: value_source_span(base_content.first()?)?.start,
+        end: value_source_span(base_content.last()?)?.end,
+    };
+    if decoded.text.get(target_span.start..target_span.end) != Some(target) {
+        return None;
+    }
+    ruby["base"] = json!(target);
+    ruby["base_content"] = json!(base_content);
+    if !prefix.is_empty() {
+        ruby["span"]["byte_start"] = json!(target_span.start);
+        ruby["span"]["line_start"] = json!(decoded.span_ctx.line_of(target_span.start));
+    }
+    let subject_span = value_source_span(&ruby)?;
+    candidate.push(ruby);
+    candidate.extend(tail);
+    *content = candidate;
+    Some((target_span, subject_span))
+}
+
+fn resolve_raw_ruby_retarget(
+    content: &mut Vec<Value>,
+    target: &str,
+    decoded: &DecodedSource,
+) -> Option<(Span, Span)> {
+    let mut candidate = content.clone();
+    let raw = candidate.pop()?;
+    let raw_source = raw["source"].as_str()?;
+    let reading = raw_source.strip_prefix('《')?.strip_suffix('》')?;
+    if reading.is_empty() || reading.contains(['\r', '\n']) {
+        return None;
+    }
+    let reading_span = value_source_span(&raw)?;
+    let line_start = decoded.text[..reading_span.start]
+        .rfind('\n')
+        .map_or(0, |position| position + 1);
+    let target_start = decoded.text[line_start..reading_span.start]
+        .rfind(target)
+        .map(|position| line_start + position)?;
+    let target_end = target_start + target.len();
+    let trailing = decoded.text.get(target_end..reading_span.start)?;
+    if !trailing.chars().all(|ch| "！？!?。、…".contains(ch)) {
+        return None;
+    }
+    let selected = take_visible_suffix_matching(
+        &mut candidate,
+        decoded.text.get(target_start..reading_span.start)?,
+        decoded,
+        None,
+    )?;
+    if !selected.iter().all(|node| node["kind"] == "text") {
+        return None;
+    }
+    let target_span = Span {
+        start: target_start,
+        end: target_end,
+    };
+    let subject_span = Span {
+        start: target_start,
+        end: reading_span.end,
+    };
+    candidate.push(json!({
+        "kind":"ruby", "base":target, "reading":reading, "direction":"right",
+        "base_content":[{"kind":"text", "value":target,
+            "span":decoded_span_json(target_span, &decoded.span_ctx)}],
+        "interpretation_marker_spans":[raw["span"].clone()],
+        "span":decoded_span_json(subject_span, &decoded.span_ctx)
+    }));
+    if !trailing.is_empty() {
+        candidate.push(json!({"kind":"text", "value":trailing,
+            "span":decoded_span_json(Span { start:target_end, end:reading_span.start }, &decoded.span_ctx)}));
+    }
+    *content = candidate;
+    Some((target_span, subject_span))
+}
+
+fn resolve_ruby_retarget(
+    content: &mut Vec<Value>,
+    target: &str,
+    decoded: &DecodedSource,
+) -> Option<(Span, Span)> {
+    resolve_typed_ruby_retarget(content, target, decoded)
+        .or_else(|| resolve_raw_ruby_retarget(content, target, decoded))
+}
+
+/// Source extent of a reading note's quoted text within the reading of the
+/// nearest preceding ruby, matched against the reading as written in the
+/// source, so that notation such as an iteration mark matches its quotation.
+fn resolve_ruby_reading_target(
+    content: &[Value],
+    target: &str,
+    decoded: &DecodedSource,
+) -> Option<Span> {
+    let ruby = content
+        .iter()
+        .rev()
+        .find(|node| node["kind"] != "text")
+        .filter(|node| node["kind"] == "ruby")?;
+    let ruby_span = value_source_span(ruby)?;
+    let source = decoded.text.get(ruby_span.start..ruby_span.end)?;
+    let open = source.rfind('《')? + '《'.len_utf8();
+    let reading = source.get(open..)?.strip_suffix('》')?;
+    let mut matches = reading.match_indices(target);
+    let (offset, _) = matches.next()?;
+    if target.is_empty() || matches.next().is_some() {
+        return None;
+    }
+    let start = ruby_span.start + open + offset;
+    Some(Span {
+        start,
+        end: start + target.len(),
+    })
+}
+
+fn resolve_uncertain_correction_target(
+    content: &[Value],
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+) -> Option<Span> {
+    let raw = source_slice(&decoded.span_text, &node.span);
+    let text = raw
+        .strip_prefix("［＃")
+        .and_then(|body| body.strip_suffix('］'))
+        .or_else(|| {
+            raw.strip_prefix("[#")
+                .and_then(|body| body.strip_suffix(']'))
+        })?;
+    let correction = uncertain_correction(text.trim())?;
+    let target_range = correction.target_span?;
+    let body_start = node.span.start + text.as_ptr().addr() - raw.as_ptr().addr();
+    let quoted = source_fragment(
+        decoded,
+        body_start + target_range.start..body_start + target_range.end,
+    )?;
+    let target = content_structured_text(&quoted)?;
+    let mut candidate = content.to_vec();
+    let selected = take_visible_suffix_matching(&mut candidate, &target, decoded, Some(&quoted))?;
+    let first = value_source_span(selected.first()?)?;
+    let last = value_source_span(selected.last()?)?;
+    let span = Span {
+        start: first.start,
+        end: last.end,
+    };
+    (decoded.text.get(span.start..span.end) == correction.target_text).then_some(span)
+}
+
+/// Outcome of binding a sic note to its quoted text.
+enum SicTargetResolution {
+    /// The note does not quote its target.
+    NotQuoted,
+    /// The quoted text does not occur before the marker.
+    Unresolved,
+    Resolved(Span),
+}
+
+/// The target of a quoted sic note: the printed text ending at the marker when
+/// it equals the quoted text, or the reading of the preceding ruby for
+/// `ルビの「X」はママ`.
+fn resolve_sic_target(
+    content: &[Value],
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+) -> SicTargetResolution {
+    let raw = source_slice(&decoded.span_text, &node.span);
+    let Some(text) = raw
+        .strip_prefix("［＃")
+        .and_then(|body| body.strip_suffix('］'))
+        .or_else(|| {
+            raw.strip_prefix("[#")
+                .and_then(|body| body.strip_suffix(']'))
+        })
+    else {
+        return SicTargetResolution::NotQuoted;
+    };
+    let body = text.trim();
+    let Some(sic) = sic_target(body) else {
+        return SicTargetResolution::NotQuoted;
+    };
+    let resolved = if sic.ruby_reading {
+        resolve_ruby_reading_target(content, sic.target, decoded)
+    } else {
+        resolve_quoted_sic_target(content, decoded, node, body, &sic)
+    };
+    resolved.map_or(
+        SicTargetResolution::Unresolved,
+        SicTargetResolution::Resolved,
+    )
+}
+
+/// Source extent of a `「X」はママ` note's quoted text: the printed suffix
+/// matching it, else its last printed occurrence, else the reading of the
+/// nearest preceding ruby.
+fn resolve_quoted_sic_target(
+    content: &[Value],
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+    body: &str,
+    sic: &SicTarget<'_>,
+) -> Option<Span> {
+    let raw = source_slice(&decoded.span_text, &node.span);
+    let body_start = node.span.start + body.as_ptr().addr() - raw.as_ptr().addr();
+    let quoted = source_fragment(
+        decoded,
+        body_start + sic.target_span.start..body_start + sic.target_span.end,
+    )?;
+    let target = content_structured_text(&quoted)?;
+    let mut candidate = content.to_vec();
+    let Some(selected) =
+        take_visible_suffix_matching(&mut candidate, &target, decoded, Some(&quoted))
+    else {
+        return printed_occurrence_span(content, sic.target, decoded)
+            .or_else(|| resolve_ruby_reading_target(content, sic.target, decoded));
+    };
+    let quote = Span {
+        start: body_start + sic.target_span.start,
+        end: body_start + sic.target_span.end,
+    };
+    Some(widen_over_quoted_accent_delimiters(
+        decoded,
+        quote,
+        Span {
+            start: printed_span(selected.first()?, decoded)?.start,
+            end: printed_span(selected.last()?, decoded)?.end,
+        },
+    ))
+}
+
+/// Source extent of a node's printed text: the base of a ruby, the content of
+/// a container, otherwise the node's span.
+fn printed_span(node: &Value, decoded: &DecodedSource) -> Option<Span> {
+    if node["kind"] != "ruby" {
+        if let Some(content) = node["content"].as_array().filter(|nodes| !nodes.is_empty()) {
+            return Some(Span {
+                start: printed_span(content.first()?, decoded)?.start,
+                end: printed_span(content.last()?, decoded)?.end,
+            });
+        }
+        return value_source_span(node);
+    }
+    if let Some(base) = node.get("base_content").and_then(Value::as_array) {
+        return Some(Span {
+            start: value_source_span(base.first()?)?.start,
+            end: value_source_span(base.last()?)?.end,
+        });
+    }
+    let span = value_source_span(node)?;
+    let source = decoded.text.get(span.start..span.end)?;
+    let base_start = source.strip_prefix('｜').map_or(0, |_| '｜'.len_utf8());
+    let base_end = source.find('《')?;
+    let base = Span {
+        start: span.start + base_start,
+        end: span.start + base_end,
+    };
+    (source.get(base_start..base_end) == node["base"].as_str()).then_some(base)
+}
+
+/// Source extent of the last occurrence of the quoted text in the printed
+/// text before the marker, which may cross text nodes and ruby bases.
+fn printed_occurrence_span(
+    content: &[Value],
+    target: &str,
+    decoded: &DecodedSource,
+) -> Option<Span> {
+    let mut segments = Vec::new();
+    printed_segments(content, decoded, &mut segments)?;
+    let text: String = segments.iter().map(|(text, _)| text.as_str()).collect();
+    let start = text.rfind(target)?;
+    let end = start + target.len();
+    let locate = |offset: usize, at_end: bool| {
+        let mut covered = 0;
+        for (text, span) in &segments {
+            let next = covered + text.len();
+            if offset < next || (at_end && offset == next && !text.is_empty()) {
+                return Some(span.as_ref()?.start + offset - covered);
+            }
+            covered = next;
+        }
+        None
+    };
+    Some(Span {
+        start: locate(start, false)?,
+        end: locate(end, true)?,
+    })
+}
+
+/// Stands for a node whose printed text is unknown, so no target spans it.
+const UNPRINTED: &str = "\u{FFFF}";
+
+/// Printed text of nodes in source order with its source span: text values
+/// and ruby bases; raw notation prints nothing; printed text without a
+/// source span has none.
+fn printed_segments(
+    nodes: &[Value],
+    decoded: &DecodedSource,
+    out: &mut Vec<(String, Option<Span>)>,
+) -> Option<()> {
+    for node in nodes {
+        let span = match node["kind"].as_str()? {
+            "raw" => {
+                out.push((String::new(), None));
+                continue;
+            }
+            "text" => value_source_span(node)
+                .filter(|span| decoded.text.get(span.start..span.end) == node["value"].as_str()),
+            "ruby" => printed_span(node, decoded),
+            _ => {
+                if let Some(children) = node["content"].as_array() {
+                    printed_segments(children, decoded, out)?;
+                    continue;
+                }
+                None
+            }
+        };
+        let text = match span {
+            Some(span) => decoded.text.get(span.start..span.end)?.to_owned(),
+            None => fragment_text(node, FragmentTextPolicy::Interpreted)
+                .map_or_else(|| UNPRINTED.to_owned(), Cow::into_owned),
+        };
+        out.push((text, span));
+    }
+    Some(())
+}
+
 fn directive_node(decoded: &DecodedSource, node: &AozoraNode, kind: DirectiveKind) -> Value {
-    let note_kind = match kind {
-        DirectiveKind::TranscriptionNote => "transcription",
-        DirectiveKind::OmissionNote => "omission",
-        DirectiveKind::IncompletenessNote => "incompleteness",
-        DirectiveKind::ExplanationNote => "explanation",
-        DirectiveKind::Sic => "sic",
-        DirectiveKind::ExternalTableReference => "external-table-reference",
-        DirectiveKind::FigureInsertion => "figure-insertion",
-        _ => return raw_node(decoded, node, node.kind.as_str()),
+    if matches!(
+        kind,
+        DirectiveKind::RubyPairOpen | DirectiveKind::RubyPairClose
+    ) {
+        return ruby_pair_marker(decoded, node, kind);
+    }
+    let Some(mut note_kind) = editorial_note_kind(kind) else {
+        return uninterpreted_raw_node(decoded, node);
     };
     let raw = source_slice(&decoded.span_text, &node.span);
     let text = raw
@@ -3098,8 +4426,51 @@ fn directive_node(decoded: &DecodedSource, node: &AozoraNode, kind: DirectiveKin
                 .and_then(|body| body.strip_suffix(']'))
         })
         .expect("classified source statement retains its delimiters");
-    let mut statement = json!({"kind":"editorial_note", "note_kind":note_kind, "text":text.trim(),
+    let text = text.trim();
+    let note_text = match kind {
+        DirectiveKind::TranslationNote => text
+            .strip_prefix("現代語訳「")
+            .and_then(|text| text.strip_suffix('」'))
+            .expect("classified translation retains its quoted content"),
+        DirectiveKind::RubyReadingAnnotation => {
+            ruby_reading_annotation(text)
+                .expect("classified ruby-reading annotation retains its operands")
+                .note
+        }
+        _ => text,
+    };
+    if kind == DirectiveKind::RubyReadingAnnotation && note_text == "ママ" {
+        note_kind = "sic";
+    }
+    let mut statement = json!({"kind":"editorial_note", "note_kind":note_kind, "text":note_text,
         "span":span_json(&node.span, &decoded.span_ctx)});
+    if kind == DirectiveKind::OmissionNote
+        && omission_note_certainty(text) == Some(OmissionNoteCertainty::Uncertain)
+    {
+        statement["certainty"] = json!("uncertain");
+    }
+    add_note_operand_fields(&mut statement, kind, text);
+    add_source_condition_fields(&mut statement, decoded, node, kind, raw, text);
+    if kind == DirectiveKind::IndentationQuestion {
+        statement["indentation_characters"] = json!(1);
+        statement["source_locator"] = json!(
+            indentation_question_locator(text.trim())
+                .expect("classified indentation question retains its locator")
+        );
+        let start = decoded.span_text[..node.span.start]
+            .rfind('\n')
+            .map_or(0, |offset| offset + 1);
+        if !decoded.span_text[start..node.span.start].trim().is_empty() {
+            let mut unknown = node.clone();
+            unknown.kind = ProjectedKind::Directive(DirectiveKind::Unknown);
+            return raw_node(decoded, &unknown, "directive");
+        }
+        let end = decoded.span_text[node.span.end..]
+            .find('\n')
+            .map_or(decoded.span_text.len(), |offset| node.span.end + offset + 1);
+        statement["target_source_spans"] =
+            json!([span_json(&Span { start, end }, &decoded.span_ctx)]);
+    }
     if kind == DirectiveKind::ExternalTableReference {
         statement["source_filename"] = json!(
             external_table_filename(text)
@@ -3113,10 +4484,13 @@ fn directive_node(decoded: &DecodedSource, node: &AozoraNode, kind: DirectiveKin
             "aspects":["content"], "influence":{"kind":"source-location"}
         });
     }
-    if matches!(kind, DirectiveKind::ExplanationNote | DirectiveKind::Sic) {
-        let start = node.span.start + text.as_ptr().addr() - raw.as_ptr().addr();
-        let Some(content) = source_fragment(decoded, start..start + text.len()) else {
-            return raw_node(decoded, node, node.kind.as_str());
+    if matches!(
+        kind,
+        DirectiveKind::ExplanationNote | DirectiveKind::TranslationNote | DirectiveKind::Sic
+    ) {
+        let start = node.span.start + note_text.as_ptr().addr() - raw.as_ptr().addr();
+        let Some(content) = source_fragment(decoded, start..start + note_text.len()) else {
+            return uninterpreted_raw_node(decoded, node);
         };
         if content.iter().any(|child| child["kind"] != "text") {
             statement
@@ -3127,6 +4501,109 @@ fn directive_node(decoded: &DecodedSource, node: &AozoraNode, kind: DirectiveKin
         }
     }
     statement
+}
+
+/// A classified statement kept raw because its operands could not be read,
+/// recorded as uninterpreted notation unless the node already records a
+/// problem.
+fn uninterpreted_raw_node(decoded: &DecodedSource, node: &AozoraNode) -> Value {
+    let mut raw = raw_node(decoded, node, node.kind.as_str());
+    if raw.get("interpretation_problem").is_none() {
+        raw["interpretation_problem"] = json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation",
+            "aspects":["content","structure"], "influence":{"kind":"document"}});
+    }
+    raw
+}
+
+fn ruby_pair_marker(decoded: &DecodedSource, node: &AozoraNode, kind: DirectiveKind) -> Value {
+    let mut marker = raw_node(decoded, node, node.kind.as_str());
+    marker["interpretation_problem"] = json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation", "aspects":["content","structure"], "influence":{"kind":"document"}});
+    if kind == DirectiveKind::RubyPairClose {
+        let raw = source_slice(&decoded.span_text, &node.span);
+        let reading = raw
+            .strip_prefix("［＃左に「")
+            .and_then(|rest| rest.strip_suffix("」のルビ付き終わり］"))
+            .or_else(|| {
+                raw.strip_prefix("[#左に「")
+                    .and_then(|rest| rest.strip_suffix("」のルビ付き終わり]"))
+            });
+        if let Some(reading) = reading {
+            let start = node.span.start + reading.as_ptr().addr() - raw.as_ptr().addr();
+            if let Some(children) = source_fragment(decoded, start..start + reading.len()) {
+                marker["x-ruby-reading"] = json!(children);
+            }
+        }
+    }
+    marker
+}
+
+fn editorial_note_kind(kind: DirectiveKind) -> Option<&'static str> {
+    match kind {
+        DirectiveKind::TranscriptionNote => Some("transcription"),
+        DirectiveKind::UncertainCorrection => Some("uncertain-correction"),
+        DirectiveKind::SourceLegibilityNote => Some("source-legibility"),
+        DirectiveKind::PageSideNote => Some("page-side"),
+        DirectiveKind::IndentationQuestion => Some("indentation-question"),
+        DirectiveKind::OmissionNote => Some("omission"),
+        DirectiveKind::IncompletenessNote => Some("incompleteness"),
+        DirectiveKind::TranslationNote => Some("translation"),
+        DirectiveKind::RubyReadingAnnotation => Some("ruby-reading-annotation"),
+        DirectiveKind::ExplanationNote => Some("explanation"),
+        DirectiveKind::NotationExample => Some("notation-example"),
+        DirectiveKind::Sic => Some("sic"),
+        DirectiveKind::ExternalTableReference => Some("external-table-reference"),
+        DirectiveKind::FigureInsertion => Some("figure-insertion"),
+        DirectiveKind::RubyAttached => Some("ruby-attached"),
+        DirectiveKind::RubyRetarget => Some("ruby-retarget"),
+        DirectiveKind::EditorNote => Some("inputter-note-reference"),
+        _ => None,
+    }
+}
+
+fn add_note_operand_fields(statement: &mut Value, kind: DirectiveKind, text: &str) {
+    if kind == DirectiveKind::RubyRetarget
+        && let Some(target) = ruby_retarget_target(text)
+    {
+        statement["target_text"] = json!(target);
+    }
+    if kind == DirectiveKind::RubyAttached
+        && let Some(target) = ruby_attached_target(text)
+    {
+        statement["target_text"] = json!(target);
+    }
+    if kind == DirectiveKind::RubyReadingAnnotation {
+        statement["target_text"] = json!(
+            ruby_reading_annotation(text)
+                .expect("classified ruby-reading annotation retains its operands")
+                .target
+        );
+    }
+    if kind == DirectiveKind::Sic
+        && let Some(sic) = sic_target(text)
+    {
+        statement["target_text"] = json!(sic.target);
+    }
+    if kind == DirectiveKind::EditorNote {
+        let number = text
+            .trim()
+            .strip_prefix("入力者注(")
+            .and_then(|rest| rest.strip_suffix(')'))
+            .and_then(|digits| digits.parse::<u64>().ok())
+            .expect("classified inputter-note reference retains its number");
+        statement["note_number"] = json!(number);
+    }
+    if kind == DirectiveKind::FigureInsertion
+        && let Some(figure) = located_figure_note(text)
+    {
+        statement["source_locator"] = json!(figure.page);
+        statement["figure_kind"] = json!(figure.kind.keyword());
+        if let Some(position) = figure.position {
+            statement["page_position"] = json!(position.keyword());
+        }
+        if let Some(description) = figure.description {
+            statement["figure_description"] = json!(description);
+        }
+    }
 }
 
 #[allow(
@@ -3144,10 +4621,25 @@ fn inline_content_range(
     let mut ordered = nodes.iter().collect::<Vec<_>>();
     ordered.sort_by_key(|node| source_scope_order(node));
 
+    let next_starts: Vec<usize> = ordered
+        .iter()
+        .skip(1)
+        .map(|node| node.span.start)
+        .chain([range.end])
+        .collect();
     let mut cursor = range.start;
-    for node in ordered {
+    for (index, node) in ordered.into_iter().enumerate() {
         if node.span.start > cursor {
             push_source_gap(&mut content, decoded, cursor, node.span.start);
+        }
+        if let Some(end) = parenthesized_warichu_end(decoded, node, next_starts[index]) {
+            let mut children = Vec::new();
+            push_source_gap(&mut children, decoded, node.span.end, end);
+            content.push(json!({"kind":"warichu", "content":children,
+                "span":span_json(&Span { start: node.span.start, end }, &decoded.span_ctx),
+                "interpretation_marker_spans":[span_json(&node.span, &decoded.span_ctx)]}));
+            cursor = end;
+            continue;
         }
         match node.kind {
             ProjectedKind::LiteralReferenceSign => content.push(json!({
@@ -3163,9 +4655,55 @@ fn inline_content_range(
                 "span": span_json(&node.span, &decoded.span_ctx)
             })),
             ProjectedKind::Node(NodeKind::Ruby) => {
+                let quoted = node.target_quote.and_then(|span| source_fragment(decoded, span.start..span.end));
+                if quoted.as_ref().is_some_and(|children| children.iter().any(fragment_contains_ruby))
+                    && let Some(marker) = node.marker_span
+                {
+                    if node.span.start < marker.start {
+                        if let Some(base) = parsed_source_fragment(decoded, node.span.start..marker.start) {
+                            content.extend(base);
+                        } else {
+                            push_source_gap(&mut content, decoded, node.span.start, marker.start);
+                        }
+                    }
+                    let mut annotation = node.clone();
+                    annotation.span = marker;
+                    let mut retained = raw_node(decoded, &annotation, "unresolved-ruby");
+                    retained["interpretation_problem"] = json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation", "aspects":["content","structure"], "influence":{"kind":"document"}});
+                    content.push(retained);
+                    cursor = cursor.max(node.span.end);
+                    continue;
+                }
                 let mut ruby = ruby_node(decoded, node, ruby_by_span, gaiji_by_start);
+                let mut marker = node.marker_span;
+                if ruby["kind"] == "ruby" && ruby["base"] == "" && ruby.get("base_content").is_none() {
+                    let normalized = quoted.as_ref().and_then(|children| content_structured_text(children));
+                    let target = normalized.as_deref().or_else(|| ruby_by_span
+                        .get(&(node.span.start, node.span.end))
+                        .map(|entry| entry.base.as_str()));
+                    if let Some(children) =
+                        target.and_then(|target| take_visible_suffix_matching(&mut content, target, decoded, quoted.as_deref()))
+                    {
+                        ruby["base"] = json!(target);
+                        ruby["span"]["byte_start"] = children[0]["span"]["byte_start"].clone();
+                        ruby["span"]["line_start"] = children[0]["span"]["line_start"].clone();
+                        ruby["base_content"] = json!(children);
+                        marker = Some(node.span);
+                    } else {
+                        let mut retained = raw_node(decoded, node, "unresolved-ruby");
+                        retained["interpretation_problem"] = json!({"kind":"uninterpreted-notation", "code":"uninterpreted-notation", "aspects":["content","structure"], "influence":{"kind":"document"}});
+                        if let Some(target) = target {
+                            ruby["base"] = json!(target);
+                            ruby["x-ruby-target-content"] = json!(quoted);
+                            retained["x-ruby-reference"] = ruby;
+                        }
+                        content.push(retained);
+                        cursor = cursor.max(node.span.end);
+                        continue;
+                    }
+                }
                 ruby["interpretation_marker_spans"] = json!(
-                    node.marker_span
+                    marker
                         .as_ref()
                         .map(|span| span_json(span, &decoded.span_ctx))
                         .into_iter()
@@ -3204,8 +4742,104 @@ fn inline_content_range(
                 content.push(editorial_range_note(decoded, node, location, closing));
             }
             ProjectedKind::EditorialRangeMarker(_) => content.push(raw_node(decoded,node,"directive")),
-            ProjectedKind::EditorialNote { kind, ref text } => content.push(json!({"kind":"editorial_note", "note_kind":match kind {EditionNoteKind::BaseEdition=>"base-edition", EditionNoteKind::FirstPublication=>"first-publication"}, "text":text, "span":span_json(&node.span, &decoded.span_ctx)})),
-            ProjectedKind::Directive(kind) => content.push(directive_node(decoded, node, kind)),
+            ProjectedKind::EditorialNote { kind, ref text } => content.push(json!({"kind":"editorial_note", "note_kind":edition_note_kind_name(kind), "text":text, "span":span_json(&node.span, &decoded.span_ctx)})),
+            ProjectedKind::BaseCorrection { ref base_text, ref base_span } => {
+                let raw = source_slice(&decoded.span_text, &node.span);
+                let text = raw.strip_prefix("［＃").and_then(|body| body.strip_suffix('］'))
+                    .expect("classified base correction retains its delimiters");
+                content.push(json!({"kind":"editorial_note", "note_kind":"base-edition",
+                    "text":text, "base_text":base_text,
+                    "base_source_span":span_json(&Span { start: base_span.start, end: base_span.end }, &decoded.span_ctx),
+                    "span":span_json(&node.span, &decoded.span_ctx)}));
+            }
+            ProjectedKind::Directive(kind) => {
+                let mut directive = directive_node(decoded, node, kind);
+                if kind == DirectiveKind::RubyAttached
+                    && let Some(target) = directive["target_text"].as_str()
+                    && let Some((target_span, subject_span)) =
+                        resolve_ruby_retarget(&mut content, target, decoded)
+                {
+                    directive["target_source_spans"] =
+                        json!([decoded_span_json(target_span, &decoded.span_ctx)]);
+                    directive["subject_source_span"] =
+                        decoded_span_json(subject_span, &decoded.span_ctx);
+                }
+                if kind == DirectiveKind::RubyRetarget
+                    && let Some(target) = directive["target_text"].as_str().map(str::to_owned)
+                    && let Some((target_span, subject_span)) =
+                        resolve_ruby_retarget(&mut content, &target, decoded)
+                {
+                    directive["target_source_spans"] = json!([
+                        decoded_span_json(target_span, &decoded.span_ctx)
+                    ]);
+                    directive["subject_source_span"] =
+                        decoded_span_json(subject_span, &decoded.span_ctx);
+                }
+                if kind == DirectiveKind::RubyReadingAnnotation
+                    && let Some(target) = directive["target_text"].as_str()
+                    && let Some(target_span) =
+                        resolve_ruby_reading_target(&content, target, decoded)
+                {
+                    directive["target_source_spans"] =
+                        json!([decoded_span_json(target_span, &decoded.span_ctx)]);
+                }
+                if kind == DirectiveKind::Sic {
+                    match resolve_sic_target(&content, decoded, node) {
+                        SicTargetResolution::Resolved(target) => {
+                            directive["target_source_spans"] =
+                                json!([decoded_span_json(target, &decoded.span_ctx)]);
+                        }
+                        SicTargetResolution::Unresolved => {
+                            directive = raw_node(decoded, node, node.kind.as_str());
+                            directive["interpretation_problem"] = json!({"kind":"unresolved-variant", "code":"unresolved-variant",
+                                "aspects":["content","structure"], "influence":{"kind":"document"}});
+                        }
+                        SicTargetResolution::NotQuoted => {}
+                    }
+                }
+                if kind == DirectiveKind::UncertainCorrection
+                {
+                    if let Some(target) = resolve_uncertain_correction_target(
+                        &content,
+                        decoded,
+                        node,
+                    )
+                    {
+                        directive["target_source_spans"] =
+                            json!([decoded_span_json(target, &decoded.span_ctx)]);
+                    } else if let Some(prior) = content.last()
+                        && prior["kind"] == "ruby"
+                    {
+                        if let Some(target) = prior["base_content"]
+                            .as_array()
+                            .and_then(|base| base.last())
+                            .and_then(|part| part.get("span"))
+                        {
+                            directive["target_source_spans"] = json!([target]);
+                        } else if let (Some(base), Some(mut start)) = (
+                            prior["base"].as_str(),
+                            prior["span"]["byte_start"]
+                                .as_u64()
+                                .and_then(|value| usize::try_from(value).ok()),
+                        ) {
+                            if decoded.text[start..].starts_with('｜') {
+                                start += '｜'.len_utf8();
+                            }
+                            if decoded.text[start..].starts_with(base) {
+                                directive["target_source_spans"] = json!([decoded_span_json(
+                                    Span {
+                                        start,
+                                        end: start + base.len(),
+                                    },
+                                    &decoded.span_ctx,
+                                )]);
+                            }
+                        }
+                    }
+                }
+                content.push(directive);
+            }
+            ProjectedKind::FormattingInstruction(ref instruction) => content.push(formatting_instruction::project(decoded, node.span, instruction)),
             ProjectedKind::Kunten { kind, ref text } => {
                 content.push(kunten_node(decoded, &node.span, kind, text, node.marker_span.as_ref()));
             }
@@ -3216,7 +4850,8 @@ fn inline_content_range(
                 let mut accent = raw_node(decoded, node, "supplied-diacritic");
                 accent["kind"] = json!("supplied-diacritic");
                 accent["text"] = json!(text);
-                accent["interpretation_marker_spans"] = json!([span_json(&marker, &decoded.span_ctx)]);
+                accent["interpretation_marker_spans"] =
+                    json!(supplied_diacritic_markers(decoded, node.span, marker));
                 content.push(accent);
             }
             ProjectedKind::AccentReference => content.push(raw_node(decoded, node, "accent-annotation")),
@@ -3231,12 +4866,35 @@ fn inline_content_range(
                 "kind":"layout_break", "break_kind":layout_break_kind(&node.kind),
                 "span":span_json(&node.span, &decoded.span_ctx)
             })),
+            ProjectedKind::QualifiedBreak(break_) => {
+                let mut projected = json!({
+                    "kind":"layout_break", "break_kind":layout_break_kind(&node.kind),
+                    "span":span_json(&node.span, &decoded.span_ctx)
+                });
+                if break_.destination_right {
+                    projected["destination_side"] = json!("right");
+                }
+                if let Some(placement) = break_.following_placement {
+                    projected["following_placement"] = json!(match placement {
+                        ab_aozora_facade::FollowingPlacement::HorizontalCenter => "horizontal-center",
+                        ab_aozora_facade::FollowingPlacement::Left => "left",
+                    });
+                }
+                if let Some(indent) = break_.following_indent {
+                    projected["following_indent"] = json!(indent);
+                }
+                if let Some(number) = break_.column_number {
+                    projected["column_number"] = json!(number);
+                }
+                content.push(projected);
+            }
             ProjectedKind::Node(_)
             | ProjectedKind::Section(_)
             | ProjectedKind::Line(_)
             | ProjectedKind::Region(_)
             | ProjectedKind::RegionClose(_)
-            | ProjectedKind::TextVariant { .. } => {
+            | ProjectedKind::TextVariant { .. }
+            | ProjectedKind::NamedTextApparatus { .. } => {
                 content.push(raw_node(decoded, node, node.kind.as_str()));
             }
         }
@@ -3245,7 +4903,39 @@ fn inline_content_range(
     push_source_gap(&mut content, decoded, cursor, range.end);
     // Assemble source paragraphs and enclosing block layouts before consuming
     // same-line formatting markers in pair_bare_toggles_in_blocks.
-    pair_warichu(content)
+    pair_inline_annotations(content)
+}
+
+/// End of the parenthesized run that `［＃以下の括弧内割注］` sets as warichu: the
+/// run opens directly after the note and closes on the same line before
+/// `next_start`, the start of the next node.
+fn parenthesized_warichu_end(
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+    next_start: usize,
+) -> Option<usize> {
+    if source_slice(&decoded.span_text, &node.span) != "［＃以下の括弧内割注］" {
+        return None;
+    }
+    let run = decoded.span_text.get(node.span.end..next_start)?;
+    if !run.starts_with('（') {
+        return None;
+    }
+    let mut depth = 0_usize;
+    for (offset, character) in run.char_indices() {
+        match character {
+            '（' => depth += 1,
+            '）' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(node.span.end + offset + character.len_utf8());
+                }
+            }
+            '\n' | '\r' => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn editorial_range_note(
@@ -3294,20 +4984,384 @@ fn push_heading(content: &mut Vec<Value>, decoded: &DecodedSource, node: &Aozora
     }
 }
 
-fn pair_warichu(content: Vec<Value>) -> Vec<Value> {
+fn resolve_ruby_references(nodes: Vec<Value>, decoded: &DecodedSource) -> Vec<Value> {
+    let mut output = Vec::with_capacity(nodes.len());
+    for mut node in nodes {
+        for key in [
+            "children",
+            "content",
+            "base_content",
+            "reading_content",
+            "readings",
+            "annotation_content",
+        ] {
+            if let Some(Value::Array(children)) = node.get_mut(key) {
+                *children = resolve_ruby_references(mem::take(children), decoded);
+            }
+        }
+        if let Some(reference) = node
+            .as_object_mut()
+            .and_then(|object| object.remove("x-ruby-reference"))
+            && resolve_ruby_reference(&mut output, reference, decoded)
+        {
+            continue;
+        }
+        output.push(node);
+    }
+    output
+}
+
+fn resolve_ruby_reference(
+    output: &mut Vec<Value>,
+    mut reference: Value,
+    decoded: &DecodedSource,
+) -> bool {
+    let Some(target) = reference["base"]
+        .as_str()
+        .filter(|target| !target.is_empty())
+    else {
+        return false;
+    };
+    let target = target.to_owned();
+    let quoted = reference
+        .as_object_mut()
+        .and_then(|object| object.remove("x-ruby-target-content"))
+        .and_then(|content| content.as_array().cloned())
+        .unwrap_or_else(|| vec![json!({"kind":"text", "value":target})]);
+    let Some(text) = content_structured_text(output) else {
+        return false;
+    };
+    for (start, _) in text.char_indices().rev() {
+        if !text[start..].starts_with(&target) {
+            continue;
+        }
+        let range = start..start + target.len();
+        let Some(selected) = ruby_target_slice(output, range.clone(), decoded) else {
+            continue;
+        };
+        if !quoted_structure_matches(&quoted, &selected) {
+            continue;
+        }
+        let mut candidate = output.clone();
+        if wrap_ruby_range(&mut candidate, range, &reference, decoded).is_some() {
+            *output = candidate;
+            return true;
+        }
+    }
+    false
+}
+
+fn ruby_target_slice(
+    nodes: &[Value],
+    range: Range<usize>,
+    decoded: &DecodedSource,
+) -> Option<Vec<Value>> {
+    let mut selected = Vec::new();
+    let mut offset = 0;
+    for node in nodes {
+        let text = fragment_text(node, FragmentTextPolicy::Interpreted)?;
+        let end = offset + text.len();
+        if offset < range.end && range.start < end {
+            let part = range.start.saturating_sub(offset)..range.end.min(end) - offset;
+            selected.push(if part == (0..text.len()) {
+                node.clone()
+            } else if node["kind"] == "text" {
+                ruby_text_slice(node, part, decoded)?
+            } else {
+                let key = if matches!(node["kind"].as_str(), Some("ruby" | "ruby_group")) {
+                    "base_content"
+                } else {
+                    "content"
+                };
+                let children = node[key].as_array().cloned().or_else(|| {
+                    (node["kind"] == "ruby")
+                        .then(|| literal_ruby_base(node, &decoded.text))
+                        .flatten()
+                })?;
+                let mut sliced = node.clone();
+                sliced[key] = json!(ruby_target_slice(&children, part, decoded)?);
+                sliced
+            });
+        }
+        offset = end;
+    }
+    (range.end <= offset && content_structured_text(&selected)?.len() == range.len())
+        .then_some(selected)
+}
+
+fn ruby_with_base(reference: &Value, children: Vec<Value>) -> Value {
+    let mut ruby = reference.clone();
+    ruby["interpretation_marker_spans"] = json!([reference["span"]]);
+    ruby["span"]["byte_start"] = children[0]["span"]["byte_start"].clone();
+    ruby["span"]["line_start"] = children[0]["span"]["line_start"].clone();
+    ruby["base_content"] = Value::Array(children);
+    ruby
+}
+
+fn ruby_text_slice(node: &Value, range: Range<usize>, decoded: &DecodedSource) -> Option<Value> {
+    let text = node["value"].as_str()?;
+    let selected = text.get(range.clone())?;
+    let start = if range.start == 0 {
+        usize::try_from(node["span"]["byte_start"].as_u64()?).ok()?
+    } else {
+        decoded_suffix_boundary(node, &text[range.start..], decoded)?.1
+    };
+    let end = if range.end == text.len() {
+        usize::try_from(node["span"]["byte_end"].as_u64()?).ok()?
+    } else {
+        decoded_suffix_boundary(node, &text[range.end..], decoded)?.0
+    };
+    let mut part = node.clone();
+    part["value"] = json!(selected);
+    part["span"] = decoded_span_json(Span { start, end }, &decoded.span_ctx);
+    Some(part)
+}
+
+fn ranged_ruby_reading(ruby: &Value, range: Range<usize>) -> Value {
+    let mut reading =
+        json!({"kind":"ruby_reading", "base_range":{"start":range.start,"end":range.end}});
+    for key in [
+        "reading",
+        "reading_content",
+        "direction",
+        "span",
+        "interpretation_marker_spans",
+    ] {
+        if let Some(value) = ruby.get(key) {
+            reading[key] = value.clone();
+        }
+    }
+    if reading.get("interpretation_marker_spans").is_none() {
+        reading["interpretation_marker_spans"] = json!([ruby["span"]]);
+    }
+    reading
+}
+
+fn flatten_ruby_base(
+    nodes: &[Value],
+    offset: &mut usize,
+    readings: &mut Vec<Value>,
+    decoded: &DecodedSource,
+) -> Option<Vec<Value>> {
+    let mut base = Vec::new();
+    for node in nodes {
+        let start = *offset;
+        let end = start + fragment_text(node, FragmentTextPolicy::Interpreted)?.len();
+        match node["kind"].as_str()? {
+            "ruby" => {
+                readings.push(ranged_ruby_reading(node, start..end));
+                let children = node["base_content"]
+                    .as_array()
+                    .cloned()
+                    .or_else(|| literal_ruby_base(node, &decoded.text))?;
+                base.extend(flatten_ruby_base(&children, offset, readings, decoded)?);
+            }
+            "ruby_group" => {
+                for reading in node["readings"].as_array()? {
+                    let mut reading = reading.clone();
+                    for key in ["start", "end"] {
+                        let position =
+                            usize::try_from(reading["base_range"][key].as_u64()?).ok()?;
+                        reading["base_range"][key] = json!(start + position);
+                    }
+                    readings.push(reading);
+                }
+                base.extend(flatten_ruby_base(
+                    node["base_content"].as_array()?,
+                    offset,
+                    readings,
+                    decoded,
+                )?);
+            }
+            _ => {
+                let mut node = node.clone();
+                if let Some(children) = node["content"].as_array() {
+                    node["content"] =
+                        json!(flatten_ruby_base(children, offset, readings, decoded)?);
+                } else {
+                    *offset = end;
+                }
+                base.push(node);
+            }
+        }
+        if *offset != end {
+            return None;
+        }
+    }
+    Some(base)
+}
+
+fn group_crossing_ruby(
+    content: &mut Vec<Value>,
+    range: Range<usize>,
+    reference: &Value,
+    decoded: &DecodedSource,
+) -> Option<()> {
+    let mut offset = 0;
+    let mut first = None;
+    for index in 0..content.len() {
+        let end = offset + fragment_text(&content[index], FragmentTextPolicy::Interpreted)?.len();
+        if offset <= range.start && range.start < end {
+            first = Some((index, offset));
+        }
+        if end >= range.end
+            && let Some((first, start)) = first
+        {
+            let mut readings = Vec::new();
+            let mut base_offset = 0;
+            let base = flatten_ruby_base(
+                &content[first..=index],
+                &mut base_offset,
+                &mut readings,
+                decoded,
+            )?;
+            readings.push(ranged_ruby_reading(
+                reference,
+                range.start - start..range.end - start,
+            ));
+            let mut span = reference["span"].clone();
+            span["byte_start"] = content[first]["span"]["byte_start"].clone();
+            span["line_start"] = content[first]["span"]["line_start"].clone();
+            let group = json!({"kind":"ruby_group", "base":content_structured_text(&base)?,
+                "base_content":base, "readings":readings, "span":span});
+            content.splice(first..=index, [group]);
+            return Some(());
+        }
+        offset = end;
+    }
+    None
+}
+
+fn wrap_ruby_range(
+    content: &mut Vec<Value>,
+    range: Range<usize>,
+    reference: &Value,
+    decoded: &DecodedSource,
+) -> Option<()> {
+    for boundary in [range.start, range.end] {
+        let mut offset = 0;
+        for index in 0..content.len() {
+            let node = &content[index];
+            let text = fragment_text(node, FragmentTextPolicy::Interpreted)?;
+            let end = offset + text.len();
+            if node["kind"] == "text" && offset < boundary && boundary < end {
+                let cut = boundary - offset;
+                let before = ruby_text_slice(node, 0..cut, decoded)?;
+                let after = ruby_text_slice(node, cut..text.len(), decoded)?;
+                content.splice(index..=index, [before, after]);
+                break;
+            }
+            offset = end;
+        }
+    }
+    let mut offset = 0;
+    let mut first = None;
+    for index in 0..content.len() {
+        let node = &content[index];
+        let text = fragment_text(node, FragmentTextPolicy::Interpreted)?;
+        let end = offset + text.len();
+        if offset == range.start && !text.is_empty() {
+            first = Some(index);
+        }
+        if end == range.end
+            && let Some(first) = first
+        {
+            let ruby = ruby_with_base(reference, content[first..=index].to_vec());
+            content.splice(first..=index, [ruby]);
+            return Some(());
+        }
+        if offset <= range.start && range.end <= end && !text.is_empty() {
+            let selected = range.start - offset..range.end - offset;
+            if node["kind"] == "ruby_group" {
+                let reading = ranged_ruby_reading(reference, selected);
+                content[index]["readings"].as_array_mut()?.push(reading);
+                content[index]["span"]["byte_end"] = reference["span"]["byte_end"].clone();
+                content[index]["span"]["line_end"] = reference["span"]["line_end"].clone();
+                return Some(());
+            }
+            if node["kind"] == "text" {
+                let mut replacement = Vec::new();
+                if selected.start > 0 {
+                    replacement.push(ruby_text_slice(node, 0..selected.start, decoded)?);
+                }
+                replacement.push(ruby_with_base(
+                    reference,
+                    vec![ruby_text_slice(node, selected.clone(), decoded)?],
+                ));
+                if selected.end < text.len() {
+                    replacement.push(ruby_text_slice(node, selected.end..text.len(), decoded)?);
+                }
+                content.splice(index..=index, replacement);
+                return Some(());
+            }
+            let key = if node["kind"] == "ruby" {
+                "base_content"
+            } else {
+                "content"
+            };
+            let mut children = node[key].as_array().cloned().or_else(|| {
+                (node["kind"] == "ruby")
+                    .then(|| literal_ruby_base(node, &decoded.text))
+                    .flatten()
+            })?;
+            wrap_ruby_range(&mut children, selected, reference, decoded)?;
+            content[index][key] = json!(children);
+            return Some(());
+        }
+        offset = end;
+    }
+    group_crossing_ruby(content, range, reference, decoded)
+}
+
+fn pair_inline_annotations(content: Vec<Value>) -> Vec<Value> {
     let mut output = Vec::new();
     let mut stack: Vec<(Value, Vec<Value>)> = Vec::new();
     for node in content {
-        if node["x-source-marker-kind"] == "warichuOpen" {
+        if matches!(
+            node["x-source-marker-kind"].as_str(),
+            Some("warichuOpen" | "warigakiOpen" | "rubyPairOpen")
+        ) {
             stack.push((node, Vec::new()));
             continue;
         }
-        let node = if node["x-source-marker-kind"] == "warichuClose" && !stack.is_empty() {
-            let (open, children) = stack.pop().expect("nonempty warichu stack");
+        let expected_open = match node["x-source-marker-kind"].as_str() {
+            Some("warichuClose") => Some("warichuOpen"),
+            Some("warigakiClose") => Some("warigakiOpen"),
+            Some("rubyPairClose") => Some("rubyPairOpen"),
+            _ => None,
+        };
+        let node = if expected_open.is_some_and(|kind| {
+            stack
+                .last()
+                .is_some_and(|(open, _)| open["x-source-marker-kind"] == kind)
+        }) {
+            let (open, children) = stack.pop().expect("matching annotation opener");
             let mut span = open["span"].clone();
             span["byte_end"] = node["span"]["byte_end"].clone();
             span["line_end"] = node["span"]["line_end"].clone();
-            json!({"kind":"warichu", "content":children, "span":span, "interpretation_marker_spans":[open["span"], node["span"]]})
+            if expected_open == Some("warichuOpen") {
+                json!({"kind":"warichu", "content":children, "span":span, "interpretation_marker_spans":[open["span"], node["span"]]})
+            } else if expected_open == Some("warigakiOpen") {
+                json!({"kind":"warigaki", "upper":children, "lower":[], "span":span,
+                    "interpretation_marker_spans":[open["span"], node["span"]]})
+            } else if let (Some(base), Some(reading_children)) = (
+                content_structured_text(&children),
+                node["x-ruby-reading"].as_array(),
+            ) && let Some(reading) = content_structured_text(reading_children)
+                && !base.trim().is_empty()
+                && !reading.trim().is_empty()
+            {
+                json!({"kind":"ruby", "base":base, "base_content":children,
+                    "reading":reading, "reading_content":reading_children, "direction":"left",
+                    "span":span, "interpretation_marker_spans":[open["span"], node["span"]]})
+            } else {
+                let target = stack
+                    .last_mut()
+                    .map_or(&mut output, |(_, children)| children);
+                target.push(open);
+                target.extend(children);
+                node
+            }
         } else {
             node
         };
@@ -3355,13 +5409,13 @@ fn bare_toggle_marker(node: &Value) -> Option<(String, bool)> {
 
 /// Apply `pair_bare_toggles` to every content array of an already-built
 /// block tree: recurse into each node's `content`/
-/// `children` arrays FIRST, then run the pairing pass over the array at this
+/// `children` arrays first, then run the pairing pass over the array at this
 /// level. Post-order matters — a container the pass creates holds nodes the
 /// per-line grammar already ruled on (adopted-into or declined-in-place), and
 /// re-running the pass inside it could re-adopt a pair the full line
 /// declined (e.g. a rolled-back same-construct pair sitting inside the other
 /// construct's adopted container). Block assembly runs first so source paragraph
-/// boundaries and enclosing layouts are established before inline markers vanish.
+/// boundaries and enclosing layouts are established before inline markers are consumed.
 fn pair_bare_toggles_in_blocks(nodes: Vec<Value>) -> Vec<Value> {
     let mut nodes = nodes;
     for node in &mut nodes {
@@ -3376,12 +5430,164 @@ fn pair_bare_toggles_in_blocks(nodes: Vec<Value>) -> Vec<Value> {
     pair_bare_toggles(nodes)
 }
 
+/// Set line-scoped gothic and font-size markers on their line, in every
+/// content array of a block tree once paired markers are resolved.
+///
+/// `［＃この行はゴシック体］` sets the text of its whole line. A
+/// `［＃ゴシック体］` or `［＃ゴシック］` or a font-size opener without a closer,
+/// followed by nothing but white space on its line, sets the text before it on
+/// that line. Leading
+/// white space and the line terminator stay outside the style. A marker whose
+/// line has no other text in the same content array stays raw.
+fn apply_line_gothic_in_blocks(nodes: Vec<Value>, decoded: &DecodedSource) -> Vec<Value> {
+    let mut nodes = nodes;
+    for node in &mut nodes {
+        if let Some(map) = node.as_object_mut() {
+            for key in ["content", "children"] {
+                if let Some(Value::Array(items)) = map.get_mut(key) {
+                    *items = apply_line_gothic_in_blocks(mem::take(items), decoded);
+                }
+            }
+        }
+    }
+    let mut index = 0;
+    while index < nodes.len() {
+        if let Some((whole_line, format)) = line_gothic_marker(&nodes[index])
+            && let Some((range, style)) =
+                line_gothic_style(&nodes, index, whole_line, format, decoded)
+        {
+            index = range.start + style.len();
+            nodes.splice(range, style);
+        } else {
+            index += 1;
+        }
+    }
+    nodes
+}
+
+/// Whether a line-scoped marker sets its whole line or the text before it on
+/// that line, and the style it sets. An unclosed font-size opener with nothing
+/// after it on its line sets the text before it, as the published XHTML of
+/// `探偵劇王刺殺さる［＃２回り大きな文字］` shows.
+fn line_gothic_marker(node: &Value) -> Option<(bool, Value)> {
+    if node["kind"] != "raw" {
+        return None;
+    }
+    let gothic = json!({"kind":"style", "style_type":"gothic"});
+    if node["x-source-marker-kind"] == "lineGothic" {
+        return Some((true, gothic));
+    }
+    if node["x-format-open"] == true
+        && node.get("x-native-close-span").is_none()
+        && node["x-formatting"]["kind"] == "font_size"
+    {
+        return Some((false, node["x-formatting"].clone()));
+    }
+    matches!(
+        node["source"].as_str(),
+        Some("［＃ゴシック体］" | "［＃ゴシック］")
+    )
+    .then_some((false, gothic))
+}
+
+/// The content range a line-scoped gothic marker replaces and its replacement:
+/// leading white space, the style node, and the line terminator.
+fn line_gothic_style(
+    nodes: &[Value],
+    marker: usize,
+    whole_line: bool,
+    mut style: Value,
+    decoded: &DecodedSource,
+) -> Option<(Range<usize>, Vec<Value>)> {
+    let line = nodes[marker]["span"]["line_start"].as_u64()?;
+    let on_line = |node: &Value| {
+        node["span"]["line_start"].as_u64() == Some(line)
+            && node["span"]["line_end"].as_u64() == Some(line)
+    };
+    let mut start = marker;
+    while start > 0 && on_line(&nodes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = marker + 1;
+    while end < nodes.len() && nodes[end]["span"]["line_start"].as_u64() == Some(line) {
+        end += 1;
+    }
+    let mut after: Vec<Value> = nodes[marker + 1..end].to_vec();
+    let mut beyond = Vec::new();
+    if after.last().is_some_and(|last| !on_line(last)) {
+        let last = after.pop()?;
+        let text = last["value"].as_str().filter(|_| last["kind"] == "text")?;
+        let cut = text.find('\n')? + 1;
+        after.push(ruby_text_slice(&last, 0..cut, decoded)?);
+        beyond.push(ruby_text_slice(&last, cut..text.len(), decoded)?);
+    }
+    let after_is_blank = after.iter().all(|node| {
+        node["kind"] == "text" && node["value"].as_str().is_some_and(|s| s.trim().is_empty())
+    });
+    let mut target: Vec<Value> = nodes[start..marker].to_vec();
+    if whole_line {
+        target.append(&mut after);
+    } else if after_is_blank {
+        end = marker + 1;
+        beyond.clear();
+    } else {
+        return None;
+    }
+    let mut leading = Vec::new();
+    if let Some(first) = target.first()
+        && first["kind"] == "text"
+        && let Some(text) = first["value"].as_str()
+    {
+        let content_start = text.len() - text.trim_start().len();
+        if content_start == text.len() {
+            leading.push(target.remove(0));
+        } else if content_start > 0 {
+            leading.push(ruby_text_slice(first, 0..content_start, decoded)?);
+            target[0] = ruby_text_slice(first, content_start..text.len(), decoded)?;
+        }
+    }
+    let mut trailing = Vec::new();
+    if let Some(last) = target.last()
+        && last["kind"] == "text"
+        && let Some(text) = last["value"].as_str()
+    {
+        let content_end = text.trim_end().len();
+        let last_index = target.len() - 1;
+        if content_end == 0 {
+            trailing.push(target.remove(last_index));
+        } else if content_end < text.len() {
+            trailing.push(ruby_text_slice(last, content_end..text.len(), decoded)?);
+            target[last_index] = ruby_text_slice(last, 0..content_end, decoded)?;
+        }
+    }
+    let (first, last) = (target.first()?, target.last()?);
+    let marker_span = &nodes[marker]["span"];
+    let (head, tail) = if whole_line {
+        (first, last)
+    } else {
+        (first, &nodes[marker])
+    };
+    let span = json!({
+        "byte_start": head["span"]["byte_start"].as_u64()?.min(marker_span["byte_start"].as_u64()?),
+        "byte_end": tail["span"]["byte_end"].as_u64()?.max(marker_span["byte_end"].as_u64()?),
+        "line_start": line, "line_end": line,
+    });
+    style["content"] = Value::Array(target);
+    style["span"] = span;
+    style["interpretation_marker_spans"] = json!([marker_span]);
+    let mut replacement = leading;
+    replacement.push(style);
+    replacement.extend(trailing);
+    replacement.extend(beyond);
+    Some((start..end, replacement))
+}
+
 /// Fold noncrossing same-line formatting pairs after block classification.
 ///
 /// Pass 1 runs one global nesting stack over each line's markers in array (==
 /// source) order: each opener pushes, including nested scopes of the same family;
 /// an orphan close invalidates; a close matching the stack top pops
-/// and records a candidate pair; a mismatched close invalidates BOTH the
+/// and records a candidate pair; a mismatched close invalidates both the
 /// closing and the top construct and pops nothing; any open frame left on the
 /// stack at end of line invalidates its construct. Pass 2 adopts a candidate
 /// iff its construct was not invalidated on that line — invalidation is
@@ -3416,7 +5622,7 @@ pub(crate) fn pair_bare_toggles(content: Vec<Value>) -> Vec<Value> {
     if markers.is_empty() {
         return content;
     }
-    // Native scope matching owns omitted attributes and delimiter aliases.
+    // Native scope matching resolves omitted attributes and delimiter aliases.
     // The exact closing extent transfers that established identity to the
     // marker grammar without reconstructing it from source spelling.
     let native_closers: BTreeMap<_, _> = markers
@@ -3442,8 +5648,8 @@ pub(crate) fn pair_bare_toggles(content: Vec<Value>) -> Vec<Value> {
     // Run the two-pass grammar per line (markers are already in source order
     // because `inline_content` sorts by span). Adopted candidates across all
     // lines form a laminar family — matched pairs from one stack nest
-    // properly, and different lines occupy disjoint index ranges — so they
-    // splice cleanly as a forest.
+    // properly, and different lines occupy disjoint index ranges, so they
+    // splice as a forest without overlap.
     let mut adopted: Vec<(usize, usize, String)> = Vec::new();
     let mut group_start = 0;
     while group_start < markers.len() {
@@ -3521,7 +5727,7 @@ fn pair_line_markers(
 /// Rebuild `content[start..end]` folding each adopted `open_index` (looked up
 /// in `opens`) and its matching close into one container node whose content is
 /// the nodes strictly between the markers. Recurses on the interior first, so
-/// nested pairs become child containers; moves each surviving node exactly once
+/// nested pairs become child containers; moves each remaining node exactly once
 /// (`mem::take`) rather than cloning.
 fn splice_bare_toggle_containers(
     content: &mut Vec<Value>,
@@ -3605,13 +5811,144 @@ fn push_source_gap(content: &mut Vec<Value>, decoded: &DecodedSource, start: usi
                 "span": span_json(&span, &decoded.span_ctx)
             }));
         } else {
-            content.push(json!({
-                "kind": "text",
-                "value": segment_source,
-                "span": span_json(&span, &decoded.span_ctx)
-            }));
+            push_text_with_encoded_accents(content, decoded, span, segment_source);
         }
     }
+}
+
+fn push_text_with_encoded_accents(
+    content: &mut Vec<Value>,
+    decoded: &DecodedSource,
+    span: Span,
+    text: &str,
+) {
+    let body_offset = decoded.span_ctx.body_offset;
+    let mut sites = decoded
+        .sanitize_diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            let Diagnostic::AccentDecompositionApplied { span: site, .. } = diagnostic else {
+                return None;
+            };
+            let start = usize::try_from(site.start).ok()?.checked_sub(body_offset)?;
+            let end = usize::try_from(site.end).ok()?.checked_sub(body_offset)?;
+            (span.start <= start && end <= span.end).then_some(Span { start, end })
+        })
+        .collect::<Vec<_>>();
+    sites.sort_unstable_by_key(|site| site.start);
+    if sites.is_empty() {
+        content
+            .push(json!({"kind":"text", "value":text, "span":span_json(&span, &decoded.span_ctx)}));
+        return;
+    }
+
+    let mut cursor = span.start;
+    for site in sites {
+        if cursor < site.start {
+            push_accent_adjacent_text(content, decoded, cursor, site.start);
+        }
+        let Some(resolved) = decoded.span_text[site.start..site.end].chars().next() else {
+            cursor = site.end;
+            continue;
+        };
+        let source_start = decoded.span_ctx.to_decoded(site.start);
+        let source_end = decoded.span_ctx.to_decoded_end(site.end);
+        let spelling = &decoded.text[source_start..source_end];
+        let code = encoding::gaiji::jis_cell(resolved).map_or_else(
+            || format!("U+{:04X}", u32::from(resolved)),
+            |cell| format!("{}-{:02}-{:02}", cell.plane, cell.row, cell.cell),
+        );
+        let marker_spans = decoded
+            .accent_scopes
+            .iter()
+            .find(|scope| {
+                usize::try_from(scope.start).is_ok_and(|start| start <= site.start)
+                    && usize::try_from(scope.end).is_ok_and(|end| site.end <= end)
+            })
+            .and_then(|scope| accent_scope_markers(decoded, *scope))
+            .unwrap_or_default();
+        content.push(json!({
+            "kind":"accent", "code":code, "source_spelling":spelling,
+            "resolved":resolved.to_string(), "span":span_json(&site, &decoded.span_ctx),
+            "interpretation_marker_spans":marker_spans
+        }));
+        cursor = site.end;
+    }
+    if cursor < span.end {
+        push_accent_adjacent_text(content, decoded, cursor, span.end);
+    }
+}
+
+fn push_accent_adjacent_text(
+    content: &mut Vec<Value>,
+    decoded: &DecodedSource,
+    start: usize,
+    end: usize,
+) {
+    let mut cuts = decoded
+        .accent_scopes
+        .iter()
+        .flat_map(|scope| [usize::try_from(scope.start), usize::try_from(scope.end)])
+        .filter_map(Result::ok)
+        .filter(|cut| start < *cut && *cut < end)
+        .collect::<Vec<_>>();
+    cuts.sort_unstable();
+    cuts.dedup();
+    let mut cursor = start;
+    for cut in cuts.into_iter().chain(iter::once(end)) {
+        content.push(json!({
+            "kind":"text", "value":&decoded.span_text[cursor..cut],
+            "span":span_json(&Span { start:cursor, end:cut }, &decoded.span_ctx)
+        }));
+        cursor = cut;
+    }
+}
+
+fn accent_scope_markers(
+    decoded: &DecodedSource,
+    scope: ab_aozora_facade::Span,
+) -> Option<Vec<Value>> {
+    let scope_start = usize::try_from(scope.start).ok()?;
+    let scope_end = usize::try_from(scope.end).ok()?;
+    let open_end = decoded.span_ctx.to_decoded(scope_start);
+    let open_start = open_end.checked_sub('〔'.len_utf8())?;
+    let close_start = decoded.span_ctx.to_decoded_end(scope_end);
+    let close_end = close_start.checked_add('〕'.len_utf8())?;
+    if decoded.text.get(open_start..open_end) != Some("〔")
+        || decoded.text.get(close_start..close_end) != Some("〕")
+    {
+        return None;
+    }
+    Some(vec![
+        literal_decoded_span_json(decoded, open_start, open_end),
+        literal_decoded_span_json(decoded, close_start, close_end),
+    ])
+}
+
+/// The note `marker`, then the delimiters of every accent scope inside
+/// `target`; consumers read the first span as the note.
+fn supplied_diacritic_markers(decoded: &DecodedSource, target: Span, marker: Span) -> Vec<Value> {
+    iter::once(span_json(&marker, &decoded.span_ctx))
+        .chain(
+            decoded
+                .accent_scopes
+                .iter()
+                .filter(|scope| {
+                    target.start <= scope.start as usize && scope.end as usize <= target.end
+                })
+                .filter_map(|scope| accent_scope_markers(decoded, *scope))
+                .flatten(),
+        )
+        .collect()
+}
+
+fn literal_decoded_span_json(decoded: &DecodedSource, start: usize, end: usize) -> Value {
+    json!({
+        "byte_start":start,
+        "byte_end":end,
+        "line_start":decoded.span_ctx.line_of(start),
+        "line_end":decoded.span_ctx.line_of(end.saturating_sub(1))
+    })
 }
 
 fn contains_aozora_markup(source: &str) -> bool {
@@ -3640,6 +5977,16 @@ fn kunten_node(
         KuntenKind::ReturnMark => "return-mark",
         KuntenKind::Okurigana => "okurigana",
     }, "text":text, "span":span_json(span, &decoded.span_ctx)});
+    let delimiters = ("［＃（".len(), "）］".len());
+    let source = source_slice(&decoded.span_text, span);
+    if kind == KuntenKind::Okurigana
+        && source.starts_with("［＃（")
+        && source[delimiters.0..].contains('［')
+        && let Some(content) =
+            parsed_source_fragment(decoded, span.start + delimiters.0..span.end - delimiters.1)
+    {
+        node["annotation_content"] = json!(content);
+    }
     if let Some(marker) = marker.filter(|marker| marker.start != span.start) {
         node["interpretation_marker_spans"] = json!([span_json(marker, &decoded.span_ctx)]);
     }
@@ -3650,6 +5997,93 @@ fn kunten_node(
     clippy::option_if_let_else,
     reason = "branches construct different source-derived node payloads"
 )]
+fn parsed_left_ruby_base(
+    decoded: &DecodedSource,
+    node: &AozoraNode,
+    entry: &AozoraRubyEntry,
+) -> Option<(String, Vec<Value>)> {
+    if entry.side != "left"
+        || entry.base.is_empty()
+        || !source_slice(&decoded.span_text, &node.span).starts_with(&entry.base)
+    {
+        return None;
+    }
+    let content =
+        parsed_source_fragment(decoded, node.span.start..node.span.start + entry.base.len())?;
+    content
+        .iter()
+        .any(|node| node["kind"] != "text")
+        .then_some((content_structured_text(&content)?, content))
+}
+
+fn project_ruby_window(
+    ruby: &mut Value,
+    decoded: &DecodedSource,
+    field: &str,
+    window: Span,
+    markers: &SourceSegments<'_>,
+) {
+    if let Some(content) = parsed_source_fragment(decoded, window.start..window.end)
+        && content.iter().any(fragment_has_semantic_formatting)
+        && let Some(text) = content_structured_text(&content)
+    {
+        ruby[field] = json!(text);
+        ruby[format!("{field}_content")] = json!(content);
+        return;
+    }
+    // A base with a supplied-accent note projects as the accented letters
+    // the note realizes, as it does outside a ruby; the note adds no text.
+    let supplied_accent = markers.annotations.values().any(|mark| {
+        matches!(&mark.payload, NestedAnnotation::Format { attrs, .. }
+            if attrs.iter().all(|attr| matches!(attr, ForwardAttr::Accent(_))))
+    });
+    if field == "base"
+        && supplied_accent
+        && let Some(content) = parsed_source_fragment(decoded, window.start..window.end)
+        && let Some(text) = content_structured_text(
+            &content
+                .iter()
+                .filter(|node| node["x-source-marker-kind"] != "accent-annotation")
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+    {
+        ruby[field] = json!(text);
+        ruby[format!("{field}_content")] = json!(content);
+        return;
+    }
+    if let Some(segments) = source_segments(
+        decoded,
+        window.start,
+        &decoded.span_text[window.start..window.end],
+        markers,
+    ) {
+        if let Some(text) = segments.resolved_text {
+            ruby[field] = json!(text);
+        }
+        ruby[format!("{field}_content")] = json!(segments.content);
+    }
+}
+
+/// Give a ruby without `base_content` text and accent nodes for its base,
+/// which starts at `start`, when the base contains an encoded accent.
+fn attach_accented_ruby_base(ruby: &mut Value, decoded: &DecodedSource, start: usize, base: &str) {
+    let span = Span {
+        start,
+        end: start + base.len(),
+    };
+    if ruby.get("base_content").is_some()
+        || decoded.span_text.get(span.start..span.end) != Some(base)
+    {
+        return;
+    }
+    let mut content = Vec::new();
+    push_text_with_encoded_accents(&mut content, decoded, span, base);
+    if content.iter().any(|node| node["kind"] == "accent") {
+        ruby["base_content"] = json!(content);
+    }
+}
+
 fn ruby_node(
     decoded: &DecodedSource,
     node: &AozoraNode,
@@ -3670,82 +6104,83 @@ fn ruby_node(
             let mut ruby = json!({"kind":"ruby", "base":entry.base, "reading":entry.reading,
                 "direction":entry.side, "span":span_json(&node.span, &decoded.span_ctx)});
             for (field, window) in [("base", base), ("reading", reading)] {
-                if let Some(segments) = source_segments(
-                    decoded,
-                    window.start,
-                    &decoded.span_text[window.start..window.end],
-                    &markers,
-                ) {
-                    if let Some(text) = segments.resolved_text {
-                        ruby[field] = json!(text);
-                    }
-                    ruby[format!("{field}_content")] = json!(segments.content);
-                }
+                project_ruby_window(&mut ruby, decoded, field, window, &markers);
             }
+            attach_accented_ruby_base(&mut ruby, decoded, base.start, &entry.base);
             return ruby;
         }
-        // A retrospective annotation whose node span is the marker alone
-        // (`…《ルビ》［＃「X」の左に「Y」のルビ］`) re-quotes a target that
-        // was already emitted; keeping the quoted base would double the
-        // word in every projection (the style/tcy duplication class, in
-        // its ruby form). The base text lives outside this span, so the
-        // node keeps reading + direction and projects no base of its own.
         let marker_only = {
             let source = source_slice(&decoded.span_text, &node.span);
             source.starts_with("［＃") || source.starts_with("[#")
         };
-        return json!({
+        let mut ruby = json!({
             "kind": "ruby",
             "base": if marker_only { "" } else { entry.base.as_str() },
             "reading": entry.reading,
             "direction": entry.side,
             "span": span_json(&node.span, &decoded.span_ctx)
         });
-    }
-    // No resolvable structured entry (e.g. gaiji-base ruby, whose base is
-    // `Content::Segments` and so has no plain-text range for
-    // `ruby_entries` to resolve — see the `RUBY_RE` doc comment). Fall
-    // back to the v1 regex reparse rather than silently downgrading to
-    // `raw`, then enrich a gaiji-marker base from the gaiji scan.
-    let source = source_slice(&decoded.span_text, &node.span);
-    if let Some(caps) = RUBY_RE.captures(source) {
-        let base = caps.name("base").unwrap();
-        let reading = caps.name("reading").unwrap();
-        let mut ruby = json!({
-            "kind": "ruby",
-            "base": base.as_str(),
-            "reading": reading.as_str(),
-            "direction": "right",
-            "span": span_json(&node.span, &decoded.span_ctx)
-        });
-        let fields = ruby.as_object_mut().unwrap();
-        if let Some(segments) = gaiji_segments(
-            decoded,
-            node.span.start + base.start(),
-            base.as_str(),
-            gaiji_by_start,
-        ) {
-            // A fully resolved base projects the glyphs; any unresolved
-            // marker keeps the verbatim form (no glyph to project).
-            if let Some(resolved) = segments.resolved_text {
-                fields.insert("base".to_owned(), json!(resolved));
+        let source = source_slice(&decoded.span_text, &node.span);
+        if !marker_only && let Some((text, content)) = parsed_left_ruby_base(decoded, node, entry) {
+            ruby["base"] = json!(text);
+            ruby["base_content"] = json!(content);
+        } else if entry.side == "right" {
+            let marker = source.chars().next().filter(|ch| *ch == '｜');
+            let start = node.span.start + marker.map_or(0, char::len_utf8);
+            attach_accented_ruby_base(&mut ruby, decoded, start, &entry.base);
+        }
+        if entry.side == "left"
+            && let Some(prefix) = source
+                .strip_suffix("」のルビ］")
+                .or_else(|| source.strip_suffix("」のルビ]"))
+            && let Some(prefix) = prefix.strip_suffix(entry.reading.as_str())
+        {
+            let start = node.span.start + prefix.len();
+            if let Some(content) =
+                parsed_source_fragment(decoded, start..start + entry.reading.len())
+            {
+                if let Some(text) = content_structured_text(&content) {
+                    ruby["reading"] = json!(text);
+                }
+                ruby["reading_content"] = json!(content);
             }
-            fields.insert("base_content".to_owned(), json!(segments.content));
         }
-        if let Some(segments) = gaiji_segments(
-            decoded,
-            node.span.start + reading.start(),
-            reading.as_str(),
-            gaiji_by_start,
-        ) {
-            // The reading string stays verbatim (ruby_completeness matches
-            // source reading text exactly); the typed nodes ride alongside.
-            fields.insert("reading_content".to_owned(), json!(segments.content));
-        }
-        ruby
-    } else {
-        raw_node(decoded, node, "ruby")
+        return ruby;
     }
+    let source = source_slice(&decoded.span_text, &node.span);
+    let Some(caps) = RUBY_RE.captures(source) else {
+        return raw_node(decoded, node, "ruby");
+    };
+    let base = caps.name("base").unwrap();
+    let reading = caps.name("reading").unwrap();
+    let mut ruby = json!({
+        "kind": "ruby",
+        "base": base.as_str(),
+        "reading": reading.as_str(),
+        "direction": "right",
+        "span": span_json(&node.span, &decoded.span_ctx)
+    });
+    let fields = ruby.as_object_mut().unwrap();
+    if let Some(segments) = gaiji_segments(
+        decoded,
+        node.span.start + base.start(),
+        base.as_str(),
+        gaiji_by_start,
+    ) {
+        if let Some(resolved) = segments.resolved_text {
+            fields.insert("base".to_owned(), json!(resolved));
+        }
+        fields.insert("base_content".to_owned(), json!(segments.content));
+    }
+    if let Some(segments) = gaiji_segments(
+        decoded,
+        node.span.start + reading.start(),
+        reading.as_str(),
+        gaiji_by_start,
+    ) {
+        fields.insert("reading_content".to_owned(), json!(segments.content));
+    }
+    ruby
 }
 
 struct SegmentedSource {
@@ -3801,11 +6236,47 @@ fn push_nested_format(
         target_quote: None,
         container_scope: None,
         layout_clauses: Vec::new(),
+        layout_instructions: Vec::new(),
     };
     push_style_node(content, decoded, &node, "emphasis");
     true
 }
 
+fn nested_directive_node(
+    decoded: &DecodedSource,
+    mark: &LocatedAnnotation,
+    kind: DirectiveKind,
+) -> Value {
+    if matches!(
+        kind,
+        DirectiveKind::RubyPairOpen | DirectiveKind::RubyPairClose
+    ) {
+        let node = AozoraNode {
+            kind: ProjectedKind::Directive(kind),
+            span: mark.span,
+            marker_span: None,
+            target_quote: None,
+            container_scope: None,
+            layout_clauses: Vec::new(),
+            layout_instructions: Vec::new(),
+        };
+        return directive_node(decoded, &node, kind);
+    }
+    let start = decoded.span_ctx.to_decoded(mark.span.start);
+    let end = decoded.span_ctx.to_decoded_end(mark.span.end);
+    let code = if kind == DirectiveKind::Unknown {
+        "unknown-notation"
+    } else {
+        "uninterpreted-notation"
+    };
+    json!({"kind":"raw", "source":&decoded.text[start..end], "span":span_json(&mark.span, &decoded.span_ctx),
+        "interpretation_problem":{"kind":code,"code":code,"aspects":["content","structure","layout"],"influence":{"kind":"document"}}})
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "one cursor pass keeps nested marker consumption and resolved text synchronized"
+)]
 fn source_segments(
     decoded: &DecodedSource,
     start: usize,
@@ -3822,6 +6293,14 @@ fn source_segments(
             if mark.span.end <= cursor || mark.span.end > end {
                 return None;
             }
+            if matches!(
+                mark.payload,
+                NestedAnnotation::Directive(DirectiveKind::GaijiDeclaration)
+            ) {
+                marker_count += 1;
+                cursor = mark.span.end;
+                continue;
+            }
             if push_nested_format(&mut content, decoded, mark) {
                 resolved_text = content_target_text(&content);
                 marker_count += 1;
@@ -3829,13 +6308,30 @@ fn source_segments(
                 continue;
             }
             content.push(match &mark.payload {
+                NestedAnnotation::Gaiji { marker, .. } => {
+                    let gaiji = encoding::gaiji::resolve_at(
+                        &decoded.span_text,
+                        marker.start,
+                        marker.end,
+                    )?;
+                    let mut node = gaiji_json(decoded, &mark.span, &gaiji);
+                    if *marker != mark.span {
+                        node["interpretation_marker_spans"] =
+                            json!([span_json(marker, &decoded.span_ctx)]);
+                    }
+                    match (&mut resolved_text, &gaiji.resolved) {
+                        (Some(out), Some(glyph)) => out.push_str(glyph),
+                        _ => resolved_text = None,
+                    }
+                    node
+                }
                 NestedAnnotation::Accent { text, marker } => {
                     if let Some(value) = &mut resolved_text { value.push_str(text); }
                     let start = decoded.span_ctx.to_decoded(mark.span.start);
                     let end = decoded.span_ctx.to_decoded_end(mark.span.end);
                     json!({"kind":"supplied-diacritic", "text":text,"source":&decoded.text[start..end],
                         "span":span_json(&mark.span,&decoded.span_ctx),
-                        "interpretation_marker_spans":[span_json(marker,&decoded.span_ctx)]})
+                        "interpretation_marker_spans":supplied_diacritic_markers(decoded, mark.span, *marker)})
                 }
                 NestedAnnotation::Format { .. } => unreachable!("formatting handled above"),
                 NestedAnnotation::IterationMark(value) => {
@@ -3845,16 +6341,33 @@ fn source_segments(
                     iteration_node(decoded, &mark.span, *value)
                 }
                 NestedAnnotation::Kunten { kind, text, marker } => kunten_node(decoded, &mark.span, *kind, text, marker.as_ref()),
-                NestedAnnotation::Directive(kind) => {
-                    let start = decoded.span_ctx.to_decoded(mark.span.start);
-                    let end = decoded.span_ctx.to_decoded_end(mark.span.end);
-                    let code = if *kind == DirectiveKind::Unknown { "unknown-notation" } else { "uninterpreted-notation" };
-                    json!({"kind":"raw", "source":&decoded.text[start..end], "span":span_json(&mark.span, &decoded.span_ctx),
-                        "interpretation_problem":{"kind":code,"code":code,"aspects":["content","structure","layout"],"influence":{"kind":"document"}}})
+                NestedAnnotation::Directive(kind) => nested_directive_node(decoded, mark, *kind),
+                NestedAnnotation::FormattingInstruction(instruction) => formatting_instruction::project(decoded, mark.span, instruction),
+                NestedAnnotation::Fragment => {
+                    let nodes = parsed_source_fragment(decoded, mark.span.start..mark.span.end)?;
+                    match (&mut resolved_text, content_structured_text(&nodes)) {
+                        (Some(out), Some(text)) => out.push_str(&text),
+                        _ => resolved_text = None,
+                    }
+                    content.extend(nodes);
+                    marker_count += 1;
+                    cursor = mark.span.end;
+                    continue;
                 }
             });
             marker_count += 1;
-            cursor = mark.span.end;
+            cursor = match &mark.payload {
+                NestedAnnotation::Gaiji {
+                    marker,
+                    placement: GaijiMarkerPlacement::Inline,
+                } if marker.start >= mark.span.start
+                    && marker.end >= mark.span.end
+                    && marker.end <= end =>
+                {
+                    marker.end
+                }
+                _ => mark.span.end,
+            };
             continue;
         }
         if let Some(gaiji) = markers.gaiji.get(&cursor) {
@@ -3889,6 +6402,9 @@ fn source_segments(
                     .next()
                     .map_or(end, |(offset, _)| *offset),
             );
+        if cursor < start || next_start < start {
+            return None;
+        }
         let segment = &text[cursor - start..next_start - start];
         content.push(json!({
             "kind": "text",
@@ -3903,10 +6419,47 @@ fn source_segments(
         }
         cursor = next_start;
     }
+    // A note that native content segments cannot hold is interpreted with its
+    // target by the inline interpreter, as it is outside ruby.
+    if content
+        .iter()
+        .any(|node| node["kind"] == "raw" && node.get("x-source-marker-kind").is_none())
+        && let Some(fragment) = parsed_source_fragment(decoded, start..end)
+        && !retains_uninterpreted_source(&fragment)
+    {
+        return Some(SegmentedSource {
+            resolved_text: content_target_text(&fragment),
+            content: fragment,
+        });
+    }
     (marker_count > 0).then_some(SegmentedSource {
-        content,
+        content: pair_inline_annotations(content),
         resolved_text,
     })
+}
+
+/// Whether `content` keeps source that no node interprets, apart from text
+/// variants that block assembly resolves against their preceding text, or
+/// holds a construct other than text, glyphs and notes.
+fn retains_uninterpreted_source(content: &[Value]) -> bool {
+    let mut pending = content.iter().collect::<Vec<_>>();
+    while let Some(node) = pending.pop() {
+        let admitted = match node["kind"].as_str() {
+            Some("raw") => node.get("text_variant").is_some(),
+            Some(
+                "text" | "gaiji" | "iteration-mark" | "supplied-diacritic" | "editorial_note"
+                | "annotated_text",
+            ) => true,
+            _ => false,
+        };
+        if !admitted {
+            return true;
+        }
+        for key in ["content", "annotation_content"] {
+            pending.extend(node[key].as_array().into_iter().flatten());
+        }
+    }
+    false
 }
 
 fn gaiji_node(
@@ -3914,23 +6467,125 @@ fn gaiji_node(
     node: &AozoraNode,
     gaiji_by_start: &BTreeMap<usize, AozoraGaiji>,
 ) -> Value {
-    let Some(gaiji) = gaiji_by_start.get(&node.span.start) else {
+    let gaiji_start = node
+        .marker_span
+        .map_or(node.span.start, |marker| marker.start);
+    // A declaring note such as ［＃罫内の「※」は「※［＃…］」］ carries the
+    // reference inside its marker.
+    let enclosed = || {
+        let marker = node.marker_span?;
+        let mut references = gaiji_by_start
+            .range(marker.start..marker.end)
+            .map(|(_, gaiji)| gaiji)
+            .filter(|gaiji| gaiji.end <= marker.end);
+        let reference = references.next()?;
+        references.next().is_none().then_some(reference)
+    };
+    let Some(gaiji) = gaiji_by_start.get(&gaiji_start).or_else(enclosed) else {
         return raw_node(decoded, node, "gaiji");
     };
-    gaiji_json(decoded, &node.span, gaiji)
+    let Some(marker) = node.marker_span else {
+        return gaiji_json(decoded, &node.span, gaiji);
+    };
+    let target = if node.span.start < marker.start && marker.start < node.span.end {
+        Span {
+            start: node.span.start,
+            end: marker.start,
+        }
+    } else {
+        node.span
+    };
+    let mut value = gaiji_json(decoded, &target, gaiji);
+    value["interpretation_marker_spans"] = json!([span_json(&marker, &decoded.span_ctx)]);
+    value
+}
+
+fn gaiji_reference_parts(reference: Option<&str>) -> Vec<Value> {
+    static JIS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?:面区点番号)?(?:第([34三四])水準\s*)?([12])-([0-9]+)-([0-9]+)$").unwrap()
+    });
+    static LOCATION: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?:((?:[0-9]+|上|中|下|前|後)巻|（[一二三四五六七八九十]+）)-)?([0-9]+)-(?:([^0-9-][^-]*)-)?([0-9]+)$").unwrap()
+    });
+    static PART: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^([0-9]+)-([^0-9-][^-]*)$").unwrap());
+    reference
+        .into_iter()
+        .flat_map(encoding::gaiji::reference_clauses)
+        .map(|source| {
+            let value = source.trim();
+            let normalized: String = value.chars().map(|ch| {
+                if ('０'..='９').contains(&ch) {
+                    char::from_u32(u32::from(ch) - u32::from('０') + u32::from('0')).unwrap()
+                } else { ch }
+            }).collect();
+            if let Some(captures) = JIS.captures(&normalized) {
+                let plane = captures[2].parse::<u8>().unwrap();
+                let row = captures[3].parse::<u8>().ok();
+                let cell = captures[4].parse::<u8>().ok();
+                if captures.get(1).is_none_or(|level| {
+                    let level = match level.as_str() {
+                        "3" | "三" => 3,
+                        "4" | "四" => 4,
+                        _ => unreachable!("JIS level regex only admits 3/4"),
+                    };
+                    level == plane + 2
+                })
+                    && let (Some(row @ 1..=94), Some(cell @ 1..=94)) = (row, cell)
+                {
+                    return json!({"kind":"jis-code", "source":source, "plane":plane, "row":row, "cell":cell});
+                }
+            }
+            if let Some(hex) = value.strip_prefix("U+")
+                && !hex.is_empty() && hex.len() <= 6 && hex.bytes().all(|ch| ch.is_ascii_hexdigit())
+                && let Ok(codepoint) = u32::from_str_radix(hex, 16)
+                && char::from_u32(codepoint).is_some()
+            {
+                return json!({"kind":"unicode-code", "source":source, "codepoint":codepoint});
+            }
+            if let Some(text) = value.strip_prefix("読みは「").and_then(|text| text.strip_suffix('」'))
+                && !text.is_empty() && !text.contains(['「', '」'])
+            {
+                return json!({"kind":"reading", "source":source, "text":text});
+            }
+            if let Some(captures) = LOCATION.captures(value) {
+                let mut location = json!({"kind":"source-location", "source":source, "page":&captures[2], "line":&captures[4]});
+                if let Some(volume) = captures.get(1) { location["volume"] = json!(volume.as_str()); }
+                if let Some(segment) = captures.get(3) {
+                    let segment = segment.as_str();
+                    let key = if matches!(segment, "上" | "中" | "下" | "一" | "二" | "三" | "四" | "五" | "六" | "七" | "八" | "九" | "十") { "column" } else { "part" };
+                    location[key] = json!(segment);
+                }
+                return location;
+            }
+            if let Some(captures) = PART.captures(value) {
+                return json!({"kind":"source-location", "source":source, "page":&captures[1], "part":&captures[2]});
+            }
+            json!({"kind":"uninterpreted", "source":source})
+        })
+        .collect()
 }
 
 fn gaiji_json(decoded: &DecodedSource, span: &Span, gaiji: &AozoraGaiji) -> Value {
-    let glyph = json!({
+    let source = source_slice(&decoded.span_text, span);
+    let mut glyph = json!({
         "kind": "gaiji",
         "description": gaiji.description,
         "resolved": gaiji.resolved,
         "jis_code": gaiji.mencode,
+        "reference_parts": gaiji_reference_parts(gaiji.mencode.as_deref()),
         "unresolved_reason": if gaiji.resolved.is_some() { None::<String> } else { Some("unresolved".to_owned()) },
         "x-codepoint": gaiji.codepoint,
         "span": span_json(span, &decoded.span_ctx)
     });
-    let source = source_slice(&decoded.span_text, span);
+    if gaiji.resolved.is_none()
+        && !source.starts_with("［＃")
+        && !source.starts_with("[#")
+        && !source.starts_with("※［＃")
+        && !source.starts_with("※[#")
+    {
+        glyph["source_fallback"] = json!(source);
+    }
     if let Some(statement) = gaiji_edition_note(source) {
         let start = span.start + statement.as_ptr().addr() - source.as_ptr().addr();
         let annotation_span = Span {
@@ -3979,7 +6634,7 @@ fn push_concealment(content: &mut Vec<Value>, decoded: &DecodedSource, node: &Ao
     content.push(retained);
 }
 
-/// Whether an asset clause names a file rather than a bare stem.
+/// Whether an asset clause identifies a file rather than a bare stem.
 ///
 /// Every well-formed figure filename in the archive carries an extension
 /// (4920 of 4924 markers, all `.png`); the four that do not have no separator
@@ -4008,7 +6663,7 @@ fn illustration_node(decoded: &DecodedSource, node: &AozoraNode) -> Value {
     let mut uncertain_aspects = Vec::new();
     let mut value = json!({"kind":"figure", "filename":file,"alt":description.as_deref().unwrap_or(""),"css_class":"illustration", "source":&decoded.span_text[node.span.start..node.span.end], "span":span_json(&node.span,&decoded.span_ctx)});
     if !names_a_file(file) {
-        // The source wrote something in the asset position that names no file:
+        // The source wrote something in the asset position that identifies no file:
         // in the present archive, four markers across three works give a stem
         // with no extension separator. Keeping it in `filename` would publish
         // an asset identity the source never supplied, so it moves to
@@ -4076,10 +6731,10 @@ fn illustration_node(decoded: &DecodedSource, node: &AozoraNode) -> Value {
 
 /// The text a margin note accompanies, joined across the entries of its base.
 ///
-/// A mark the source places at a junction keeps the two runs it names as
+/// A mark the source places at a junction keeps the two runs it quotes as
 /// separate entries, so the joined text is what the note accompanies while the
-/// entries stay available to say where between them the mark sits.
-/// `content_range_as_plain` deliberately returns `None` for anything but a
+/// entries stay available to state where between them the mark is.
+/// `content_range_as_plain` returns `None` for anything but a
 /// single plain entry, and gaiji-base ruby depends on that `None` to reach the
 /// path that resolves its glyph, so the join belongs here and not there.
 fn margin_note_target(store: &NodeStore, base: ContentRange) -> String {
@@ -4101,6 +6756,7 @@ fn push_annotated_text(content: &mut Vec<Value>, decoded: &DecodedSource, node: 
         target,
         note_span,
         target_span,
+        pair_open_span,
     } = &node.kind
     else {
         return;
@@ -4120,13 +6776,24 @@ fn push_annotated_text(content: &mut Vec<Value>, decoded: &DecodedSource, node: 
         }
     });
     let wrapper = |children: &[Value], annotation: &[Value]| {
+        let span = (*pair_open_span).map_or(marker, |open| Span {
+            start: open.start,
+            end: marker.end,
+        });
         let mut value = json!({"kind":"annotated_text", "content":children, "annotation_content":annotation,
-            "note_kind":match kind {MarginNoteKind::Gloss=>"gloss", MarginNoteKind::Marginal=>"marginal", MarginNoteKind::CrossReference=>"cross-reference", MarginNoteKind::AnnotationNumber=>"annotation-number", MarginNoteKind::AuthorNote=>"author-note", MarginNoteKind::GlyphShape=>"glyph-shape", MarginNoteKind::SuppliedMark=>"supplied-mark", _=>unreachable!("known note kind")},
-            "span":span_json(&marker, &decoded.span_ctx)});
+            "note_kind":match kind {MarginNoteKind::Gloss=>"gloss", MarginNoteKind::Marginal=>"marginal", MarginNoteKind::CriticalNote=>"critical-note", MarginNoteKind::CrossReference=>"cross-reference", MarginNoteKind::AnnotationNumber=>"annotation-number", MarginNoteKind::AuthorNote=>"author-note", MarginNoteKind::GlyphShape=>"glyph-shape", MarginNoteKind::SuppliedMark=>"supplied-mark", _=>unreachable!("known note kind")},
+            "span":span_json(&span, &decoded.span_ctx)});
+        if let Some(open) = pair_open_span {
+            value["interpretation_marker_spans"] = json!([
+                span_json(open, &decoded.span_ctx),
+                span_json(&marker, &decoded.span_ctx),
+            ]);
+        }
         if let Some(position) = position {
             value["position"] = json!(match position {
                 MarginNotePosition::Left => "left",
                 MarginNotePosition::Right => "right",
+                MarginNotePosition::Margin => "margin",
             });
         }
         // The side and the anchor are separate axes: the source can state one
@@ -4140,7 +6807,7 @@ fn push_annotated_text(content: &mut Vec<Value>, decoded: &DecodedSource, node: 
         value
     };
     if let (Some(target_span), Some(annotation)) = (target_span, &annotation)
-        && target_span.end < marker.start
+        && target_span.end <= marker.start
         && annotate_source_target(content, *target_span, decoded, &|children| {
             wrapper(children, annotation)
         })
@@ -4332,6 +6999,10 @@ fn exact_literal_partition(
 
 // Retrospective targets may cross already-emitted ruby or gaiji nodes.
 // Adopt the exact visible suffix instead of copying the marker's quotation.
+#[allow(
+    clippy::too_many_lines,
+    reason = "style adoption keeps target recovery, provenance, and fallback emission atomic"
+)]
 fn push_style_node(
     content: &mut Vec<Value>,
     decoded: &DecodedSource,
@@ -4357,15 +7028,72 @@ fn push_style_node(
         object.remove("style_type");
         object.extend(fields.as_object().expect("formatting fields").clone());
     }
+    if matches!(
+        node.kind,
+        ProjectedKind::Format(ForwardAttr::Bouten {
+            position: DecorationPosition::Below,
+            ..
+        })
+    ) && let Some(marker) = node.marker_span
+        && let Some(locator) =
+            physical_line_source_locator(source_slice(&decoded.span_text, &marker))
+    {
+        style["decoration"]["source_locator"] = json!(locator);
+    }
     if style["content"].as_array().is_some_and(Vec::is_empty)
         && let Some(target) = node.target_quote
-        && let Some(quoted) = source_fragment(decoded, target.start..target.end)
-        && let Some(text) = content_structured_text(&quoted)
+        && let Some(quoted) = source_fragment(decoded, target.start..target.end).or_else(|| {
+            let source = source_slice(&decoded.span_text, &target);
+            (source.contains('※') && !source.contains(['［', '[', '《', '》', '\n', '\r'])).then(
+                || {
+                    vec![json!({
+                        "kind":"text",
+                        "value":source,
+                        "span":span_json(&target, &decoded.span_ctx)
+                    })]
+                },
+            )
+        })
+        && let Some(text) = content_quoted_target_text(&quoted)
         && let Some(children) = take_visible_suffix_matching(content, &text, decoded, Some(&quoted))
     {
-        style["span"]["byte_start"] = children[0]["span"]["byte_start"].clone();
-        style["span"]["line_start"] = children[0]["span"]["line_start"].clone();
+        if let Some((byte_start, line_start)) = principal_source_start(&children[0]) {
+            style["span"]["byte_start"] = json!(byte_start);
+            style["span"]["line_start"] = json!(line_start);
+        }
         style["content"] = json!(children);
+    }
+    let ruby_host = if style["content"].as_array().is_some_and(Vec::is_empty)
+        && let Some(target) = node.target_quote
+        && let Some(quoted) = source_fragment(decoded, target.start..target.end)
+        && let Some(text) = content_quoted_target_text(&quoted)
+        && let Some((index, base, children)) =
+            ruby_base_suffix_matching(content, &text, decoded, &quoted)
+    {
+        if let Some((byte_start, line_start)) = principal_source_start(&children[0]) {
+            style["span"]["byte_start"] = json!(byte_start);
+            style["span"]["line_start"] = json!(line_start);
+        }
+        style["content"] = json!(children);
+        Some((index, base))
+    } else {
+        None
+    };
+    if matches!(
+        node.kind,
+        ProjectedKind::Format(ForwardAttr::Bouten {
+            position: DecorationPosition::Above | DecorationPosition::Below,
+            ..
+        })
+    ) && let Some(children) = style["content"].as_array()
+        && let (Some(first), Some(last)) = (children.first(), children.last())
+        && let (Some((byte_start, line_start)), Some((byte_end, line_end))) =
+            (principal_source_start(first), principal_source_end(last))
+    {
+        style["span"]["byte_start"] = json!(byte_start);
+        style["span"]["line_start"] = json!(line_start);
+        style["span"]["byte_end"] = json!(byte_end);
+        style["span"]["line_end"] = json!(line_end);
     }
     if (matches!(node.kind, ProjectedKind::FormatMany(_))
         || matches!(node.kind, ProjectedKind::Format(attr) if formatting_fields(attr).is_some()))
@@ -4376,6 +7104,9 @@ fn push_style_node(
             "aspects":["structure", "layout"], "influence":{"kind":"document"}});
         content.push(retained);
         return;
+    }
+    if let Some(target) = node.target_quote {
+        extend_over_quoted_accent_delimiters(&mut style, decoded, target);
     }
     style["interpretation_marker_spans"] = json!(
         node.marker_span
@@ -4395,15 +7126,16 @@ fn push_style_node(
             target_quote: None,
             container_scope: None,
             layout_clauses: Vec::new(),
+            layout_instructions: Vec::new(),
         };
         let assertion = raw_node(decoded, &variant_node, "base-text-variant");
         if !attach_formatting_variant(&mut style, &assertion, &decoded.text) {
-            content.push(style);
+            place_style(content, ruby_host, style);
             content.push(assertion);
             return;
         }
     }
-    content.push(style);
+    place_style(content, ruby_host, style);
     if let Some(marker) = node.marker_span
         && let Some((_, statement)) =
             formatting_edition_note(source_slice(&decoded.span_text, &marker))
@@ -4427,6 +7159,89 @@ fn push_style_node(
     }
 }
 
+/// A quoted target that begins or ends with an accent-scope delimiter covers
+/// that delimiter's source bytes.
+fn extend_over_quoted_accent_delimiters(style: &mut Value, decoded: &DecodedSource, target: Span) {
+    let (Some(start), Some(end)) = (
+        style["span"]["byte_start"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok()),
+        style["span"]["byte_end"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok()),
+    ) else {
+        return;
+    };
+    let widened = widen_over_quoted_accent_delimiters(decoded, target, Span { start, end });
+    if widened.start != start {
+        style["span"]["byte_start"] = json!(widened.start);
+        style["span"]["line_start"] = json!(decoded.span_ctx.line_of(widened.start));
+    }
+    if widened.end != end {
+        style["span"]["byte_end"] = json!(widened.end);
+        style["span"]["line_end"] = json!(decoded.span_ctx.line_of(widened.end - 1));
+    }
+}
+
+/// The decoded-source `span` of a quoted target, widened over the accent-scope
+/// delimiters that the quotation `quote`, in sanitized coordinates, includes.
+fn widen_over_quoted_accent_delimiters(decoded: &DecodedSource, quote: Span, span: Span) -> Span {
+    let bounds = |scope: &ab_aozora_facade::Span| {
+        (
+            usize::try_from(scope.start).ok(),
+            usize::try_from(scope.end).ok(),
+        )
+    };
+    let opens = decoded
+        .accent_scopes
+        .iter()
+        .any(|scope| bounds(scope).0 == Some(quote.start));
+    let closes = decoded
+        .accent_scopes
+        .iter()
+        .any(|scope| bounds(scope).1 == Some(quote.end));
+    let mut widened = span;
+    if !opens && !closes {
+        return widened;
+    }
+    for markers in decoded
+        .accent_scopes
+        .iter()
+        .filter_map(|scope| accent_scope_markers(decoded, *scope))
+    {
+        let [open, close] = markers.as_slice() else {
+            continue;
+        };
+        let offset = |value: &Value, field: &str| {
+            value[field]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+        };
+        if opens
+            && offset(open, "byte_end") == Some(span.start)
+            && let Some(start) = offset(open, "byte_start")
+        {
+            widened.start = start;
+        }
+        if closes
+            && offset(close, "byte_start") == Some(span.end)
+            && let Some(end) = offset(close, "byte_end")
+        {
+            widened.end = end;
+        }
+    }
+    widened
+}
+
+fn physical_line_source_locator(marker: &str) -> Option<&str> {
+    marker
+        .strip_prefix("［＃「")?
+        .strip_suffix('］')?
+        .split_once("」は下線（_）付き、")
+        .map(|(_, locator)| locator)
+        .filter(|locator| !locator.is_empty())
+}
+
 // Resolve quoted targets after scopes are assembled, while source lines and
 // typed principal/reading contributions remain available in one representation.
 fn resolve_text_variants_in_blocks(
@@ -4437,19 +7252,9 @@ fn resolve_text_variants_in_blocks(
     let mut resolved = Vec::with_capacity(nodes.len());
     let mut pending = nodes.into_iter().peekable();
     while let Some(mut node) = pending.next() {
-        for key in [
-            "children",
-            "content",
-            "upper",
-            "lower",
-            "base_content",
-            "reading_content",
-            "annotation_content",
-        ] {
-            if let Some(children) = node.get_mut(key).and_then(Value::as_array_mut) {
-                *children =
-                    resolve_text_variants_in_blocks(mem::take(children), decoded, quoted_targets);
-            }
+        resolve_nested_text_variants(&mut node, decoded, quoted_targets);
+        if resolve_text_apparatus(&mut resolved, &node, decoded) {
+            continue;
         }
         if let Some(variant) = node.get("text_variant")
             && let (Some(current), Some(base)) = (
@@ -4473,7 +7278,8 @@ fn resolve_text_variants_in_blocks(
                     Some(current),
                 ) {
                     resolved.push(json!({"kind":"text-variant", "content":children,
-                        "current_interpretation_facts":established_interpretations(current),
+                        "current_interpretation_facts":quotation_interpretations(current),
+                        "witness_kind":variant_witness_kind(&node),
                         "base_text":base_text, "base_content":base, "source":node["source"], "span":node["span"]}));
                     append_variant_statement(&mut resolved, &node);
                     continue;
@@ -4530,7 +7336,64 @@ fn resolve_text_variants_in_blocks(
     resolved
 }
 
-// The native pair owns both literal delimiters. Only its complete interior can
+fn resolve_nested_text_variants(
+    node: &mut Value,
+    decoded: &DecodedSource,
+    quoted_targets: &BTreeMap<usize, Span>,
+) {
+    for key in [
+        "children",
+        "content",
+        "upper",
+        "lower",
+        "base_content",
+        "reading_content",
+        "readings",
+        "annotation_content",
+    ] {
+        if let Some(children) = node.get_mut(key).and_then(Value::as_array_mut) {
+            *children =
+                resolve_text_variants_in_blocks(mem::take(children), decoded, quoted_targets);
+        }
+    }
+}
+
+fn resolve_text_apparatus(
+    resolved: &mut Vec<Value>,
+    node: &Value,
+    decoded: &DecodedSource,
+) -> bool {
+    if let Some(apparatus) = node.get("text_apparatus")
+        && let Some(current) = apparatus["current_content"].as_array()
+        && let Some(current_text) = content_structured_text(current)
+        && let Some(readings) = apparatus["readings"].as_array()
+        && readings.iter().all(|reading| {
+            reading["content"]
+                .as_array()
+                .and_then(|content| content_witness_text(content))
+                .is_some()
+        })
+        && let Some(children) =
+            take_visible_suffix_matching(resolved, &current_text, decoded, Some(current))
+    {
+        let mut apparatus = json!({
+            "kind":"text-apparatus",
+            "content":children,
+            "readings":readings,
+            "source":node["source"],
+            "span":node["span"]
+        });
+        let facts = quotation_interpretations(current);
+        if !facts.is_empty() {
+            apparatus["current_interpretation_facts"] = json!(facts);
+        }
+        resolved.push(apparatus);
+        return true;
+    }
+    false
+}
+
+// The native pair includes both literal delimiters. Only its complete interior can
 // be selected here; punctuation outside that pair is not a target-search boundary.
 fn quoted_interior_variant_content(
     preceding: &[Value],
@@ -4560,7 +7423,8 @@ fn quoted_interior_variant_content(
         return None;
     }
     content.push(json!({"kind":"text-variant", "content":selected,
-        "current_interpretation_facts":established_interpretations(current),
+        "current_interpretation_facts":quotation_interpretations(current),
+        "witness_kind":variant_witness_kind(annotation),
         "base_text":content_witness_text(annotation["text_variant"]["base_content"].as_array()?)?,
         "base_content":annotation["text_variant"]["base_content"],
         "source":annotation["source"], "span":annotation["span"]}));
@@ -4653,7 +7517,8 @@ fn accent_spelling_variant_content(
         return None;
     }
     content.push(json!({"kind":"text-variant", "content":selected,
-        "current_interpretation_facts":established_interpretations(&current),
+        "current_interpretation_facts":quotation_interpretations(&current),
+        "witness_kind":variant_witness_kind(annotation),
         "base_text":base_text, "base_content":base,
         "source":annotation["source"], "span":annotation["span"]}));
     append_variant_statement(&mut content, annotation);
@@ -4701,8 +7566,12 @@ fn accent_scope_variant_content(
     }
     let base = annotation["text_variant"]["base_content"].as_array()?;
     let base_text = content_witness_text(base)?;
+    let mut current_interpretation_facts = quotation_interpretations(current);
+    current_interpretation_facts.extend(established_interpretations(&selected));
+    sort_facts(&mut current_interpretation_facts);
     content.push(json!({"kind":"text-variant", "content":selected,
-        "current_interpretation_facts":established_interpretations(current),
+        "current_interpretation_facts":current_interpretation_facts,
+        "witness_kind":variant_witness_kind(annotation),
         "base_text":base_text, "base_content":base,
         "source":annotation["source"], "span":annotation["span"]}));
     append_variant_statement(&mut content, annotation);
@@ -4761,12 +7630,15 @@ fn physical_break_variant(
     }
     targets.push(break_span);
     let apparatus = json!({"kind":"text-variant", "content":current,
-        "current_interpretation_facts":established_interpretations(current),
+        "current_interpretation_facts":quotation_interpretations(current),
+        "witness_kind":variant_witness_kind(marker),
         "base_content":variant["base_content"], "base_text":content_witness_text(variant["base_content"].as_array()?)?,
         "source":marker["source"], "span":marker["span"]});
-    Some(json!({"kind":"editorial_note", "note_kind":"base-edition",
+    Some(
+        json!({"kind":"editorial_note", "note_kind":apparatus["witness_kind"],
         "annotation_content":[apparatus], "span":marker["span"],
-        "target_source_spans":targets.into_iter().map(|span| decoded_span_json(span, &decoded.span_ctx)).collect::<Vec<_>>()}))
+        "target_source_spans":targets.into_iter().map(|span| decoded_span_json(span, &decoded.span_ctx)).collect::<Vec<_>>()}),
+    )
 }
 
 fn adjacent_principal_ruby(nodes: &mut [Value]) -> Option<&mut Value> {
@@ -4809,7 +7681,8 @@ fn attach_formatting_variant(style: &mut Value, note: &Value, source: &str) -> b
     };
     if text == target {
         let mut content = vec![json!({"kind":"text-variant", "content":children,
-                        "current_interpretation_facts":established_interpretations(current),
+                        "current_interpretation_facts":quotation_interpretations(current),
+            "witness_kind":variant_witness_kind(note),
             "base_text":base_text, "base_content":base,
             "source":note["source"], "span":note["span"]})];
         append_variant_statement(&mut content, note);
@@ -4879,7 +7752,8 @@ fn attach_principal_subrange(
                 )
                 .expect("known witness contribution");
                 children.push(json!({"kind":"text-variant", "content":selected,
-                    "current_interpretation_facts":established_interpretations(current),
+                    "current_interpretation_facts":quotation_interpretations(current),
+                    "witness_kind":variant_witness_kind(annotation),
                     "base_text":base_text, "base_content":annotation["text_variant"]["base_content"],
                     "source":annotation["source"], "span":annotation["span"]}));
                 append_variant_statement(children, annotation);
@@ -4956,7 +7830,8 @@ fn literal_variant_content(
         return None;
     }
     content.push(json!({"kind":"text-variant", "content":[text_node(index, end)],
-        "current_interpretation_facts":established_interpretations(current),
+        "current_interpretation_facts":quotation_interpretations(current),
+        "witness_kind":variant_witness_kind(note),
         "base_text":content_witness_text(note["text_variant"]["base_content"].as_array()?)?,
         "base_content":note["text_variant"]["base_content"], "source":note["source"], "span":note["span"]}));
     append_variant_statement(&mut content, note);
@@ -4990,8 +7865,27 @@ fn literal_node_variant_content(
 
 fn append_variant_statement(content: &mut Vec<Value>, note: &Value) {
     if let Some(statement) = note["text_variant"].get("editorial_statement") {
-        content.push(json!({"kind":"editorial_note", "note_kind":"base-edition", "text":statement, "span":note["span"]}));
+        let mut statement_note = json!({"kind":"editorial_note", "note_kind":variant_witness_kind(note), "text":statement, "span":note["span"]});
+        if let Some(locator) = note["text_variant"].get("source_locator") {
+            statement_note["source_locator"] = locator.clone();
+        }
+        content.push(statement_note);
     }
+}
+
+fn edition_note_kind_name(kind: EditionNoteKind) -> &'static str {
+    match kind {
+        EditionNoteKind::BaseEdition => "base-edition",
+        EditionNoteKind::FirstPublication => "first-publication",
+        EditionNoteKind::OriginalText => "original-text",
+    }
+}
+
+fn variant_witness_kind(note: &Value) -> Value {
+    note["text_variant"]
+        .get("witness_kind")
+        .cloned()
+        .unwrap_or_else(|| json!("base-edition"))
 }
 
 fn preceding_reading(nodes: &mut [Value]) -> Option<&mut Value> {
@@ -5116,6 +8010,10 @@ fn attach_contextual_reading_variant(
     true
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "reading replacement validates and applies one source-owned variant transaction"
+)]
 fn attach_reading_variant(
     ruby: &mut Value,
     note: &Value,
@@ -5163,7 +8061,8 @@ fn attach_reading_variant(
                 return false;
             };
             children.push(json!({"kind":"text-variant", "content":selected,
-                "current_interpretation_facts":established_interpretations(current),
+                "current_interpretation_facts":quotation_interpretations(current),
+                "witness_kind":variant_witness_kind(note),
                 "base_text":base_text, "base_content":base, "source":note["source"], "span":note["span"]}));
             append_variant_statement(children, note);
             return true;
@@ -5219,7 +8118,8 @@ fn attach_reading_variant(
         .remove("reading_content")
         .unwrap_or_else(|| json!([{"kind":"text", "value":reading}]));
     let mut reading_content = vec![json!({"kind":"text-variant", "content":children,
-                        "current_interpretation_facts":established_interpretations(current),
+                        "current_interpretation_facts":quotation_interpretations(current),
+        "witness_kind":variant_witness_kind(note),
         "base_text":base_text, "base_content":base, "source":note["source"], "span":note["span"]})];
     append_variant_statement(&mut reading_content, note);
     ruby["reading_content"] = json!(reading_content);
@@ -5237,13 +8137,14 @@ fn target_text(node: &Value) -> Option<Cow<'_, str>> {
 enum FragmentTextPolicy {
     Target,
     Interpreted,
+    QuotedTarget,
     Witness,
 }
 
 fn fragment_text(node: &Value, policy: FragmentTextPolicy) -> Option<Cow<'_, str>> {
     match node["kind"].as_str()? {
         "text" => Some(Cow::Borrowed(node["value"].as_str()?)),
-        "ruby" => match node["base_content"].as_array() {
+        "ruby" | "ruby_group" => match node["base_content"].as_array() {
             Some(children) => content_fragment_text(children, policy).map(Cow::Owned),
             None => Some(Cow::Borrowed(node["base"].as_str()?)),
         },
@@ -5251,14 +8152,18 @@ fn fragment_text(node: &Value, policy: FragmentTextPolicy) -> Option<Cow<'_, str
             Some(text) => text,
             None => match policy {
                 FragmentTextPolicy::Target => return None,
+                FragmentTextPolicy::QuotedTarget => node["source_fallback"].as_str()?,
                 FragmentTextPolicy::Interpreted | FragmentTextPolicy::Witness => "\u{fffc}",
             },
         })),
+        "accent" => Some(Cow::Borrowed(node["resolved"].as_str()?)),
         "iteration-mark" | "supplied-diacritic" => Some(Cow::Borrowed(node["text"].as_str()?)),
-        "editorial_note" | "kunten" | "figure" => Some(Cow::Borrowed("")),
-        "style" | "formatting" | "font_size" | "baseline_position" | "chitsuki" | "exponent"
-        | "small_script" | "tcy" | "keigakomi" | "yokogumi" | "fraction" | "warichu"
-        | "text-variant" | "annotated_text" | "heading" => {
+        "editorial_note" | "kunten" | "figure" | "formatting_instruction" => {
+            Some(Cow::Borrowed(""))
+        }
+        "style" | "formatting" | "font_size" | "baseline_position" | "chitsuki" | "jisage"
+        | "exponent" | "small_script" | "tcy" | "keigakomi" | "yokogumi" | "fraction"
+        | "warichu" | "text-variant" | "annotated_text" | "heading" => {
             let mut text = String::new();
             for child in node["content"].as_array()? {
                 text.push_str(&fragment_text(child, policy)?);
@@ -5276,6 +8181,7 @@ fn fragment_text(node: &Value, policy: FragmentTextPolicy) -> Option<Cow<'_, str
             Some(Cow::Borrowed(""))
         }
         "raw" if node.get("text_variant").is_some() => Some(Cow::Borrowed("")),
+        "raw" if node["x-source-marker-kind"] == "unresolved-ruby" => Some(Cow::Borrowed("")),
         _ => None,
     }
 }
@@ -5288,10 +8194,50 @@ fn content_structured_text(nodes: &[Value]) -> Option<String> {
     content_fragment_text(nodes, FragmentTextPolicy::Interpreted)
 }
 
+fn content_quoted_target_text(nodes: &[Value]) -> Option<String> {
+    content_fragment_text(nodes, FragmentTextPolicy::QuotedTarget)
+}
+
 // This is the known textual contribution, not a complete realization: retained
 // uncertain witness components remain separate source notes and problems.
 fn content_witness_text(nodes: &[Value]) -> Option<String> {
     content_fragment_text(nodes, FragmentTextPolicy::Witness)
+}
+
+fn fragment_contains_ruby(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => {
+            matches!(value["kind"].as_str(), Some("ruby" | "ruby_group"))
+                || object.values().any(fragment_contains_ruby)
+        }
+        Value::Array(values) => values.iter().any(fragment_contains_ruby),
+        _ => false,
+    }
+}
+
+fn fragment_has_semantic_formatting(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => {
+            matches!(
+                value["kind"].as_str(),
+                Some(
+                    "style"
+                        | "formatting"
+                        | "font_size"
+                        | "baseline_position"
+                        | "exponent"
+                        | "small_script"
+                        | "tcy"
+                        | "keigakomi"
+                        | "yokogumi"
+                        | "fraction"
+                        | "warichu"
+                )
+            ) || object.values().any(fragment_has_semantic_formatting)
+        }
+        Value::Array(values) => values.iter().any(fragment_has_semantic_formatting),
+        _ => false,
+    }
 }
 
 fn fragment_has_uncertainty(value: &Value) -> bool {
@@ -5314,15 +8260,32 @@ fn content_fragment_text(nodes: &[Value], policy: FragmentTextPolicy) -> Option<
     Some(text)
 }
 
-// The quotation constrains the structures it names. Unquoted typography in
+// The quotation constrains the structures it quotes. Unquoted typography in
 // the actual target is retained, but a quoted ruby cannot bind another reading.
 // Opaque glyph identities must agree in both directions; their coordinate
 // placeholder is never interchangeable with literal text or another glyph.
 fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
+    quoted_structure_matches_with_resolved_placeholder(quoted, actual, false)
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "one recursive comparison keeps offsets and nested identity marks on the same axis"
+)]
+fn quoted_structure_matches_with_resolved_placeholder(
+    quoted: &[Value],
+    actual: &[Value],
+    allow_resolved_placeholder: bool,
+) -> bool {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "all semantic container kinds must advance one shared offset cursor"
+    )]
     fn marks(
         nodes: &[Value],
         offset: &mut usize,
         output: &mut Vec<(usize, usize, Value)>,
+        include_resolved_glyphs: bool,
     ) -> Option<()> {
         for node in nodes {
             let start = *offset;
@@ -5335,6 +8298,9 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
                     json!({"kind":"unresolved-glyph", "description":node["description"],
                         "reference":node["jis_code"], "codepoint":node["x-codepoint"]}),
                 )),
+                "gaiji" if include_resolved_glyphs => {
+                    output.push((start, end, json!({"kind":"resolved-glyph"})));
+                }
                 "editorial_note" if node["note_kind"] == "sic" => {
                     let literal;
                     let annotation = if let Some(children) = node["annotation_content"].as_array() {
@@ -5344,14 +8310,24 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
                         &literal
                     };
                     let mut annotation_marks = Vec::new();
-                    marks(annotation, &mut 0, &mut annotation_marks)?;
+                    marks(
+                        annotation,
+                        &mut 0,
+                        &mut annotation_marks,
+                        include_resolved_glyphs,
+                    )?;
                     output.push((start, end, json!({"kind":"sic", "text":content_structured_text(annotation)?, "structure":annotation_marks})));
                 }
-                "text" | "gaiji" | "raw" | "editorial_note" => {}
+                "text" | "gaiji" | "raw" | "editorial_note" | "formatting_instruction" => {}
                 "ruby" => {
                     let mut reading_glyphs = Vec::new();
                     if let Some(reading) = node["reading_content"].as_array() {
-                        marks(reading, &mut 0, &mut reading_glyphs)?;
+                        marks(
+                            reading,
+                            &mut 0,
+                            &mut reading_glyphs,
+                            include_resolved_glyphs,
+                        )?;
                         reading_glyphs
                             .retain(|(_, _, identity)| identity["kind"] == "unresolved-glyph");
                     }
@@ -5363,16 +8339,34 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
                         "reading_glyphs":reading_glyphs}),
                     ));
                     if let Some(base) = node["base_content"].as_array() {
-                        marks(base, offset, output)?;
+                        marks(base, offset, output, include_resolved_glyphs)?;
                     }
                 }
+                "ruby_group" => {
+                    marks(
+                        node["base_content"].as_array()?,
+                        offset,
+                        output,
+                        include_resolved_glyphs,
+                    )?;
+                }
                 "text-variant" => {
-                    marks(node["content"].as_array()?, offset, output)?;
+                    marks(
+                        node["content"].as_array()?,
+                        offset,
+                        output,
+                        include_resolved_glyphs,
+                    )?;
                 }
                 "annotated_text" => {
                     let annotation = node["annotation_content"].as_array()?;
                     let mut annotation_marks = Vec::new();
-                    marks(annotation, &mut 0, &mut annotation_marks)?;
+                    marks(
+                        annotation,
+                        &mut 0,
+                        &mut annotation_marks,
+                        include_resolved_glyphs,
+                    )?;
                     output.push((
                         start,
                         end,
@@ -5380,7 +8374,12 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
                         "note_kind":node["note_kind"], "position":node["position"],
                         "text":content_structured_text(annotation)?, "structure":annotation_marks}),
                     ));
-                    marks(node["content"].as_array()?, offset, output)?;
+                    marks(
+                        node["content"].as_array()?,
+                        offset,
+                        output,
+                        include_resolved_glyphs,
+                    )?;
                 }
                 _ => {
                     let mut identity = node.as_object()?.clone();
@@ -5395,7 +8394,7 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
                     });
                     output.push((start, end, Value::Object(identity)));
                     if let Some(children) = node["content"].as_array() {
-                        marks(children, offset, output)?;
+                        marks(children, offset, output, include_resolved_glyphs)?;
                     }
                 }
             }
@@ -5405,9 +8404,30 @@ fn quoted_structure_matches(quoted: &[Value], actual: &[Value]) -> bool {
     }
     let mut quoted_marks = Vec::new();
     let mut actual_marks = Vec::new();
-    marks(quoted, &mut 0, &mut quoted_marks).is_some()
-        && marks(actual, &mut 0, &mut actual_marks).is_some()
-        && quoted_marks.iter().all(|mark| actual_marks.contains(mark))
+    marks(
+        quoted,
+        &mut 0,
+        &mut quoted_marks,
+        allow_resolved_placeholder,
+    )
+    .is_some()
+        && marks(
+            actual,
+            &mut 0,
+            &mut actual_marks,
+            allow_resolved_placeholder,
+        )
+        .is_some()
+        && quoted_marks.iter().all(|mark| {
+            actual_marks.contains(mark)
+                || (allow_resolved_placeholder
+                    && mark.2["kind"] == "unresolved-glyph"
+                    && actual_marks.iter().any(|actual| {
+                        actual.0 == mark.0
+                            && actual.1 == mark.1
+                            && actual.2["kind"] == "resolved-glyph"
+                    }))
+        })
         && actual_marks
             .iter()
             .filter(|(_, _, identity)| identity["kind"] == "unresolved-glyph")
@@ -5469,6 +8489,41 @@ fn decoded_suffix_boundary(
     (after >= before).then_some((before, after))
 }
 
+/// A style whose target is a proper suffix of the base of the last ruby nests
+/// inside that base: the ruby keeps its reading over the whole base.
+fn ruby_base_suffix_matching(
+    content: &[Value],
+    target: &str,
+    decoded: &DecodedSource,
+    quoted: &[Value],
+) -> Option<(usize, Vec<Value>, Vec<Value>)> {
+    let index = content.len().checked_sub(1)?;
+    let ruby = &content[index];
+    if ruby["kind"] != "ruby" {
+        return None;
+    }
+    let base = fragment_text(ruby, FragmentTextPolicy::Interpreted)?;
+    if base.len() <= target.len() || !base.ends_with(target) {
+        return None;
+    }
+    let mut children = ruby["base_content"]
+        .as_array()
+        .cloned()
+        .or_else(|| literal_ruby_base(ruby, &decoded.text))?;
+    let selected = take_visible_suffix_matching(&mut children, target, decoded, Some(quoted))?;
+    Some((index, children, selected))
+}
+
+fn place_style(content: &mut Vec<Value>, ruby_host: Option<(usize, Vec<Value>)>, style: Value) {
+    match ruby_host {
+        Some((index, mut base)) => {
+            base.push(style);
+            content[index]["base_content"] = json!(base);
+        }
+        None => content.push(style),
+    }
+}
+
 fn take_visible_suffix_matching(
     content: &mut Vec<Value>,
     target: &str,
@@ -5479,13 +8534,14 @@ fn take_visible_suffix_matching(
         return None;
     }
     let mut remaining = target;
+    let mut matched_resolved_placeholder = false;
     for index in (0..content.len()).rev() {
         let node = &content[index];
         let kind = node["kind"].as_str()?;
         if kind == "heading" && node["style"] == "normal" {
             return None;
         }
-        let text = fragment_text(
+        let interpreted = fragment_text(
             node,
             if quoted.is_some() {
                 FragmentTextPolicy::Interpreted
@@ -5493,6 +8549,13 @@ fn take_visible_suffix_matching(
                 FragmentTextPolicy::Target
             },
         )?;
+        let source_spelling = (quoted.is_some() && kind == "gaiji")
+            .then(|| value_source_span(node))
+            .flatten()
+            .and_then(|span| decoded.text.get(span.start..span.end))
+            .filter(|source| remaining.ends_with(source));
+        matched_resolved_placeholder |= source_spelling.is_some() && node["resolved"].is_string();
+        let text = source_spelling.unwrap_or_else(|| interpreted.as_ref());
         if text.is_empty() {
             if matches!(kind, "editorial_note" | "kunten")
                 || (kind == "raw" && node.get("text_variant").is_some())
@@ -5501,12 +8564,16 @@ fn take_visible_suffix_matching(
             }
             return None;
         }
-        if let Some(prefix) = remaining.strip_suffix(text.as_ref()) {
+        if let Some(prefix) = remaining.strip_suffix(text) {
             remaining = prefix;
             if remaining.is_empty() {
-                if quoted
-                    .is_some_and(|expected| !quoted_structure_matches(expected, &content[index..]))
-                {
+                if quoted.is_some_and(|expected| {
+                    !quoted_structure_matches_with_resolved_placeholder(
+                        expected,
+                        &content[index..],
+                        matched_resolved_placeholder,
+                    )
+                }) {
                     return None;
                 }
                 return Some(content.split_off(index));
@@ -5520,7 +8587,11 @@ fn take_visible_suffix_matching(
             if let Some(expected) = quoted {
                 let mut selected = vec![tail.clone()];
                 selected.extend_from_slice(&content[index + 1..]);
-                if !quoted_structure_matches(expected, &selected) {
+                if !quoted_structure_matches_with_resolved_placeholder(
+                    expected,
+                    &selected,
+                    matched_resolved_placeholder,
+                ) {
                     return None;
                 }
             }
@@ -5562,6 +8633,7 @@ fn formatting_fields(attr: ForwardAttr) -> Option<Value> {
         ForwardAttr::CombineUpright => json!({"kind":"tcy"}),
         ForwardAttr::Framed(kind) => json!({"kind":"keigakomi", "border":enclosure_kind(kind)}),
         ForwardAttr::Horizontal => json!({"kind":"yokogumi"}),
+        ForwardAttr::Vertical => json!({"kind":"tategumi"}),
         ForwardAttr::Fraction => json!({"kind":"fraction"}),
         ForwardAttr::AlignEnd { offset } => {
             json!({"kind":"chitsuki", "align":"right", "offset_from_end":offset})
@@ -5572,10 +8644,18 @@ fn formatting_fields(attr: ForwardAttr) -> Option<Value> {
         ForwardAttr::Caption => json!({"kind":"caption"}),
         ForwardAttr::Bold => json!({"kind":"style", "style_type":"bold"}),
         ForwardAttr::Gothic => json!({"kind":"style", "style_type":"gothic"}),
+        ForwardAttr::Handwritten => json!({"kind":"style", "style_type":"handwritten"}),
         ForwardAttr::Italic => json!({"kind":"style", "style_type":"italic"}),
         ForwardAttr::SuperScript => json!({"kind":"style", "style_type":"superscript"}),
         ForwardAttr::SubScript => json!({"kind":"style", "style_type":"subscript"}),
         ForwardAttr::Lowered => json!({"kind":"baseline_position", "position":"lowered"}),
+        ForwardAttr::Raised { degrees } => {
+            let mut fields = json!({"kind":"baseline_position", "position":"raised"});
+            if let Some(degrees) = degrees {
+                fields["angle_degrees"] = json!(degrees);
+            }
+            fields
+        }
         ForwardAttr::Exponent => json!({"kind":"exponent"}),
         ForwardAttr::SmallScript(BoutenPosition::Right) => {
             json!({"kind":"small_script", "position":"right"})
@@ -5584,6 +8664,14 @@ fn formatting_fields(attr: ForwardAttr) -> Option<Value> {
             json!({"kind":"small_script", "position":"left"})
         }
         ForwardAttr::FontSize(shift) => relative_font_fields(shift.larger(), shift.magnitude()),
+        ForwardAttr::QualitativeFontSize(size) => {
+            let mut fields = json!({"kind":"font_size", "size_type":"qualitative",
+                "direction":if size.larger() { "larger" } else { "smaller" }});
+            if let Some(qualifier) = size.qualifier() {
+                fields["qualifier"] = json!(qualifier);
+            }
+            fields
+        }
         ForwardAttr::FontSizeAbsolute(size) => {
             json!({"kind":"font_size", "size_type":"absolute", "size":match size {
                 AbsoluteSize::ExtraLarge => "extra-large", AbsoluteSize::Large => "large",
@@ -5606,16 +8694,18 @@ const fn enclosure_kind(kind: EnclosureKind) -> &'static str {
     }
 }
 
-const fn bouten_position(position: BoutenPosition) -> &'static str {
+const fn bouten_position(position: DecorationPosition) -> &'static str {
     match position {
-        BoutenPosition::Right => "right",
-        BoutenPosition::Left => "left",
-        BoutenPosition::Both => "both",
+        DecorationPosition::Right => "right",
+        DecorationPosition::Left => "left",
+        DecorationPosition::Both => "both",
+        DecorationPosition::Above => "above",
+        DecorationPosition::Below => "below",
         _ => "unknown",
     }
 }
 
-fn bouten_key(kind: BoutenKind, position: BoutenPosition) -> String {
+fn bouten_key(kind: BoutenKind, position: DecorationPosition) -> String {
     format!("bouten:{}:{}", kind.keyword(), bouten_position(position))
 }
 
@@ -5625,6 +8715,12 @@ fn layout_break_kind(kind: &ProjectedKind) -> Option<&'static str> {
         ProjectedKind::Section(SectionKind::Kaicho) => Some("kaicho"),
         ProjectedKind::Section(SectionKind::Kaidan) => Some("column"),
         ProjectedKind::Section(SectionKind::Kaimihiraki) => Some("kaimihiraki"),
+        ProjectedKind::QualifiedBreak(break_) => Some(match break_.kind {
+            QualifiedBreakKind::Page => "page",
+            QualifiedBreakKind::Kaicho => "kaicho",
+            QualifiedBreakKind::Column => "column",
+            QualifiedBreakKind::Kaimihiraki => "kaimihiraki",
+        }),
         _ => None,
     }
 }
@@ -5673,10 +8769,6 @@ fn apply_block_styles(fields: &mut Value, block: BlockStyles) -> Option<()> {
 }
 
 /// The fields one indentation scope's own clauses supply.
-///
-/// Split out of [`layout_fields`] because the indentation marker carries more
-/// independent axes than every other scope put together; keeping them here
-/// leaves the dispatch above readable as the list of scopes it is.
 fn indent_layout_fields(fields: &mut Value, block: &IndentBlock) -> Option<()> {
     match block.purpose {
         Some(BlockPurpose::Formula) => fields["role"] = json!("formula"),
@@ -5697,6 +8789,9 @@ fn indent_layout_fields(fields: &mut Value, block: &IndentBlock) -> Option<()> {
     fields["indent"] = json!(block.amount);
     if let Some(wrap) = block.wrap {
         fields["continuation_indent"] = json!(wrap);
+    }
+    if let Some(first_line) = block.first_line {
+        fields["first_line_indent"] = json!(first_line.amount);
     }
     if block.page_horizontal_center {
         fields["page_placement"] = json!("horizontal-center");
@@ -5746,6 +8841,9 @@ fn layout_fields(kind: &ProjectedKind) -> Option<Value> {
             if block.column_rule {
                 fields["column_rule"] = json!(true);
             }
+            if let Some(part) = block.part {
+                fields["column_number"] = json!(part);
+            }
             apply_block_styles(&mut fields, block.styles)?;
         }
         ProjectedKind::Region(RegionFormat::LineWidth(width)) => {
@@ -5782,6 +8880,36 @@ fn layout_fields(kind: &ProjectedKind) -> Option<Value> {
             if let Some(offset) = end_offset {
                 fields["offset_from_end"] = json!(offset);
             }
+        }
+        ProjectedKind::Line(LineFormat::PagePlacement {
+            vertical,
+            horizontal_center,
+            horizontal,
+        }) => {
+            fields["page_vertical_placement"] = json!(match vertical {
+                PageVerticalPlacement::Top => "top",
+                PageVerticalPlacement::Center => "center",
+            });
+            if *horizontal_center {
+                fields["page_placement"] = json!("horizontal-center");
+            }
+            if *horizontal {
+                fields["direction"] = json!("horizontal");
+            }
+        }
+        ProjectedKind::Line(LineFormat::Framed(kind)) => {
+            fields["formatting"] = formatting_fields(ForwardAttr::Framed(*kind))?;
+        }
+        ProjectedKind::Line(LineFormat::FontSizeAbsolute { size, bold }) => {
+            let mut formatting = vec![formatting_fields(ForwardAttr::FontSizeAbsolute(*size))?];
+            if *bold {
+                formatting.push(formatting_fields(ForwardAttr::Bold)?);
+            }
+            fields["formatting"] = if formatting.len() == 1 {
+                formatting.remove(0)
+            } else {
+                Value::Array(formatting)
+            };
         }
         _ => return None,
     }
@@ -5848,6 +8976,7 @@ fn region_formatting(region: RegionFormat) -> Option<(String, Value)> {
                 json!({"kind":"style", "style_type":"textbook"}),
             ));
         }
+        RegionFormat::Handwritten => ("handwritten", ForwardAttr::Handwritten),
         RegionFormat::Gothic { padded } => (
             if padded { "gothic-block" } else { "gothic" },
             ForwardAttr::Gothic,
@@ -5908,6 +9037,7 @@ fn region_formatting_close(close: RegionClose) -> Option<(String, Option<Value>)
                 }
             }
             RegionClose::Textbook => "textbook",
+            RegionClose::Handwritten => "handwritten",
             RegionClose::Gothic { padded } => {
                 if padded {
                     "gothic-block"
@@ -5938,7 +9068,10 @@ fn layout_clause(decoded: &DecodedSource, span: Span) -> Value {
     let start = decoded.span_ctx.to_decoded(span.start);
     let end = decoded.span_ctx.to_decoded_end(span.end);
     if let Some((kind, text)) = edition_statement(&decoded.text[start..end]) {
-        return json!({"kind":"editorial_note", "note_kind":match kind {EditionNoteKind::BaseEdition=>"base-edition", EditionNoteKind::FirstPublication=>"first-publication"}, "text":text, "span":span_json(&span, &decoded.span_ctx)});
+        return json!({"kind":"editorial_note", "note_kind":edition_note_kind_name(kind), "text":text, "span":span_json(&span, &decoded.span_ctx)});
+    }
+    if layout_clause_statement(&decoded.text[start..end]) {
+        return json!({"kind":"editorial_note", "note_kind":"explanation", "text":&decoded.text[start..end], "span":span_json(&span, &decoded.span_ctx)});
     }
     json!({"kind":"raw", "source": &decoded.text[start..end],
         "span":span_json(&span, &decoded.span_ctx),
@@ -6057,35 +9190,16 @@ fn raw_node(decoded: &DecodedSource, node: &AozoraNode, marker_kind: &str) -> Va
     if !node.layout_clauses.is_empty() {
         value["x-layout-annotations"] = layout_annotations(decoded, &node.layout_clauses);
     }
-    if let ProjectedKind::TextVariant {
-        target,
-        current,
-        base_text,
-        current_span,
-        base_spans,
-        editorial_statement,
-    } = &node.kind
-    {
-        value["text_variant"] = json!({
-            "target_kind": match target { TextVariantTarget::RubyReading => "ruby-reading", TextVariantTarget::Text => "text" },
-            "current": current, "base_text": base_text
-        });
-        if let Some(statement) = editorial_statement {
-            value["text_variant"]["editorial_statement"] = json!(statement);
-        }
-        if let Some(current_content) = source_fragment(decoded, current_span.clone()) {
-            value["text_variant"]["current_content"] = json!(current_content);
-        }
-        let base_content = base_spans
-            .iter()
-            .try_fold(Vec::new(), |mut content, range| {
-                content.extend(witness_fragment(decoded, range.clone())?);
-                Some(content)
-            });
-        if let Some(base_content) = base_content {
-            value["text_variant"]["base_content"] = json!(base_content);
-        }
+    if !node.layout_instructions.is_empty() {
+        value["x-source-instructions"] = json!(
+            node.layout_instructions
+                .iter()
+                .map(|instruction| formatting_instruction::project(decoded, node.span, instruction))
+                .collect::<Vec<_>>()
+        );
     }
+    add_text_variant_fields(&mut value, decoded, node);
+    add_text_apparatus_fields(&mut value, decoded, node);
     match node.kind {
         ProjectedKind::Region(region) => region_raw_fields(&mut value, decoded, node, region),
         ProjectedKind::RegionClose(close) => {
@@ -6126,6 +9240,77 @@ fn raw_node(decoded: &DecodedSource, node: &AozoraNode, marker_kind: &str) -> Va
     value
 }
 
+fn add_text_variant_fields(value: &mut Value, decoded: &DecodedSource, node: &AozoraNode) {
+    if let ProjectedKind::TextVariant {
+        witness_kind,
+        target,
+        current,
+        base_text,
+        current_span,
+        base_spans,
+        editorial_statement,
+        source_locator,
+    } = &node.kind
+    {
+        value["text_variant"] = json!({
+            "target_kind": match target { TextVariantTarget::RubyReading => "ruby-reading", TextVariantTarget::Text => "text" },
+            "witness_kind": edition_note_kind_name(*witness_kind),
+            "current": current, "base_text": base_text
+        });
+        if let Some(statement) = editorial_statement {
+            value["text_variant"]["editorial_statement"] = json!(statement);
+        }
+        if let Some(locator) = source_locator {
+            value["text_variant"]["source_locator"] = json!(locator);
+        }
+        if let Some(current_content) = source_fragment(decoded, current_span.clone()) {
+            value["text_variant"]["current_content"] = json!(current_content);
+        }
+        let base_content = base_spans
+            .iter()
+            .try_fold(Vec::new(), |mut content, range| {
+                content.extend(witness_fragment(decoded, range.clone())?);
+                Some(content)
+            });
+        if let Some(base_content) = base_content {
+            value["text_variant"]["base_content"] = json!(base_content);
+        }
+    }
+}
+
+fn add_text_apparatus_fields(value: &mut Value, decoded: &DecodedSource, node: &AozoraNode) {
+    if let ProjectedKind::NamedTextApparatus {
+        current,
+        current_span,
+        readings,
+    } = &node.kind
+    {
+        let projected_readings = readings
+            .iter()
+            .map(|reading| {
+                let mut projected = json!({
+                    "text": reading.text,
+                    "witnesses": reading.witnesses.iter().map(|witness| json!({
+                        "label": witness.label,
+                        "span": span_json(&Span { start: witness.span.start, end: witness.span.end }, &decoded.span_ctx)
+                    })).collect::<Vec<_>>()
+                });
+                if let Some(content) = witness_fragment(decoded, reading.text_span.clone()) {
+                    projected["content"] = json!(content);
+                }
+                projected
+            })
+            .collect::<Vec<_>>();
+        value["text_apparatus"] = json!({
+            "current": current,
+            "readings": projected_readings,
+        });
+        if let Some(content) = source_fragment(decoded, current_span.clone()) {
+            value["text_apparatus"]["current_content"] = json!(content);
+        }
+    }
+}
+
 /// Preserve native parser diagnostic identity and decoded-source location.
 fn diagnostic_warning(diagnostic: &Diagnostic, ctx: &SpanContext) -> Value {
     let kind = diagnostic.code().rsplit("::").next().unwrap_or("unknown");
@@ -6146,6 +9331,30 @@ fn span_json(span: &Span, ctx: &SpanContext) -> Value {
         },
         ctx,
     )
+}
+
+/// The non-empty parts of `span` outside every span in `excluded`, in source
+/// order; `excluded` must be ordered and disjoint.
+fn span_excluding(span: Span, excluded: &[Span]) -> Vec<Span> {
+    let mut parts = Vec::new();
+    let mut start = span.start;
+    for cut in excluded {
+        if cut.start > start {
+            parts.push(Span {
+                start,
+                end: cut.start.min(span.end),
+            });
+        }
+        start = start.max(cut.end);
+    }
+    if start < span.end {
+        parts.push(Span {
+            start,
+            end: span.end,
+        });
+    }
+    parts.retain(|part| part.start < part.end);
+    parts
 }
 
 fn decoded_span_json(span: Span, ctx: &SpanContext) -> Value {
@@ -6186,8 +9395,7 @@ pub fn adapter_version() -> String {
 }
 
 fn ab_aozora_facade_version() -> &'static str {
-    // The facade crate version stands in for the deleted wire
-    // schemaVersion check as the compatibility coordinate.
+    // The facade crate version is the compatibility coordinate.
     ab_aozora_facade::VERSION
 }
 
@@ -6280,7 +9488,7 @@ mod tests {
     #[test]
     fn source_decoding_contract() {
         let vectors: Vec<SourceDecodingVector> = serde_json::from_str(include_str!(
-            "../../../data/fixtures/source-decoding-contract.json"
+            "../tests/fixtures/source-decoding-contract.json"
         ))
         .unwrap();
         for vector in vectors {
@@ -6305,9 +9513,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn aat_declares_applied_emendation_and_reads_the_emended_ruby() {
+        let source = "前\n一番向｜《むか》うにある大きいマロニエ\n";
+        let document: Value =
+            serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();
+        let start = "前\n一番".len();
+        assert_eq!(
+            document["meta"]["emendations"],
+            json!([{"id": "pariyori-403-ruby-bar-after-base",
+                "transcribed": "一番向｜《むか》うにある", "emended": "一番｜向《むか》うにある",
+                "span": {"byte_start": "前\n".len(), "byte_end": "前\n一番｜向《むか》うにある".len(),
+                    "line_start": 2, "line_end": 2}}])
+        );
+        assert_eq!(
+            document["meta"]["source_hash"],
+            format!("sha256:{}", hex_sha256(source.as_bytes()))
+        );
+        let ruby = document["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|block| block["content"].as_array().into_iter().flatten())
+            .find(|node| node["kind"] == "ruby")
+            .unwrap();
+        assert_eq!(
+            (&ruby["base"], &ruby["reading"]),
+            (&json!("向"), &json!("むか"))
+        );
+        assert_eq!(ruby["span"]["byte_start"], start);
+        let aat_schema: Value =
+            serde_json::from_str(include_str!("../../../schemas/outputs/aat-schema.json")).unwrap();
+        assert!(jsonschema::is_valid(&aat_schema, &document), "AAT schema");
+    }
+
     /// Regression guard for `preserve_order`: `aat_json_from_bytes` builds its
     /// `serde_json::Value` output via object literals (`json!` macro
-    /// insertion order). If `serde_json/preserve_order` ever leaks into
+    /// insertion order). If `serde_json/preserve_order` is enabled in
     /// this crate's compiled feature graph, `Value`'s map switches from
     /// `BTreeMap` (alphabetical-by-key serialization) to `IndexMap`
     /// (insertion-order serialization) and this exact-byte assertion
@@ -6437,7 +9679,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_pua_survives_bom_and_crlf_with_decoded_source_extents() {
+    fn literal_pua_is_retained_through_bom_and_crlf_with_decoded_source_extents() {
         let bytes = [
             b"\xef\xbb\xbf".as_ref(),
             "あ\r\n\u{e001}漢《かん》".as_bytes(),
@@ -6488,7 +9730,7 @@ mod tests {
             spans.iter().any(|s| s["line_start"] == 2),
             "no real line >1: {spans:?}"
         );
-        // The legacy synthesized warning is gone.
+        // No synthesized line-number warning is emitted.
         let warnings = doc["meta"]["warnings"].as_array().unwrap();
         assert!(warnings.iter().all(|w| {
             w["message"].as_str()
@@ -6501,13 +9743,12 @@ mod tests {
 
     #[test]
     fn line_starts_handles_lf_crlf_and_bare_cr() {
-        // CRLF: ONE boundary after the pair — byte-identical to the old
-        // \n-only index ([0, 3] is exactly what match_indices('\n')+1
-        // produced), proving CRLF sources' line numbering is unchanged.
+        // CRLF: one boundary after the pair, the same as a \n-only index
+        // ([0, 3] is what match_indices('\n')+1 gives).
         assert_eq!(line_starts("a\r\nb"), vec![0, 3]);
-        // LF-only: unchanged classic behavior.
+        // LF-only: one boundary per \n.
         assert_eq!(line_starts("a\nb"), vec![0, 2]);
-        // Bare CR (classic Mac): now a real boundary.
+        // Bare CR (classic Mac): a boundary.
         assert_eq!(line_starts("a\rb"), vec![0, 2]);
         // Two bare CRs: two boundaries, not one.
         assert_eq!(line_starts("a\r\rb"), vec![0, 2, 3]);
@@ -6520,11 +9761,10 @@ mod tests {
         //   あ 0..3, \r 3..4, ［＃改ページ］ 4..25 (7 fullwidth chars ×
         //   3 bytes), \r 25..26, い 26..29, \r 29..30 (30 bytes).
         // line_starts = [0, 4, 26, 30]. Sanitize rewrites each lone \r
-        // to \n WIDTH-EQUAL (1 byte → 1 byte), so sanitized-body offsets
+        // to \n width-equal (1 byte → 1 byte), so sanitized-body offsets
         // are numerically identical to decoded offsets and the map edits
-        // all carry delta 0 — the interesting part is purely the line
-        // index, which the old \n-only implementation computed as 1
-        // everywhere for this input.
+        // all carry delta 0; the test covers the line index, which a
+        // \n-only index would compute as 1 everywhere for this input.
         let src = "あ\r［＃改ページ］\rい\r";
         let doc: Value =
             serde_json::from_slice(&aat_json_from_bytes(src.as_bytes()).unwrap()).unwrap();
@@ -6605,6 +9845,51 @@ mod tests {
             let aat = aat_value_for(source);
             assert!(find_node(&aat, "raw").is_none(), "{aat}");
             assert_eq!(find_first_node(&aat, "text")["value"], source);
+        }
+    }
+
+    #[test]
+    fn encoded_accent_retains_spelling_cell_and_scope_markers() {
+        let aat = aat_value_for("繁雑な日本の 〔e'tiquette〕 も、");
+        let accent = find_node(&aat, "accent").expect("typed accent node");
+        assert_eq!(accent["source_spelling"], "e'");
+        assert_eq!(accent["resolved"], "é");
+        assert_eq!(accent["code"], "1-09-63");
+        assert_eq!(accent["span"]["byte_start"], 22);
+        assert_eq!(accent["span"]["byte_end"], 24);
+        assert_eq!(accent["interpretation_marker_spans"][0]["byte_start"], 19);
+        assert_eq!(accent["interpretation_marker_spans"][1]["byte_end"], 35);
+    }
+
+    #[test]
+    fn accent_scope_facts_cover_delimiters_around_nested_apparatus() {
+        for (source, accent_source) in [
+            (
+                "〔Hu:lshoff［＃「Hu:lshoff」は底本では「Hu:lshoffs」］〕",
+                "〔Hu:lshoff［＃「Hu:lshoff」は底本では「Hu:lshoffs」］〕",
+            ),
+            (
+                "〔schla:gt［＃「〔schla:gt〕」は底本では「〔scha:gt〕」］〕",
+                "〔schla:gt［＃「〔schla:gt〕」は底本では「〔scha:gt〕」］〕",
+            ),
+            (
+                "〔Ha:tte.“〕［＃「Ha:tte.“」は底本では「Ha:tte“.」］",
+                "〔Ha:tte.“〕",
+            ),
+        ] {
+            let aat = aat_value_for(source);
+            let closing = accent_source.len();
+            assert!(
+                aat["meta"]["interpretation_facts"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|fact| fact["kind"] == "accent"
+                        && fact["source_span"]["start"] == 0
+                        && fact["source_span"]["end"] == closing),
+                "{source}: {}",
+                aat["meta"]["interpretation_facts"]
+            );
         }
     }
 
@@ -6700,42 +9985,153 @@ mod tests {
         assert_eq!(ruby["reading"], "な");
     }
 
-    /// A retrospective left-ruby whose target already carries ordinary
-    /// ruby (`謝肉《しゃにく》［＃「謝肉」の左に「カルネワル」のルビ］`)
-    /// anchors on the marker alone — the target was already emitted — so
-    /// re-quoting the target as `base` would double the word in every
-    /// projection, plain.txt included (the 傍点/太字 duplication class
-    /// fixed for style/tcy spans, in its ruby form).
     #[test]
-    fn marker_only_left_ruby_span_does_not_duplicate_target() {
+    fn retrospective_ruby_adopts_existing_target_without_duplication() {
         let src = "謝肉《しゃにく》［＃「謝肉」の左に「カルネワル」のルビ］の祭\n";
         let aat = aat_value_for(src);
-        let blocks = &aat["blocks"][0]["content"];
-        let rubies: Vec<&Value> = blocks
-            .as_array()
-            .unwrap()
+        let blocks = aat["blocks"][0]["content"].as_array().unwrap();
+        let ruby = &blocks[0];
+        assert_eq!(ruby["direction"], "left");
+        assert_eq!(ruby["base"], "謝肉");
+        assert_eq!(ruby["reading"], "カルネワル");
+        let base = &ruby["base_content"][0];
+        assert_eq!(base["kind"], "ruby");
+        assert_eq!(base["direction"], "right");
+        assert_eq!(base["base"], "謝肉");
+        assert_eq!(base["reading"], "しゃにく");
+        assert_eq!(content_target_text(blocks).as_deref(), Some("謝肉の祭\n"));
+        assert_eq!(ruby["span"]["byte_start"], 0);
+        assert_eq!(aat["blocks"][0]["span"]["byte_start"], 0);
+        assert_eq!(
+            ruby["interpretation_marker_spans"][0]["byte_start"],
+            src.find('［').unwrap()
+        );
+    }
+
+    #[test]
+    fn retrospective_ruby_rejects_reading_markup_in_target() {
+        let marker = "［＃「青空文庫《あおぞらぶんこ》」の左に「aozora bunko」のルビ］";
+        let source = format!("青空文庫《あおぞらぶんこ》{marker}");
+        let aat = aat_value_for(&source);
+        let mut rubies = Vec::new();
+        collect_nodes(&aat, "ruby", &mut rubies);
+        assert_eq!(rubies.len(), 1);
+        assert_eq!(rubies[0]["direction"], "right");
+        assert_eq!(rubies[0]["reading"], "あおぞらぶんこ");
+        let retained = find_first_node(&aat, "raw");
+        assert_eq!(retained["source"], marker);
+        assert_eq!(retained["span"]["byte_start"], source.find('［').unwrap());
+        assert_eq!(retained["span"]["byte_end"], source.len());
+        assert_eq!(
+            retained["interpretation_problem"]["code"],
+            "uninterpreted-notation"
+        );
+        assert!(retained.get("x-ruby-reference").is_none());
+        assert_eq!(
+            content_structured_text(aat["blocks"][0]["content"].as_array().unwrap()).as_deref(),
+            Some("青空文庫")
+        );
+    }
+
+    #[test]
+    fn ruby_subrange_preserves_both_readings_and_literal_source_extent() {
+        let source = "一屁《いつひ》［＃「屁」の左に「ヘ」のルビ］";
+        let aat = aat_value_for(source);
+        let right = find_first_node(&aat, "ruby");
+        assert_eq!(right["reading"], "いつひ");
+        let children = right["base_content"].as_array().unwrap();
+        assert_eq!(children[0]["value"], "一");
+        let left = &children[1];
+        assert_eq!(left["base"], "屁");
+        assert_eq!(left["reading"], "ヘ");
+        assert_eq!(left["direction"], "left");
+        assert_eq!(left["base_content"][0]["span"]["byte_start"], "一".len());
+        assert_eq!(left["base_content"][0]["span"]["byte_end"], "一屁".len());
+        assert_eq!(
+            left["interpretation_marker_spans"][0]["byte_start"],
+            source.find('［').unwrap()
+        );
+        assert_eq!(content_target_text(children).as_deref(), Some("一屁"));
+    }
+
+    #[test]
+    fn crossing_ruby_ranges_use_principal_utf8_offsets() {
+        for (source, base, ranges) in [
+            (
+                "｜甲乙《こうおつ》丙［＃「乙丙」の左に「おつへい」のルビ］",
+                "甲乙丙",
+                [(0, 6), (3, 9)],
+            ),
+            (
+                "｜𠮷乙《よしおつ》丙［＃「乙丙」の左に「おつへい」のルビ］",
+                "𠮷乙丙",
+                [(0, 7), (4, 10)],
+            ),
+        ] {
+            let aat = aat_value_for(source);
+            let group = find_first_node(&aat, "ruby_group");
+            assert_eq!(group["base"], base);
+            assert_eq!(
+                content_target_text(group["base_content"].as_array().unwrap()).as_deref(),
+                Some(base)
+            );
+            let readings = group["readings"].as_array().unwrap();
+            assert_eq!(readings.len(), 2);
+            for (reading, (start, end)) in readings.iter().zip(ranges) {
+                assert_eq!(reading["base_range"], json!({"start":start,"end":end}));
+                assert!(
+                    !reading["interpretation_marker_spans"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+            assert_eq!(readings[0]["direction"], "right");
+            assert_eq!(readings[1]["direction"], "left");
+        }
+    }
+
+    #[test]
+    fn paired_left_ruby_preserves_reading_and_marker_ownership() {
+        let src = "前［＃左にルビ付き］漢《かん》字［＃左に「kanji」のルビ付き終わり］後\n";
+        let aat = aat_value_for(src);
+        let ruby = find_first_node(&aat, "ruby");
+        assert_eq!(ruby["base"], "漢字");
+        assert_eq!(ruby["reading"], "kanji");
+        assert_eq!(ruby["direction"], "left");
+        assert_eq!(ruby["base_content"][0]["reading"], "かん");
+        let markers = ruby["interpretation_marker_spans"].as_array().unwrap();
+        assert_eq!(markers.len(), 2);
+        for (marker, expected) in markers
             .iter()
-            .filter(|n| n["kind"] == "ruby")
-            .collect();
-        assert_eq!(rubies.len(), 2);
-        assert_eq!(rubies[0]["base"], "謝肉");
-        assert_eq!(rubies[0]["reading"], "しゃにく");
-        assert_eq!(rubies[1]["direction"], "left");
-        assert_eq!(rubies[1]["reading"], "カルネワル");
-        // Marker-only span: the base is already emitted by the first node,
-        // so the projection (text values + ruby bases) carries 謝肉 once.
-        assert_eq!(rubies[1]["base"], "");
-        let projected: String = blocks
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|n| match n["kind"].as_str() {
-                Some("text") => n["value"].as_str().map(ToOwned::to_owned),
-                Some("ruby") => n["base"].as_str().map(ToOwned::to_owned),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(projected.matches("謝肉").count(), 1);
+            .zip(["［＃左にルビ付き］", "［＃左に「kanji」のルビ付き終わり］"])
+        {
+            let start = usize::try_from(marker["byte_start"].as_u64().unwrap()).unwrap();
+            let end = usize::try_from(marker["byte_end"].as_u64().unwrap()).unwrap();
+            assert_eq!(&src[start..end], expected);
+        }
+        assert_eq!(
+            content_target_text(aat["blocks"][0]["content"].as_array().unwrap()).as_deref(),
+            Some("前漢字後\n")
+        );
+    }
+
+    #[test]
+    fn unpaired_or_empty_left_ruby_retains_explicit_uncertainty() {
+        for src in [
+            "［＃左にルビ付き］漢",
+            "漢［＃左に「かん」のルビ付き終わり］",
+            "［＃左にルビ付き］［＃左に「かん」のルビ付き終わり］",
+            "［＃左にルビ付き］［＃割り注］漢［＃左に「かん」のルビ付き終わり］［＃割り注終わり］",
+        ] {
+            let aat = aat_value_for(src);
+            assert!(find_node(&aat, "ruby").is_none(), "{src}");
+            let raw = find_first_node(&aat, "raw");
+            assert_eq!(
+                raw["interpretation_problem"]["code"], "uninterpreted-notation",
+                "{src}"
+            );
+        }
     }
 
     /// Gaiji-base ruby (`※［＃…］《reading》`): the base is a deferred gaiji
@@ -6747,7 +10143,7 @@ mod tests {
     /// resolved glyph as its `base` (what plaintext / parser-IR project)
     /// and a structured `base_content` gaiji node (what ab-check's
     /// `gaiji_resolution` counts) instead of the verbatim `※［＃…］`
-    /// marker text v1 emitted.
+    /// marker text.
     #[test]
     fn layout_containers_inside_a_heading_become_scopes_around_it() {
         let src = concat!(
@@ -6922,7 +10318,7 @@ mod tests {
         assert_eq!(base_content[1]["resolved"], "髒");
     }
 
-    /// A gaiji marker inside a ruby READING (`《※［＃…］エル》`) keeps the
+    /// A gaiji marker inside a ruby reading (`《※［＃…］エル》`) keeps the
     /// verbatim `reading` string (`ruby_completeness` matches source reading
     /// text exactly) but gains `reading_content` with the typed gaiji node
     /// so the reference stays countable.
@@ -6960,18 +10356,18 @@ mod tests {
     }
 
     /// A stray plain `［` left open on one line (a gloss bracket in a
-    /// German-textbook work, a doubled `［［＃…］`) must not bury the rest
+    /// German-textbook work, a doubled `［［＃…］`) must not absorb the rest
     /// of the document: the pair stage expires it at the newline, its
     /// line replays as plain text, and every later line's markers emit
     /// normally.
     #[test]
-    fn stray_open_bracket_does_not_swallow_later_lines() {
+    fn stray_open_bracket_does_not_consume_later_lines() {
         let src = "彼の所有［当然\n二二※［＃「口＋世」、U+546D］が四\n";
         let aat = aat_value_for(src);
         let gaiji = find_first_node(&aat, "gaiji");
         assert_eq!(gaiji["description"], "口＋世");
         assert_eq!(gaiji["resolved"], "呭");
-        // The stray line survives verbatim as text.
+        // The stray line is kept verbatim as text.
         assert!(aat.to_string().contains("彼の所有［当然"));
     }
 
@@ -6995,7 +10391,7 @@ mod tests {
             .filter_map(|n| n["value"].as_str())
             .collect();
         assert!(text.contains("中身"));
-        // No raw container markers survive inside or around the block.
+        // No raw container markers remain inside or around the block.
         assert!(!serde_json::to_string(&doc).unwrap().contains("罫囲み］"));
     }
 
@@ -7045,10 +10441,43 @@ mod tests {
     }
 
     #[test]
+    fn page_spacing_interprets_the_documented_asymmetry() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for (before, after, position) in [
+                (2, 2, "center"),
+                (1, 3, "right-of-center"),
+                (3, 1, "left-of-center"),
+                (1, 1, "undetermined"),
+            ] {
+                for body in ["題", "［＃ここから３字下げ］\n題\n［＃ここで字下げ終わり］"]
+                {
+                    let source = format!(
+                        "［＃ページの左右中央］{}{}{}［＃改丁］\n後",
+                        "\n".repeat(before + 1),
+                        body,
+                        "\n".repeat(after + 1)
+                    )
+                    .replace('\n', newline);
+                    let aat = aat_value_for(&source);
+                    let layout = find_first_node(&aat, "layout_block");
+                    assert_eq!(
+                        layout["page_spacing"],
+                        json!({
+                            "before_blank_lines":before, "after_blank_lines":after,
+                            "position":position
+                        }),
+                        "{aat}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn unpaired_jizume_open_stays_raw() {
         let aat = aat_value_for("［＃ここから２１字詰め］\n本文\n");
         assert!(find_node(&aat, "layout_block").is_none());
-        // the open survives as a raw containerOpen node — zero silent drops
+        // the open is kept as a raw containerOpen node; no marker is dropped
         assert!(
             serde_json::to_string(&aat)
                 .unwrap()
@@ -7165,7 +10594,7 @@ mod tests {
         );
     }
 
-    /// THE distinguishing case: the identically-shaped date line that is
+    /// The distinguishing case: the identically-shaped date line that is
     /// `TerminalProvenance` in the previous test is `Colophon` here,
     /// because it follows `入力：` instead of `底本：`. No per-line
     /// predicate can tell these apart — only carried state can.
@@ -7179,10 +10608,10 @@ mod tests {
         );
     }
 
-    /// The marker is neither colophon data nor provenance: it says the body
-    /// has ended. Classifying it as colophon gave the consumer no way to tell
-    /// the boundary from a line about the source edition, which is how it
-    /// reached published TEI as a transcriber's note.
+    /// The marker is neither colophon data nor provenance: it states that the
+    /// body has ended. Classified as colophon, it would be indistinguishable
+    /// to the consumer from a line about the source edition and would reach
+    /// published TEI as a transcriber's note.
     #[test]
     fn classify_tail_body_end_marker_is_its_own_class_and_opens_the_colophon() {
         // cards/001657/files/54333_ruby_69151.zip::shokuhin_no_henzo.txt is
@@ -7436,16 +10865,16 @@ mod tests {
         assert_eq!(notes[3]["content"][0]["value"], "入力：other\n");
     }
 
-    /// A real `decode_source_bytes` tail's first line is ALWAYS a
+    /// A real `decode_source_bytes` tail's first line is always a
     /// recognized head: `aozora_body_range`'s tail-start rule
-    /// (`line.trim_start().starts_with("底本：")`) IS
+    /// (`line.trim_start().starts_with("底本：")`) is
     /// `classify_tail`'s `PROVENANCE_HEADS[0]` check, so `state` is
     /// always set before `classify_tail` ever looks at a second line —
     /// the fallback branch is provably unreachable through the real
-    /// pipeline (mirrors the Python module's own finding in
+    /// pipeline (the Python module records the same finding in
     /// `GeneratorCli.test_unclassifiable_residual_exits_2_with_bounded_examples`'s
     /// comment, which monkeypatches `classify_tail` for the same reason).
-    /// This test therefore pins the PLUMBING directly against
+    /// This test therefore pins the plumbing directly against
     /// `source_notes_from_tail` with a hand-built `sanitized_tail` a
     /// future caller could still produce, rather than round-tripping
     /// through `decode_source_bytes` on synthetic source text.
@@ -7486,7 +10915,7 @@ mod tests {
         // Wire-level preflight: the facade must deliver each bare-toggle
         // marker as its own wire node whose span slices the exact token, in
         // source order — paired markers included (adoption later consumes
-        // them, so THIS test, not the AAT fallback test, pins the stream the
+        // them, so this test, not the AAT fallback test, pins the stream the
         // classifier reads). Observed wire mapping (main
         // 9a480e39): open tokens arrive as `containerOpen` nodes and close
         // tokens as `containerClose` nodes — not `directive`.
@@ -7586,8 +11015,8 @@ mod tests {
         }
     }
 
-    /// A REAL adapter-built node array for `pair_bare_toggles`, produced by
-    /// reusing `inline_content` with the same inputs `build_aat` constructs
+    /// An adapter-built node array for `pair_bare_toggles`, produced by
+    /// reusing `inline_content` with the same inputs `build_aat` constructs.
     /// The adapter
     /// applies the pass to the post-block-classification content arrays
     /// (`pair_bare_toggles_in_blocks`), but for these single-paragraph,
@@ -7617,7 +11046,7 @@ mod tests {
 
     // Ten bare-toggle vectors from
     // tests/fixtures/bare-toggle-model-vectors.json; each Rust test
-    // mirrors the normative `classify_line` adopt/decline decision.
+    // reproduces the normative `classify_line` adopt/decline decision.
 
     #[test]
     fn bare_toggle_simple_pair_adopts_inline_container() {
@@ -7672,7 +11101,7 @@ mod tests {
     #[test]
     fn bare_toggle_improper_interleave_declines_both() {
         // ［＃横組み］［＃罫囲み］…［＃横組み終わり］…: the yoko close mismatches
-        // the kei top → BOTH invalid, nothing pops; the kei pair rolls back.
+        // the kei top → both invalid, nothing pops; the kei pair rolls back.
         let doc = aat_value_for("［＃横組み］［＃罫囲み］x［＃横組み終わり］［＃罫囲み終わり］\n");
         assert!(find_node(&doc, "yokogumi").is_none());
         assert!(find_node(&doc, "keigakomi").is_none());
@@ -7762,7 +11191,7 @@ mod tests {
     fn bare_toggle_valid_nested_inside_invalid_outer_still_adopts() {
         // Construct-scoped invalidation: the keigakomi open is an orphan
         // (invalid), but the yokogumi pair nested inside it is valid and
-        // STILL adopts.
+        // still adopts.
         let doc = aat_value_for("［＃罫囲み］［＃横組み］x［＃横組み終わり］\n");
         let inner = find_first_node(&doc, "yokogumi");
         assert_eq!(inner["content"][0]["value"], "x");
@@ -7789,8 +11218,8 @@ mod tests {
     #[test]
     fn bare_toggle_zero_adoption_input_is_structurally_unchanged() {
         // For every shared vector with zero adoptions, the pass must return
-        // the input array UNCHANGED — full structural equality, so no text,
-        // span, provenance, ordering, or field can drift unnoticed.
+        // the input array unchanged: full structural equality, so no change
+        // to text, span, provenance, ordering, or any field goes undetected.
         for line in [
             "（例）［＃横組み］",                                            // orphan open
             "ab［＃横組み終わり］cd",                                        // orphan close
@@ -7951,19 +11380,42 @@ mod tests {
         assert_eq!(doc["blocks"][1]["content"][0]["value"], "次の段落\n");
     }
 
+    #[test]
+    fn a_block_records_the_interpreted_opener_bytes_around_an_unresolved_clause() {
+        let clause = "ただし改行行頭の「・」のみ１字下げ";
+        let src = format!("［＃ここから２字下げ、{clause}］\n本文\n［＃ここで字下げ終わり］\n");
+        let doc = aat_value_for(&src);
+        let layout = find_first_node(&doc, "layout_block");
+        let markers: Vec<&str> = layout["interpretation_marker_spans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|marker| {
+                let offset = |name: &str| usize::try_from(marker[name].as_u64().unwrap()).unwrap();
+                &src[offset("byte_start")..offset("byte_end")]
+            })
+            .collect();
+        assert_eq!(
+            markers,
+            ["［＃ここから２字下げ、", "］", "［＃ここで字下げ終わり］"],
+            "{layout}"
+        );
+        assert!(find_raw_with_source(&doc, clause).is_some(), "{layout}");
+    }
+
     // `pair_bare_toggles` is `pub(crate)`, unreachable from an integration
     // test under `tests/`. The mirror test over the shared vector file and
-    // the three properties that only need OBSERVABLE adapter outcomes
+    // the three properties that only need observable adapter outcomes
     // (`every_marker_consumed_or_preserved_exactly_once`, `line_isolation`,
     // `nesting_well_formed`) live in `tests/bare_toggle_model.rs`, reached
     // through the public `aat_json_from_bytes`. The two properties below
-    // need a DIRECT `pair_bare_toggles` call (zero-adoption structural
+    // need a direct `pair_bare_toggles` call (zero-adoption structural
     // identity; determinism at the pass level, not the whole-adapter
     // level), so they live here instead.
 
     /// Recognize one of the four bare-toggle marker literals from its bare
     /// token text. Independent of `bare_toggle_marker` (which classifies a
-    /// parsed `Value` node, not a token string) — this just restates the
+    /// parsed `Value` node, not a token string); this restates the
     /// fixed four-token vocabulary for the property generator below, not a
     /// dependency on the classifier's internals.
     fn oracle_marker_kind(token: &str) -> Option<(&'static str, bool)> {
@@ -7976,9 +11428,9 @@ mod tests {
         }
     }
 
-    /// Independent reimplementation of the two-pass bare-toggle grammar —
-    /// mirrors `reports/aat-fidelity/bare-toggle-placement.py`'s
-    /// `classify_tokens` exactly — used ONLY as the property oracle for
+    /// Independent reimplementation of the two-pass bare-toggle grammar of
+    /// `reports/aat-fidelity/bare-toggle-placement.py`'s
+    /// `classify_tokens`, used only as the property oracle for
     /// `bare_toggle_zero_adoption_is_structurally_unchanged`: true iff at
     /// least one marker pair in `markers` (one line's marker sequence, in
     /// source order) would adopt. Independent of
@@ -8059,8 +11511,8 @@ mod tests {
 
         /// Property 2: a line with zero adoptions (per the independent
         /// oracle above) is passed through `pair_bare_toggles` byte-for-
-        /// byte unchanged — full structural equality (review P5-6), not
-        /// mere marker survival.
+        /// byte unchanged: full structural equality, not marker retention
+        /// alone.
         #[test]
         fn bare_toggle_zero_adoption_is_structurally_unchanged(lines in bare_toggle_lines()) {
             let any_adoption = lines.iter().any(|tokens| {

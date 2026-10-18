@@ -1,8 +1,8 @@
 //! Property-based + adversarial tests for `aozora-encoding`.
 //!
 //! The hand-written unit tests in `src/lib.rs` and `src/gaiji.rs` cover
-//! known good and known bad inputs. This file complements them with
-//! coverage that hits each invariant from multiple angles:
+//! known good and known bad inputs. This file adds generated and
+//! adversarial inputs for each invariant:
 //!
 //! * SJIS round-trip via `encoding_rs` for every byte sequence the
 //!   encoder produces — the decoder should accept it back.
@@ -15,8 +15,8 @@
 //! * `parse_u_plus` accepts every valid Unicode scalar via the
 //!   `U+XXXX` form and rejects every surrogate.
 //! * `lookup` is a pure function: same input → same output.
-//! * The smart "single-char description" fallback never resolves to
-//!   a different scalar than the description itself contains.
+//! * The single-char description fallback never resolves to a
+//!   different scalar than the description itself contains.
 
 use ab_aozora_encoding::gaiji::{Resolved, lookup};
 use ab_aozora_encoding::{DecodeError, decode_sjis, decode_sjis_into, has_utf8_bom};
@@ -24,15 +24,10 @@ use proptest::collection::vec as prop_vec;
 use proptest::option::of as prop_option_of;
 use proptest::prelude::*;
 
-// -----------------------------------------------------------------
-// SJIS decode — round-trip and equivalence
-// -----------------------------------------------------------------
-
 /// Encode any UTF-8 string into SJIS via `encoding_rs` (lossy:
-/// non-encodable codepoints become `&#NNN;` HTML entities). For the
-/// tests below we constrain the proptest input to characters that
-/// `encoding_rs` can faithfully encode, so the round-trip is byte-
-/// identical.
+/// non-encodable codepoints become `&#NNN;` HTML entities). The tests
+/// below restrict the proptest input to characters that `encoding_rs`
+/// encodes without loss, so the round-trip is byte-identical.
 fn encode_sjis(s: &str) -> Vec<u8> {
     let (bytes, _, _had_unmappable) = encoding_rs::SHIFT_JIS.encode(s);
     bytes.into_owned()
@@ -91,8 +86,8 @@ fn into_with_zero_capacity_still_decodes() {
     assert_eq!(buf, "青");
 }
 
-/// Trail-byte error path. The decoder must classify these as
-/// `ShiftJisInvalid`, not silently truncate.
+/// Trail-byte error path. The decoder must return `ShiftJisInvalid`
+/// rather than truncate the output.
 #[test]
 fn malformed_trail_byte_is_rejected_strictly() {
     // 0x82 expects a trail in 0x40..=0xFC, != 0x7F. 0x3F is invalid.
@@ -108,10 +103,6 @@ fn truncation_at_lead_byte_is_rejected() {
         Err(DecodeError::ShiftJisInvalid)
     ));
 }
-
-// -----------------------------------------------------------------
-// UTF-8 BOM detection — exhaustive boundary
-// -----------------------------------------------------------------
 
 #[test]
 fn bom_detection_is_exact() {
@@ -131,10 +122,6 @@ fn bom_detection_is_exact() {
         assert!(!has_utf8_bom(&delta), "false positive on {delta:?}");
     }
 }
-
-// -----------------------------------------------------------------
-// Gaiji — purity, write_to / utf8_len consistency, edge cases
-// -----------------------------------------------------------------
 
 #[test]
 fn lookup_is_pure_repeated_calls_return_identical_results() {
@@ -171,28 +158,28 @@ fn write_to_yields_utf8_len_bytes() {
 }
 
 #[test]
-fn smart_fallback_resolves_only_to_the_description_itself() {
-    // Whatever the description's single character is, the smart
-    // fallback must echo IT, not transform it.
+fn single_char_fallback_resolves_only_to_the_description_itself() {
+    // The fallback returns the description's single character
+    // unchanged.
     for ch in ['A', 'あ', '丂', '畺', '龔', '𠂉'] {
         let s = ch.to_string();
-        // The two arguments below are sentinels guaranteed not to be
-        // in any of the gaiji tables; the smart fallback is the only
-        // path that can fire.
+        // The mencode argument is a sentinel absent from every gaiji
+        // table, so the single-char fallback is the only path that can
+        // resolve.
         let r = lookup(None, Some("__not-a-real-mencode__"), &s);
         match r {
             Some(Resolved::Char(c)) if c == ch => {}
             // 〓 is in the description table; it would resolve via
-            // the dictionary path before the fallback kicks in.
+            // the dictionary path before the fallback applies.
             other => panic!("char {ch} fallback gave {other:?}"),
         }
     }
 }
 
 #[test]
-fn smart_fallback_does_not_fire_on_two_char_descriptions() {
-    // Even if the description contains nothing from the dictionary,
-    // multi-char descriptions must not trigger the single-char path.
+fn single_char_fallback_does_not_apply_to_two_char_descriptions() {
+    // A multi-char description that is not in the dictionary does not
+    // resolve through the single-char path.
     for desc in ["AB", "あい", "ab", "丂畺", "𠂉𠁫"] {
         // Sentinel mencode not in any table.
         let r = lookup(None, Some("__not-a-real-mencode__"), desc);
@@ -229,8 +216,8 @@ fn u_plus_path_accepts_every_scalar_including_emoji() {
 
 #[test]
 fn existing_short_circuit_takes_precedence_over_every_other_path() {
-    // Even if the mencode and description would resolve, the
-    // caller-provided existing wins.
+    // The caller-provided `existing` takes precedence even when the
+    // mencode and description would resolve.
     let r = lookup(Some('Z'), Some("第3水準1-85-54"), "木＋吶のつくり");
     assert_eq!(r, Some(Resolved::Char('Z')));
 }
@@ -241,10 +228,10 @@ proptest! {
         .. ProptestConfig::default()
     })]
 
-    /// Round-trip: encoding_rs encode + our decode_sjis must yield
-    /// the same string for any character SJIS supports. We restrict
-    /// the input to ASCII printable + hiragana so unmappable
-    /// characters don't change the encoded length and we can assert
+    /// Round-trip: `encoding_rs` encode followed by `decode_sjis` must
+    /// yield the same string for any character SJIS supports. The input
+    /// is restricted to printable ASCII and hiragana, so no unmappable
+    /// character changes the encoded length and the test can assert
     /// byte-identical equivalence.
     #[test]
     fn sjis_round_trip_ascii_and_hiragana(
@@ -267,7 +254,7 @@ proptest! {
         let into = decode_sjis_into(&bytes, &mut buf);
         match (owned, into) {
             (Ok(s), Ok(())) => prop_assert_eq!(s, buf),
-            (Err(_), Err(_)) => {} // both reject — fine
+            (Err(_), Err(_)) => {} // both reject the input
             (Ok(s), Err(e)) => prop_assert!(false, "owned ok({s:?}) but into err({e:?})"),
             (Err(e), Ok(())) => prop_assert!(false, "owned err({e:?}) but into ok({buf:?})"),
         }
@@ -282,16 +269,16 @@ proptest! {
         mencode in prop_option_of("[\u{0020}-\u{007E}]{0,30}"),
         description in "[\u{0020}-\u{007E}\u{3041}-\u{3093}]{0,20}",
     ) {
-        // The result is either Some/None — both are valid; we just
-        // pin that the function does not panic. Force-use the
-        // `#[must_use]` return value so clippy doesn't complain.
+        // Both `Some` and `None` are valid; the test checks only that
+        // the function does not panic. The assertion uses the
+        // `#[must_use]` return value, which clippy requires.
         let r = lookup(existing, mencode.as_deref(), &description);
         prop_assert!(matches!(r, Some(_) | None));
     }
 
     /// `Resolved::write_to` always writes exactly `utf8_len()` bytes.
-    /// Pinned via the lookup result to exercise BOTH variants (Char
-    /// and Multi).
+    /// The values come from `lookup` results, covering both variants
+    /// (Char and Multi).
     #[test]
     fn write_to_byte_count_matches_utf8_len(
         // 第3水準1-4-* mostly covers combo cells; 1-85-* mostly char.

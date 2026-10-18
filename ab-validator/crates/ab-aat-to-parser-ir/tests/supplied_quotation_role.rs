@@ -86,39 +86,45 @@ fn a_named_role_is_claimed_alongside_the_geometry_it_is_supplied_with() {
     assert!(!kinds.iter().any(|kind| kind == "quotation"), "{kinds:?}");
 }
 
+fn explanation_notes(ir: &serde_json::Value) -> Vec<&str> {
+    ir["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["type"] == "editor-note" && node["note_kind"] == "explanation")
+        .map(|node| node["text"].as_str().unwrap())
+        .collect()
+}
+
 #[test]
-fn a_supplied_vertical_gap_stays_a_retained_clause() {
-    // `３行アキ` states a gap the enclosed lines do not carry; executing it
-    // would insert blank lines the source does not have, so it is retained.
+fn a_supplied_vertical_gap_is_an_explanation_not_geometry() {
+    // `３行アキ` states a gap absent from the enclosed lines; applying it
+    // would insert blank lines the source does not have.
     let ir = convert("［＃ここから引用文、３字下げ、３行アキ］\n引いた文\n［＃引用文終わり］");
     let scope = &ir["layout_blocks"][0];
     assert_eq!(scope["role"], "quotation");
     assert_eq!(scope["indent"], 3);
-    let problems = ir["interpretation_problems"].as_array().unwrap();
-    assert!(!problems.is_empty(), "the gap clause is retained");
+    assert_eq!(explanation_notes(&ir), ["３行アキ"]);
 }
 
 #[test]
-fn a_line_subset_exception_stays_a_retained_clause() {
-    // `はじめの「一」のみ２字下げ` names a subset of the enclosed lines. The
+fn a_line_subset_exception_is_an_explanation_not_geometry() {
+    // `はじめの「一」のみ２字下げ` refers to a subset of the enclosed lines. The
     // scope holds no line identity to resolve it against, so the clause is
-    // retained rather than applied to a guessed line.
+    // kept as the transcriber's statement rather than applied to a guessed line.
     let ir = convert(
         "［＃ここから引用文、３字下げ、はじめの「一」のみ２字下げ］\n一　引いた文\n［＃引用文終わり］",
     );
     let scope = &ir["layout_blocks"][0];
     assert_eq!(scope["role"], "quotation");
     assert_eq!(scope["indent"], 3);
-    assert!(
-        !ir["interpretation_problems"].as_array().unwrap().is_empty(),
-        "the exception clause is retained"
-    );
+    assert_eq!(explanation_notes(&ir), ["はじめの「一」のみ２字下げ"]);
 }
 
 #[test]
-fn a_quotation_closer_does_not_close_a_scope_that_names_no_role() {
-    // The closer names the role it ends. Letting it close a plain indentation
-    // scope would make the source say the enclosed lines were quoted.
+fn a_quotation_closer_does_not_close_a_scope_that_states_no_role() {
+    // The closer states the role it ends. Closing a plain indentation scope
+    // with it would assert that the enclosed lines were quoted.
     let ir = convert("［＃ここから３字下げ］\n地の文\n［＃引用文終わり］");
     assert_eq!(ir["layout_blocks"], serde_json::json!([]));
     assert!(
@@ -128,10 +134,10 @@ fn a_quotation_closer_does_not_close_a_scope_that_names_no_role() {
 }
 
 #[test]
-fn a_close_that_names_no_scope_keyword_stays_unresolved() {
-    // `［＃引用、終わり］` names neither the indentation family nor the
-    // 引用文 role, and the one work carrying it opens no quotation scope for it
-    // to end. Reading it as a close would assert a scope the source never
+fn a_close_that_contains_no_scope_keyword_stays_unresolved() {
+    // `［＃引用、終わり］` states neither the indentation family nor the
+    // 引用文 role, and the one work containing it opens no quotation scope for
+    // it to end. Reading it as a close would assert a scope the source never
     // opened, so it stays retained source.
     let ir = convert("引いた文\n［＃引用、終わり］");
     assert!(

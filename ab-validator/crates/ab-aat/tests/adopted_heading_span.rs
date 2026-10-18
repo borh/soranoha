@@ -17,9 +17,10 @@ fn find<'a>(value: &'a Value, kind: &str) -> Option<&'a Value> {
 
 #[test]
 fn heading_adoption_preserves_exact_target_and_marker_extent() {
-    for title in ["茶話", "茶話《ちゃばなし》"] {
+    for (title, particle) in [("茶話", "は"), ("茶話《ちゃばなし》", "は"), ("茶話", "に")]
+    {
         let target = "茶話";
-        let heading = format!("{title}［＃「{target}」は同行中見出し］");
+        let heading = format!("{title}［＃「{target}」{particle}同行中見出し］");
         let source = format!("題\n作者\n\n［＃１字下げ］{heading}［＃地付き］２・27\n\n底本：本\n");
         let aat: Value =
             serde_json::from_slice(&aat_json_from_bytes(source.as_bytes()).unwrap()).unwrap();

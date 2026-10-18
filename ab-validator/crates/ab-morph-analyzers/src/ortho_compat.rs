@@ -7,15 +7,14 @@ use crate::VibratoAnalyzer;
 impl OrthoTokenizer for VibratoAnalyzer {
     /// Tokenizes via Vibrato for the proper-noun guard in `HeuristicV1`.
     ///
-    /// # Failure mode: `tokenize()` panics on invalid input; a future signature may return `Result`.
-    /// On Vibrato `analyze` error (e.g. dictionary load failure) this returns an
-    /// EMPTY token list, which `HeuristicV1` reads as
-    /// `proper_noun_char_ratio = 0` and proceeds. The proper-noun guard thus
-    /// SILENTLY degenerates to "no proper nouns" on failure. We log to stderr
-    /// so the failure is observable, but the contract remains `Vec`-returning
-    /// for backwards compatibility with the original trait shape. A future trait
-    /// revision should return `Result<Vec<OrthoToken>, _>` and route errors to
-    /// the pipeline `errors_writer`.
+    /// # Failure mode
+    ///
+    /// `tokenize()` panics on invalid input. On Vibrato `analyze` error (e.g.
+    /// dictionary load failure) this returns an empty token list, which
+    /// `HeuristicV1` reads as `proper_noun_char_ratio = 0`, so the proper-noun
+    /// guard treats the sentence as containing no proper nouns. The error is
+    /// logged to stderr; the `OrthoTokenizer` signature returns `Vec` and does
+    /// not propagate it.
     fn tokenize(&self, text: &str) -> Vec<OrthoToken> {
         let doc = PlainTextDocument {
             text_id: String::new(),

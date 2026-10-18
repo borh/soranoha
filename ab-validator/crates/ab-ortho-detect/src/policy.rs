@@ -6,7 +6,7 @@
 //! ortho-normalized input view: the tokenizer profile *declares* the expected
 //! hash and the run *records* the applied hash; a run is valid iff they agree.
 //!
-//! **Producer/consumer split (U1 / I2-D8).** All compute-heavy work stays in
+//! **Producer/consumer split.** All compute-heavy work stays in
 //! Rust: this crate is the sole producer of the policy hash. ABC reads the
 //! hash opaquely; it never recomputes normalization nor re-derives the hash.
 //!
@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 
 use crate::types::{OrthoDetectorId, OrthoNormalization};
 
-/// Why a [`NormalizationPolicy`] is not admissible for a run (I2-D17 coupling).
+/// Why a [`NormalizationPolicy`] is not admissible for a run.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PolicyError {
     /// A `HistoricalToModern` kind is present but the detector binds no
@@ -67,7 +67,7 @@ pub struct NormalizationPolicy {
 
 /// Serialized detector identity nested inside a policy descriptor.
 ///
-/// Mirrors [`OrthoDetectorId`] but is defined here so the canonical descriptor
+/// Wraps [`OrthoDetectorId`] and is defined here so the canonical descriptor
 /// shape is owned by this module and independent of the wire form of the
 /// detector enum elsewhere.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -115,8 +115,8 @@ impl NormalizationPolicy {
     }
 
     /// Reject policies whose derived input would not be a pure function of
-    /// `(source, policy_hash)`. Currently enforces I2-D17: a `HistoricalToModern`
-    /// kind requires a detector that binds a `dictionary_hash`, otherwise the
+    /// `(source, policy_hash)`. A `HistoricalToModern` kind requires a
+    /// detector that binds a `dictionary_hash`, otherwise the
     /// modernizing dictionary is unpinned and two runs under the "same" policy
     /// could differ. The pipeline must call this before applying a policy; the
     /// infallible constructors stay infallible so hash-ordering tests can build
@@ -148,7 +148,7 @@ impl NormalizationPolicy {
     ///
     /// # Panics
     ///
-    /// Never in practice: the descriptor contains only strings, string arrays,
+    /// Does not panic: the descriptor contains only strings, string arrays,
     /// and nested objects, all of which serialize infallibly.
     #[must_use]
     pub fn descriptor_json(&self) -> serde_json::Value {
@@ -186,7 +186,7 @@ fn canonical_json_string(value: &serde_json::Value) -> String {
             }
         }
         // serde_json escapes strings per the JSON standard (and, like ES6/JCS,
-        // does NOT escape `/`); our ASCII identifiers need no escaping anyway.
+        // does not escape `/`); the descriptor's ASCII identifiers need no escaping.
         serde_json::Value::String(_) | serde_json::Value::Number(_) => value.to_string(),
         serde_json::Value::Array(items) => {
             let inner = items
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn historical_kind_without_dictionary_is_rejected() {
-        // I2-D17: HistoricalToModern paired with a dictionary-less detector.
+        // HistoricalToModern paired with a dictionary-less detector.
         let heuristic = NormalizationPolicy::ortho_normalize_v1(
             OrthoDetectorId::HeuristicV1,
             vec![OrthoNormalization::HistoricalToModern],
@@ -316,8 +316,8 @@ mod tests {
 
     #[test]
     fn historical_detector_canonical_form_is_pinned() {
-        // Golden: pin the JCS canonical descriptor + hash for the M2 detector
-        // shape, using a FIXED dictionary_hash/rules_hash so the value is stable
+        // Golden: pin the JCS canonical descriptor + hash for the historical
+        // detector shape, using a fixed dictionary_hash/rules_hash so the value is stable
         // regardless of the real archive. A change to key order or field names
         // here is a breaking change to every historical run's recorded policy.
         let policy = NormalizationPolicy::ortho_normalize_v1(

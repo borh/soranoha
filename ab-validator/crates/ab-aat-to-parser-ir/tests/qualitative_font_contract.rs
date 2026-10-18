@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 fn font_sums_reject_numeric_fields_on_qualitative_comparisons() {
     for (schema, definition, kind) in [
         (
-            include_str!("../../../data/aat-schema.json"),
+            include_str!("../../../schemas/outputs/aat-schema.json"),
             "formatting_attribute",
             "font_size",
         ),

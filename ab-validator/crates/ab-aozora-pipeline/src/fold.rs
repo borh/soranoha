@@ -5,9 +5,8 @@
 //! [`Node`] directly through an
 //! [`Allocator`](ab_aozora_syntax::alloc::Allocator); this module's
 //! [`Normalizer`] is the PUA-rewriter + position-recorder over those spans.
-//! Every interned string lives once, in the allocator's
-//! `NodeStore`, which threads straight into
-//! the output: no arena, no conversion step.
+//! Every interned string is stored once, in the allocator's `NodeStore`,
+//! which is moved into the output without a conversion step.
 //!
 //! ## Pipeline
 //!
@@ -15,7 +14,7 @@
 //!    on byte spans and event indices; they never construct AST.
 //! 2. The classify stage is invoked with an
 //!    [`Allocator`](ab_aozora_syntax::alloc::Allocator); owned AST
-//!    nodes land in its `NodeStore`, strings
+//!    nodes are stored in its `NodeStore`, strings
 //!    interned through the store's [`StrInterner`](ab_aozora_syntax::ast::StrInterner)
 //!    so byte-equal content shares a single id.
 //! 3. A single fused walk emits the PUA-rewritten text and builds the
@@ -41,11 +40,9 @@ use ab_aozora_syntax::{
 /// Run the lex pipeline and materialise the result as an owned, lifetime-free
 /// [`LexOutput`] (`Send + Sync`).
 ///
-/// The native owned producer: the classify stage builds the owned tree in one
-/// pass, so the
-/// returned output owns all its payloads (interned strings, content / segment
-/// runs, side tables). This is what `Document::parse` / `Document::lex`
-/// call.
+/// The classify stage builds the owned tree in one pass, so the returned
+/// output owns all its payloads (interned strings, content / segment runs,
+/// side tables). `Document::parse` and `Document::lex` call this function.
 #[must_use]
 pub fn lex(source: &str) -> LexOutput {
     crate::pipeline::Pipeline::run_to_completion(source)
@@ -55,9 +52,8 @@ pub fn lex(source: &str) -> LexOutput {
 ///
 /// Holds the position-keyed registry entries and the source-keyed side table.
 /// Each emitted [`Node`] is `Copy`, so recording it is a plain push: no
-/// conversion, no second store (the allocator's
-/// `NodeStore` is authoritative and threads
-/// into the output separately).
+/// conversion, no second store (the allocator's `NodeStore` is
+/// authoritative and is moved into the output separately).
 #[derive(Debug, Default)]
 pub(crate) struct Recorder {
     pub(crate) entries: Vec<(u32, NodeRef)>,
@@ -167,7 +163,9 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
         Node::Line(line) => match line {
             LineFormat::Indent { .. } => (ConstructId::Indent, Role::Layout, semantic, typed),
             LineFormat::AlignEnd { .. } => (ConstructId::AlignEnd, Role::Layout, semantic, typed),
-            LineFormat::Center { .. } => (ConstructId::Center, Role::Layout, semantic, typed),
+            LineFormat::Center { .. } | LineFormat::PagePlacement { .. } => {
+                (ConstructId::Center, Role::Layout, semantic, typed)
+            }
             LineFormat::Framed(_) => (
                 ConstructId::FramedOpen,
                 Role::ContainerSyntax,
@@ -188,6 +186,15 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
         ),
         Node::SectionBreak(_) => (
             ConstructId::SectionBreak,
+            Role::Break,
+            Disposition::StructuralControl,
+            EvidenceClass::StructuralToken,
+        ),
+        Node::QualifiedBreak(break_) => (
+            match break_.kind {
+                ab_aozora_syntax::QualifiedBreakKind::Page => ConstructId::PageBreak,
+                _ => ConstructId::SectionBreak,
+            },
             Role::Break,
             Disposition::StructuralControl,
             EvidenceClass::StructuralToken,
@@ -220,6 +227,9 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
                 Disposition::PreservedOpaque,
                 EvidenceClass::UnknownDirective,
             ),
+            DirectiveKind::FormattingInstruction(_) => {
+                (ConstructId::Emphasis, Role::Typography, semantic, typed)
+            }
             DirectiveKind::WarichuOpen => (
                 ConstructId::WarichuOpen,
                 Role::SourceAnnotation,
@@ -231,6 +241,24 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
                 Role::SourceAnnotation,
                 Disposition::StructuralControl,
                 EvidenceClass::StructuralToken,
+            ),
+            DirectiveKind::WarigakiOpen => (
+                ConstructId::WarigakiOpen,
+                Role::SourceAnnotation,
+                Disposition::StructuralControl,
+                EvidenceClass::StructuralToken,
+            ),
+            DirectiveKind::WarigakiClose => (
+                ConstructId::WarigakiClose,
+                Role::SourceAnnotation,
+                Disposition::StructuralControl,
+                EvidenceClass::StructuralToken,
+            ),
+            DirectiveKind::PageSideNote => (
+                ConstructId::PageSideNote,
+                Role::SourceAnnotation,
+                Disposition::PreservedSidecarValue,
+                EvidenceClass::TypedNode,
             ),
             // The typed editorial annotations render as visible markers (or,
             // for sic/variant/empty, as raw text carried in the output), so
@@ -261,6 +289,24 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
                 semantic,
                 typed,
             ),
+            DirectiveKind::UncertainCorrection => (
+                ConstructId::UncertainCorrection,
+                Role::SourceAnnotation,
+                semantic,
+                typed,
+            ),
+            DirectiveKind::SourceLegibilityNote => (
+                ConstructId::SourceLegibilityNote,
+                Role::SourceAnnotation,
+                semantic,
+                typed,
+            ),
+            DirectiveKind::IndentationQuestion => (
+                ConstructId::IndentationQuestion,
+                Role::SourceAnnotation,
+                semantic,
+                typed,
+            ),
             DirectiveKind::OmissionNote => (
                 ConstructId::OmissionNote,
                 Role::SourceAnnotation,
@@ -269,6 +315,18 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
             ),
             DirectiveKind::IncompletenessNote => (
                 ConstructId::IncompletenessNote,
+                Role::SourceAnnotation,
+                semantic,
+                typed,
+            ),
+            DirectiveKind::TranslationNote => (
+                ConstructId::TranslationNote,
+                Role::SourceAnnotation,
+                semantic,
+                typed,
+            ),
+            DirectiveKind::RubyReadingAnnotation => (
+                ConstructId::RubyReadingAnnotation,
                 Role::SourceAnnotation,
                 semantic,
                 typed,
@@ -285,7 +343,7 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
                 semantic,
                 typed,
             ),
-            DirectiveKind::ExplanationNote => (
+            DirectiveKind::ExplanationNote | DirectiveKind::NotationExample => (
                 ConstructId::ExplanationNote,
                 Role::SourceAnnotation,
                 semantic,
@@ -315,7 +373,7 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
                 semantic,
                 typed,
             ),
-            DirectiveKind::MarginNotePairOpen => (
+            DirectiveKind::MarginNotePairOpen | DirectiveKind::MarginNotePairOpenResolved => (
                 ConstructId::MarginNotePairOpen,
                 Role::SourceAnnotation,
                 semantic,
@@ -347,14 +405,25 @@ fn node_policy(node: Node) -> Option<(ConstructId, Role, Disposition, EvidenceCl
             semantic,
             typed,
         ),
-        Node::MarginNote(_) => (
-            ConstructId::MarginNote,
-            Role::SourceAnnotation,
-            semantic,
-            typed,
-        ),
-        // No fact is invented for parser variants absent from the approved
-        // policy. Policy evolution must add an explicit arm.
+        Node::MarginNote(margin_note) => {
+            if margin_note.pair.is_some() {
+                (
+                    ConstructId::MarginNotePairClose,
+                    Role::SourceAnnotation,
+                    semantic,
+                    typed,
+                )
+            } else {
+                (
+                    ConstructId::MarginNote,
+                    Role::SourceAnnotation,
+                    semantic,
+                    typed,
+                )
+            }
+        }
+        // Parser variants absent from the approved policy produce no fact;
+        // extending the policy requires an explicit arm.
         _ => return None,
     })
 }
@@ -381,12 +450,14 @@ const fn forward_attr_policy(
         | ForwardAttr::SuperScript
         | ForwardAttr::SubScript
         | ForwardAttr::Lowered
+        | ForwardAttr::Raised { .. }
         | ForwardAttr::Exponent
         | ForwardAttr::SmallScript(_)
         | ForwardAttr::Framed(_)
         | ForwardAttr::Horizontal
         | ForwardAttr::Caption
         | ForwardAttr::FontSize(_)
+        | ForwardAttr::QualitativeFontSize(_)
         | ForwardAttr::FontSizeAbsolute(_)
         | ForwardAttr::Fraction
         | ForwardAttr::AccentDot
@@ -530,7 +601,7 @@ impl<'src> Normalizer<'src> {
             self.out.push(BLOCK_CLOSE_SENTINEL);
             self.out.push_str("\n\n");
             // The normalized tree needs a close; source ownership belongs
-            // only to the following opener, so no source node is invented.
+            // only to the following opener, so no source node is recorded.
             self.recorder
                 .entries
                 .push((close, NodeRef::BlockClose(RegionClose::of(kind))));
@@ -604,6 +675,7 @@ impl<'src> Normalizer<'src> {
             amount,
             kumi_width,
             styles,
+            partial,
         } = close
         {
             let indent = RegionClose::Indent {
@@ -611,6 +683,7 @@ impl<'src> Normalizer<'src> {
                 amount,
                 kumi_width,
                 styles,
+                partial,
             };
             let targets = [indent, RegionClose::Formula];
             if self.open_stack.len() >= targets.len()
@@ -630,6 +703,7 @@ impl<'src> Normalizer<'src> {
             amount,
             kumi_width,
             mut styles,
+            partial,
         } = close
             && styles.horizontal.take().is_some()
             && matches!(
@@ -649,6 +723,7 @@ impl<'src> Normalizer<'src> {
                 amount,
                 kumi_width,
                 styles,
+                partial,
             };
             if scope_closer_matches(self.open_stack[self.open_stack.len() - 2].1, indent) {
                 self.emit_verified_closes(span, [RegionClose::Horizontal, indent]);
@@ -657,6 +732,7 @@ impl<'src> Normalizer<'src> {
         }
         let inline = close.is_inline();
         if !inline {
+            self.drop_unclosed_inline_scopes(close);
             self.out.push_str("\n\n");
         }
         let pos = self.current_pos();
@@ -692,6 +768,36 @@ impl<'src> Normalizer<'src> {
                 span,
                 close.kind_str(),
             ));
+        }
+    }
+
+    /// An inline opener that ends its source line opens nothing on that line.
+    /// Before a block closer that matches the opener beneath them, such
+    /// openers still on the stack are reported unclosed and discarded.
+    fn drop_unclosed_inline_scopes(&mut self, close: RegionClose) {
+        let source = self.source;
+        let line_final = |span: &Span| {
+            source[span.end as usize..]
+                .split('\n')
+                .next()
+                .is_some_and(|rest| rest.trim().is_empty())
+        };
+        let inline = self
+            .open_stack
+            .iter()
+            .rev()
+            .take_while(|(_, open, span)| open.is_inline() && line_final(span))
+            .count();
+        let Some(&(_, below, _)) = self.open_stack.iter().rev().nth(inline) else {
+            return;
+        };
+        if inline == 0 || !scope_closer_matches(below, close) {
+            return;
+        }
+        let first = self.open_stack.len() - inline;
+        for (_, kind, span) in self.open_stack.drain(first..) {
+            self.diagnostics
+                .push(Diagnostic::unclosed_container(span, kind.kind_str()));
         }
     }
 
@@ -801,20 +907,22 @@ impl<'src> Normalizer<'src> {
             Node::Line(LineFormat::AlignEnd { .. }) => {
                 self.pending_single_line = Some("align-end");
             }
-            Node::Line(LineFormat::Center { .. }) => {
+            Node::Line(LineFormat::Center { .. } | LineFormat::PagePlacement { .. }) => {
                 self.pending_single_line = Some("center");
             }
             Node::Line(LineFormat::Gothic) => {
                 self.pending_single_line = Some("line-gothic");
             }
             Node::Directive(ann) => match ann.kind {
-                DirectiveKind::WarichuOpen => self.warichu_depth += 1,
-                DirectiveKind::WarichuClose => {
+                DirectiveKind::WarichuOpen | DirectiveKind::WarigakiOpen => {
+                    self.warichu_depth += 1;
+                }
+                DirectiveKind::WarichuClose | DirectiveKind::WarigakiClose => {
                     self.warichu_depth = self.warichu_depth.saturating_sub(1);
                 }
                 _ => {}
             },
-            Node::PageBreak | Node::SectionBreak(_) => {
+            Node::PageBreak | Node::SectionBreak(_) | Node::QualifiedBreak(_) => {
                 if let Some(container) = self.pending_single_line.take() {
                     self.diagnostics
                         .push(Diagnostic::break_in_single_line_container(
@@ -862,6 +970,7 @@ pub(crate) fn scope_closer_matches(open: RegionFormat, close: RegionClose) -> bo
             amount,
             kumi_width,
             styles,
+            ..
         },
     ) = (open, close)
     {
@@ -918,13 +1027,12 @@ pub(crate) fn scope_closer_matches(open: RegionFormat, close: RegionClose) -> bo
 /// Whether the normalizer wrote a blank line on each side of this node's
 /// sentinel.
 ///
-/// The padding is an internal device: the line-oriented recognizers that run
-/// over the normalized text need a boundary around a block marker, and the
-/// normalizer supplies one whether or not the source had it. It is not part of
-/// the source the node came from, so anything reconstructing source from the
-/// normalized text has to take it back off. Leaving it on is not cosmetic: a
-/// synthesized newline expires an open bracket in the pair stage, so it can
-/// change the bracket structure the next parse sees.
+/// The line-oriented recognizers that run over the normalized text require a
+/// line boundary around a block marker, and the normalizer writes one whether
+/// or not the source had it. The padding is not part of the node's source, so
+/// a reconstruction of source from the normalized text must remove it: a
+/// synthesized newline expires an open bracket in the pair stage and can
+/// change the bracket structure of the next parse.
 #[must_use]
 pub fn sentinel_is_blank_line_padded(node: NodeRef) -> bool {
     match node {
@@ -939,13 +1047,14 @@ pub fn sentinel_is_blank_line_padded(node: NodeRef) -> bool {
 }
 
 /// Whether an owned AST node is a standalone block (renders on its own line, no
-/// surrounding plain-text context required). Pinned by variant kind so adding a
-/// new standalone-block variant only needs updating here.
+/// surrounding plain-text context required). Decided by variant kind, so a new
+/// standalone-block variant is added here only.
 fn is_standalone_block_for_render(node: Node) -> bool {
     matches!(
         node,
         Node::PageBreak
             | Node::SectionBreak(_)
+            | Node::QualifiedBreak(_)
             | Node::BodyEnd
             | Node::Heading(_)
             | Node::Illustration(_)
@@ -967,7 +1076,8 @@ mod tests {
     use ab_aozora_spec::{NormalizedOffset, Sentinel};
     use ab_aozora_syntax::ast::Content;
     use ab_aozora_syntax::{
-        AbsoluteSize, AccentMark, BoutenKind, BoutenPosition, EnclosureKind, FontShift, IndentBlock,
+        AbsoluteSize, AccentMark, BoutenKind, BoutenPosition, DecorationPosition, EnclosureKind,
+        FontShift, IndentBlock,
     };
     use core::num::NonZeroI8;
 
@@ -1005,7 +1115,7 @@ mod tests {
         assert_eq!(
             forward_attr_policy(ForwardAttr::Bouten {
                 kind: BoutenKind::Goma,
-                position: BoutenPosition::Right,
+                position: DecorationPosition::Right,
             })
             .unwrap()
             .0,

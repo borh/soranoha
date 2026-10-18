@@ -79,7 +79,7 @@ pub fn kata_to_hira(text: &str) -> String {
             // Half-width katakana: first convert to full-width, recurse
             c if ('\u{FF65}'..='\u{FF9F}').contains(&c) => {
                 if let Some(fullwidth) = halfwidth_to_fullwidth_katakana(c) {
-                    // Recurse: the fullwidth char will hit the main block above
+                    // Recurse: the fullwidth char matches the main block above
                     let s = fullwidth.to_string();
                     out.push_str(&kata_to_hira(&s));
                 } else {

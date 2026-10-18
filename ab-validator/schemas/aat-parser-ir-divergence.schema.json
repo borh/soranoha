@@ -17,7 +17,7 @@
     "count": {
       "type": "integer",
       "minimum": 1,
-      "description": "Occurrences of this rule in this work (per-rule aggregation; full-corpus probe Finding I)."
+      "description": "Number of occurrences of this rule in this work, aggregated per rule."
     },
     "first_path": {
       "type": ["string", "null"],

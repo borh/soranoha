@@ -63,7 +63,7 @@ impl VaporettoAnalyzer {
         Self::from_dictionary_path(analyzer_id, dictionary_path)
     }
 
-    /// Load and parse a dictionary from an explicit `.model` path.
+    /// Resolve a dictionary by name and load it.
     ///
     /// # Errors
     ///

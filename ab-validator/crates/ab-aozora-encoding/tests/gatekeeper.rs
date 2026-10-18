@@ -1,30 +1,28 @@
-//! 金庫番 (gatekeeper) tests for `aozora-encoding`.
+//! Invariant tests for the public surface of `aozora-encoding`.
 //!
-//! These tests pin invariants that should *only* change as a
-//! deliberate, reviewed action:
+//! These tests assert invariants that change only through an edit to
+//! this file:
 //!
 //! * Public error variant inventory.
 //! * `Resolved` variant inventory + `Copy`/`Eq` bounds.
 //! * Combo-cell shape (every entry is a 2-codepoint sequence).
-//! * Combo cells are exclusively in JIS X 0213 plane 1 row 4-5.
 //! * Single-char table is non-empty + the spec's plane-1/plane-2
 //!   counts agree with the build-time constants.
 //! * Description-fallback table has the canonical 〓 / 〻 specials.
-//! * `lookup` decision-tree: each input shape lands on a specific
+//! * `lookup` decision tree: each input shape reaches a specific
 //!   tier in the documented order.
 //!
-//! Any change to the pinned numbers must update the corresponding
-//! constant and CHANGELOG note (where applicable).
+//! A change to an asserted number must update the corresponding
+//! constant.
 
 use ab_aozora_encoding::DecodeError;
 use ab_aozora_encoding::gaiji::{Resolved, lookup, table_sizes};
 use ab_aozora_encoding::{Suijun, is_platform_dependent, jis_level, level_table_sizes};
 
 #[test]
-fn gatekeeper_decode_error_is_non_exhaustive_with_one_pinned_variant() {
-    // Today there is exactly one variant. Adding a new variant
-    // requires updating this test AND the user-facing JP error
-    // strings (see workspace I3 contract).
+fn decode_error_is_non_exhaustive_with_one_variant() {
+    // `DecodeError` has one variant. Adding a variant requires updating
+    // this test and the user-facing Japanese error strings.
     let err = DecodeError::ShiftJisInvalid;
     assert_eq!(
         format!("{err}"),
@@ -35,27 +33,27 @@ fn gatekeeper_decode_error_is_non_exhaustive_with_one_pinned_variant() {
 }
 
 #[test]
-fn gatekeeper_resolved_variant_inventory() {
-    // Two variants: Char (single Unicode scalar) + Multi (combining
-    // sequence as a static str). Both must remain `Copy` so they
-    // can sit inside the parser's `Copy`-able tree.
+fn resolved_variant_inventory() {
+    // Two variants: Char (single Unicode scalar) and Multi (combining
+    // sequence as a static str). Both must remain `Copy` so the parser's
+    // tree that contains them remains `Copy`.
     fn assert_copy<T: Copy>() {}
     fn assert_eq_<T: Eq>() {}
     assert_copy::<Resolved>();
     assert_eq_::<Resolved>();
 
-    // Pin both constructors round-trip via Eq.
+    // Both constructors compare by value through `Eq`.
     assert_eq!(Resolved::Char('A'), Resolved::Char('A'));
     assert_eq!(Resolved::Multi("か゚"), Resolved::Multi("か゚"));
     assert_ne!(Resolved::Char('A'), Resolved::Multi("A"));
 }
 
 #[test]
-fn gatekeeper_table_sizes_match_jisx0213_2004_spec() {
+fn table_sizes_match_jisx0213_2004_spec() {
     // The exact counts come from the JIS X 0213:2004 normative table
-    // + 8th-edition 外字注記辞書. Bumping any of these requires
-    // re-verifying against the upstream source; do NOT update them
-    // to make a failing test pass.
+    // and the 8th-edition 外字注記辞書. A change to any of them requires
+    // re-verification against those sources, not an edit that makes a
+    // failing test pass.
     let (single, combo, description) = table_sizes();
     assert_eq!(
         single, 11208,
@@ -68,18 +66,15 @@ fn gatekeeper_table_sizes_match_jisx0213_2004_spec() {
     );
 }
 
-/// Every combo cell must decode to *exactly* two Unicode scalars.
-/// The combo path's whole reason to exist is that single-`char` is
-/// not enough; if any future regen introduces a 1-char or 3-char
-/// entry the contract has been silently broken.
+/// Every combo cell must decode to exactly two Unicode scalars.
+/// The combo table exists because a single `char` cannot hold these
+/// cells; a regenerated table with a 1-char or 3-char entry breaks
+/// that contract.
 #[test]
-fn gatekeeper_every_combo_entry_is_exactly_two_scalars() {
-    // The 25 combo cells live at known JIS X 0213 plane 1 mencodes.
-    // Read combo TSV by walking the build-time map's value strings
-    // via a known mencode for each.
-    //
-    // Easiest cross-check: walk a small representative set and
-    // assert each resolved string is exactly 2 chars.
+fn every_combo_entry_is_exactly_two_scalars() {
+    // The 25 combo cells are at known JIS X 0213 plane 1 mencodes. The
+    // test looks up a representative subset and asserts that each
+    // resolved string is exactly 2 chars.
     let representative = [
         "第3水準1-4-87", // か゚
         "第3水準1-4-88", // き゚
@@ -102,8 +97,8 @@ fn gatekeeper_every_combo_entry_is_exactly_two_scalars() {
             "combo cell {mencode} must be exactly 2 scalars; got {s:?}",
         );
         // The second scalar of every Aozora combo cell is a
-        // combining mark (handakuten or similar). If a regen
-        // accidentally swapped the order, this catches it.
+        // combining mark (handakuten or similar). A regenerated table
+        // with the order swapped fails this assertion.
         let last = s.chars().next_back().unwrap();
         assert!(
             (0x0300..=0x036F).contains(&(last as u32))
@@ -114,18 +109,18 @@ fn gatekeeper_every_combo_entry_is_exactly_two_scalars() {
 }
 
 #[test]
-fn gatekeeper_lookup_tier_dispatch_order_is_pinned() {
-    // 1. existing wins over everything.
+fn lookup_tier_dispatch_order_is_fixed() {
+    // 1. existing takes precedence over every other tier.
     assert_eq!(
         lookup(Some('Z'), Some("第3水準1-85-54"), "木＋吶のつくり"),
         Some(Resolved::Char('Z')),
     );
-    // 2. mencode → combo wins over single-char + U+ + dictionary.
+    // 2. mencode → combo takes precedence over single-char, U+ and dictionary.
     assert!(matches!(
         lookup(None, Some("第3水準1-4-87"), "anything"),
         Some(Resolved::Multi(_))
     ));
-    // 3. mencode → single-char wins over U+ + dictionary.
+    // 3. mencode → single-char takes precedence over U+ and dictionary.
     assert_eq!(
         lookup(None, Some("第3水準1-85-54"), "〓"),
         Some(Resolved::Char('\u{6798}')),
@@ -139,19 +134,20 @@ fn gatekeeper_lookup_tier_dispatch_order_is_pinned() {
     // 5. description-fallback handles the canonical specials.
     assert_eq!(lookup(None, None, "〓"), Some(Resolved::Char('\u{3013}')));
     assert_eq!(lookup(None, None, "〻"), Some(Resolved::Char('\u{303B}')));
-    // 6. smart single-char fallback only fires when nothing else
-    //    matched AND description is exactly one Unicode scalar.
+    // 6. the single-char fallback applies only when nothing else
+    //    matched and description is exactly one Unicode scalar.
     assert_eq!(lookup(None, None, "畺"), Some(Resolved::Char('\u{757A}')));
     assert_eq!(lookup(None, None, "未知の字"), None);
 }
 
 #[test]
-fn gatekeeper_level_table_sizes_match_jisx0213_2004_spec() {
-    // Cell counts triangulate the build-time derivation against two
-    // independent sources: the JIS X 0208 cell count
-    // (6918) and the slim-TSV 第3/第4水準 counts (1893 / 2436, also
-    // pinned in the single-char gatekeeper). A drift here means the
-    // std.txt parser changed behaviour — re-verify, do NOT edit to pass.
+fn level_table_sizes_match_jisx0213_2004_spec() {
+    // The cell counts check the build-time derivation against two
+    // independent sources: the JIS X 0208 cell count (6918) and the
+    // slim-TSV 第3/第4水準 counts (1893 / 2436, also asserted in the
+    // single-char gatekeeper test). A different count means the std.txt
+    // parser output changed; re-verify against the sources rather than
+    // editing the expected values.
     let (jisx0208, level3, level4) = level_table_sizes();
     assert_eq!(jisx0208, 6918, "JIS X 0208 (第1 + 第2水準) plane-1 cells");
     assert_eq!(level3, 1893, "第3水準 plane-1 cells (matches the slim TSV)");
@@ -159,7 +155,7 @@ fn gatekeeper_level_table_sizes_match_jisx0213_2004_spec() {
 }
 
 #[test]
-fn gatekeeper_jis_level_classifies_representative_characters() {
+fn jis_level_classifies_representative_characters() {
     assert_eq!(jis_level('亜'), Suijun::Level1); // 第1水準漢字
     assert_eq!(jis_level('弌'), Suijun::Level2); // 第2水準漢字
     assert_eq!(jis_level('\u{4FF1}'), Suijun::Level3); // 3-2E21 [2004]
@@ -167,7 +163,8 @@ fn gatekeeper_jis_level_classifies_representative_characters() {
     assert_eq!(jis_level('\u{1F600}'), Suijun::Outside); // emoji
     // ASCII has JIS row-3 Latin cells, so it is 第1水準, not Outside.
     assert_eq!(jis_level('a'), Suijun::Level1);
-    // The full-width notation markers reach JIS via Fullwidth aliases.
+    // The full-width notation markers classify as JIS through their
+    // `Fullwidth:` aliases.
     for marker in ['｜', '＃', '［', '］'] {
         assert!(
             jis_level(marker).is_jisx0208(),
@@ -177,7 +174,7 @@ fn gatekeeper_jis_level_classifies_representative_characters() {
 }
 
 #[test]
-fn gatekeeper_is_platform_dependent_matches_cp932_minus_jisx0208() {
+fn is_platform_dependent_matches_cp932_minus_jisx0208() {
     assert!(is_platform_dependent('\u{FF5E}')); // CP932 full-width tilde variant
     assert!(!is_platform_dependent('亜')); // JIS X 0208
     assert!(!is_platform_dependent('a')); // ASCII (in JIS X 0208 via the table)
@@ -186,10 +183,10 @@ fn gatekeeper_is_platform_dependent_matches_cp932_minus_jisx0208() {
 }
 
 #[test]
-fn gatekeeper_resolved_utf8_len_is_consistent_with_write_to() {
+fn resolved_utf8_len_is_consistent_with_write_to() {
     // For every shape, write_to must emit exactly `utf8_len` bytes.
-    // Pin a few specific values so a future change to write_to or
-    // utf8_len can't drift independently.
+    // The fixed expected values make a change to only one of write_to
+    // and utf8_len fail the test.
     let cases: &[(Resolved, usize)] = &[
         (Resolved::Char('A'), 1),
         (Resolved::Char('あ'), 3),

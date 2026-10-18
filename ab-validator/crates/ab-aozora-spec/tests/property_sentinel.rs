@@ -1,9 +1,9 @@
 //! Round-trip + uniqueness invariants for [`Sentinel`].
 //!
-//! The PUA sentinel scheme is the single point through which every
-//! phase of the lex pipeline talks about Aozora-vs-plain bytes: a
-//! `from_char` / `as_char` mismatch silently misroutes every entry in
-//! every registry. The properties here gate that surface against:
+//! Every phase of the lex pipeline distinguishes Aozora constructs from
+//! plain bytes by the PUA sentinels, so a `from_char` / `as_char`
+//! mismatch misroutes every entry in every registry without an error.
+//! The properties checked here are:
 //!
 //! 1. `from_char ∘ as_char = Some` for every `Sentinel::ALL` variant
 //!    (the pipeline relies on every emitted sentinel being recognised
@@ -11,13 +11,13 @@
 //! 2. `as_char` is injective over `Sentinel::ALL` (no two variants
 //!    encode to the same codepoint, so a registry hit is unambiguous).
 //! 3. `from_char(c) = None` for every char outside the four reserved
-//!    sentinel codepoints (a stray PUA byte in source data must not
-//!    masquerade as a registry sentinel).
+//!    sentinel codepoints (a stray PUA byte in source data must not be
+//!    read as a registry sentinel).
 //!
-//! A 4-variant enum is technically exhaustive without proptest, but
-//! the negative property #3 is naturally a property: generate any
-//! `char`, exclude the four sentinels, assert `from_char` returns
-//! `None`. This validates rejection if a future variant is added.
+//! Properties 1 and 2 range over the four variants and are checked
+//! exhaustively. Property 3 ranges over every `char`, so proptest
+//! generates its inputs: any `char` other than the four sentinels must
+//! make `from_char` return `None`.
 
 use ab_aozora_spec::Sentinel;
 use ab_notation_strategies::config::default_config;
@@ -51,10 +51,10 @@ proptest! {
     #![proptest_config(default_config())]
 
     /// `from_char` must reject every codepoint that is not one of the
-    /// four reserved sentinels. A stray PUA byte in source data ends
-    /// up in the normalized buffer with no registry entry; treating
-    /// it as a sentinel would make every renderer dispatch on a phantom
-    /// position.
+    /// four reserved sentinels. A stray PUA byte in source data reaches
+    /// the normalized buffer with no registry entry; if `from_char`
+    /// accepted it, every renderer would dispatch on a position that
+    /// has no construct.
     #[test]
     fn from_char_rejects_non_sentinel_codepoints(c in any::<char>()) {
         let reserved: [char; 4] = [
@@ -71,10 +71,10 @@ proptest! {
         }
     }
 
-    /// `from_char ∘ as_char` is the identity on `Sentinel::ALL`. Drives
-    /// the same property as `round_trip_holds_for_all_variants` but as
-    /// a proptest so a future widening of the variant set does not need
-    /// a hand-written test addition.
+    /// `from_char ∘ as_char` is the identity on `Sentinel::ALL`. Checks
+    /// the same property as `round_trip_holds_for_all_variants` with the
+    /// index drawn from `0..Sentinel::ALL.len()`, so a variant added to
+    /// `Sentinel::ALL` is covered without a new test.
     #[test]
     fn from_char_after_as_char_is_identity(idx in 0usize..Sentinel::ALL.len()) {
         let kind = Sentinel::ALL[idx];

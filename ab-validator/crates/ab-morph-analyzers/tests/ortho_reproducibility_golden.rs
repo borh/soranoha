@@ -1,23 +1,23 @@
 //! ortho-normalization reproducibility golden.
 //!
-//! Pins the full **detector-driven** input-derivation chain that the warehouse
+//! Pins the full detector-driven input-derivation chain that the warehouse
 //! run path executes (pipeline.rs: `sentence_split` → `OrthoDetector::detect`
 //! → `ortho_normalize` → `remap_spans`), end-to-end, from a fixed source:
 //!
-//!   1. the real `HeuristicV1` detector fires on a katakana sentence,
+//!   1. the real `HeuristicV1` detector annotates a katakana sentence,
 //!   2. `ortho_normalize` produces the derived (normalized) analyzer input,
-//!   3. `remap_spans` carries morpheme spans back to ORIGINAL-doc coordinates,
+//!   3. `remap_spans` maps morpheme spans back to original-doc coordinates,
 //!      rebuilding each surface from the original katakana, and
 //!   4. the recorded `NormalizationPolicy::policy_hash()` for that detector is
-//!      the pinned heuristic-v1 constant. One transformation, one identity.
+//!      the pinned heuristic-v1 constant.
 //!
-//! Reproducibility (spec P5): re-running the chain from the same source under
-//! the same policy regenerates a byte-identical derived input — asserted by
-//! running the chain twice and comparing.
+//! Reproducibility: re-running the chain from the same source under the same
+//! policy regenerates a byte-identical derived input, asserted by running the
+//! chain twice and comparing.
 //!
-//! Complements `remap_vu.rs`: that test pins the length-CHANGING remap (ヴ→う゛)
-//! with hand-built annotations; this one pins the length-PRESERVING kata→hira
-//! path driven by the actual detector, where byte spans are unchanged but every
+//! Complements `remap_vu.rs`: that test pins the length-changing remap (ヴ→う゛)
+//! with hand-built annotations; this one pins the length-preserving kata→hira
+//! path driven by the detector, where byte spans are unchanged but every
 //! surface must still be rebuilt from the original text.
 
 use std::sync::Arc;
@@ -30,7 +30,7 @@ use ab_ortho_detect::{
     OrthoTokenizer, ortho_normalize,
 };
 
-/// The pinned heuristic-v1 normalization-policy hash. Single-sourced with
+/// The pinned heuristic-v1 normalization-policy hash, the same value as in
 /// `ab-ortho-detect`'s `policy::tests`; a change here is a breaking change to
 /// the recorded input-normalization identity.
 const HEURISTIC_V1_POLICY_HASH: &str =
@@ -42,7 +42,7 @@ const HEURISTIC_V1_POLICY_HASH: &str =
 const GOLDEN_SOURCE: &str = "吾輩ハ猫デアル果テ";
 
 /// A first-pass tokenizer that yields no tokens, so `HeuristicV1` runs its
-/// character-level cascade without loading a real analyzer dictionary. Mirrors
+/// character-level cascade without loading a real analyzer dictionary. Same as
 /// the stub in `ab-ortho-detect`'s heuristic tests.
 struct StubTokenizer;
 impl OrthoTokenizer for StubTokenizer {
@@ -51,7 +51,7 @@ impl OrthoTokenizer for StubTokenizer {
     }
 }
 
-/// Run the detector-driven derivation exactly as the pipeline does:
+/// Run the detector-driven derivation in the pipeline's order:
 /// `sentence_split` → `detect` → `ortho_normalize`. Returns the detector id,
 /// the derived (normalized) text, and the offset map back to source coords.
 fn derive_input(source: &str) -> (OrthoDetectorId, String, ab_ortho_detect::OffsetMap) {
@@ -66,10 +66,10 @@ fn derive_input(source: &str) -> (OrthoDetectorId, String, ab_ortho_detect::Offs
     (detector.detector_id(), normalized_text, offset_map)
 }
 
-/// Build a fixed morpheme segmentation over the DERIVED (normalized) text.
-/// Spans are in normalized coordinates; `remap_spans` carries them to source
+/// Build a fixed morpheme segmentation over the derived (normalized) text.
+/// Spans are in normalized coordinates; `remap_spans` maps them to source
 /// coordinates. Segmentation is hand-fixed (not analyzer-produced) so the
-/// golden is deterministic and dictionary-free — the unit under test is the
+/// golden is deterministic and dictionary-free; the unit under test is the
 /// remap, not the tokenizer.
 fn normalized_morphemes() -> Vec<Morpheme> {
     let seg = [
@@ -158,7 +158,7 @@ fn detector_driven_chain_matches_golden_fixture() {
 #[test]
 fn recorded_policy_hash_identifies_the_transformation() {
     // The detector that produced the derived input is HeuristicV1, and the
-    // policy built from its id hashes to the pinned constant — the same hash the
+    // policy built from its id hashes to the pinned constant, the same hash the
     // warehouse run records and the tokenizer profile declares.
     let (detector_id, _norm, _map) = derive_input(GOLDEN_SOURCE);
     assert_eq!(detector_id, OrthoDetectorId::HeuristicV1);
@@ -172,8 +172,8 @@ fn recorded_policy_hash_identifies_the_transformation() {
 
 #[test]
 fn rerunning_regenerates_identical_derived_input() {
-    // Spec P5: a run + its recorded policy hash regenerate the identical derived
-    // input from source. The policy is deterministic, so two independent runs of
+    // A run + its recorded policy hash regenerate the identical derived input
+    // from source. The policy is deterministic, so two independent runs of
     // the same detector over the same source must produce byte-identical output.
     let (id_a, norm_a, map_a) = derive_input(GOLDEN_SOURCE);
     let (id_b, norm_b, map_b) = derive_input(GOLDEN_SOURCE);
@@ -192,9 +192,9 @@ fn rerunning_regenerates_identical_derived_input() {
 
 #[test]
 fn remap_rebuilds_original_surfaces_under_length_preserving_normalization() {
-    // kata→hira is byte-length-preserving, so byte spans are UNCHANGED by the
+    // kata→hira is byte-length-preserving, so byte spans are unchanged by the
     // remap; the observable effect is that each surface is rebuilt from the
-    // ORIGINAL katakana (は→ハ, である→デアル, 果て→果テ) while kanji stay put.
+    // original katakana (は→ハ, である→デアル, 果て→果テ) while kanji are unchanged.
     let (_id, normalized_text, offset_map) = derive_input(GOLDEN_SOURCE);
     assert_eq!(normalized_text, "吾輩は猫である果て");
 

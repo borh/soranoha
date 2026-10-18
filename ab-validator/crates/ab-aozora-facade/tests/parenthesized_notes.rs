@@ -1,4 +1,5 @@
-//! Parenthesized note payloads survive canonical source serialization.
+//! Parenthesized note payloads keep their parentheses through canonical source
+//! serialization.
 use ab_aozora_facade::Document;
 
 #[test]

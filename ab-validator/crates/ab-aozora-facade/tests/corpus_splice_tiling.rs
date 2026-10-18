@@ -1,23 +1,22 @@
-//! Walks `AOZORA_CORPUS_ROOT` and verifies the source-region ownership
-//! tiling and minimal-diff splice hold for every real document:
+//! Walks `AOZORA_CORPUS_ROOT` and checks the source-region ownership tiling and
+//! the minimal-diff splice for every document:
 //!
 //! * [`ab_aozora_facade::Tree::regions`] is a complete, gap-free, ordered,
-//!   non-overlapping cover of the sanitized source — the
-//!   region byte-slices concatenate back to it exactly.
-//! * No region is unclassified (`Opaque`) — every real construct is editable.
-//! * The **identity splice** reproduces the sanitized source. `check_tiling`
-//!   already proves the byte-level tiling for *every* region; this also
-//!   runs the real `Tree::splice` machinery (a `Direct` byte replacement, or a
-//!   `Coupled` partner-derivation + scoped verification) on a representative
-//!   sample — one region per safety class per document. The splice itself is
-//!   already `O(marker)` (it verifies in a scoped context, never re-parsing the
-//!   whole document); sampling bounds the *number* of splice calls so the
-//!   full-corpus sweep stays well under a minute rather than calling `splice`
-//!   for every one of the corpus's millions of coupled regions.
+//!   non-overlapping cover of the sanitized source; the region byte slices
+//!   concatenate to it exactly.
+//! * No region is unclassified (`Opaque`), so every construct is editable.
+//! * The identity splice reproduces the sanitized source. `check_tiling` checks
+//!   the byte-level tiling for every region; the splice check runs
+//!   `Tree::splice` (a `Direct` byte replacement, or a `Coupled` partner
+//!   derivation with scoped verification) on one region per safety class per
+//!   document. Each splice is `O(marker)` because it verifies in a scoped
+//!   context without re-parsing the whole document; the sample bounds the number
+//!   of splice calls, which keeps the full-corpus sweep under a minute instead of
+//!   one call for each of the corpus's millions of coupled regions.
 //!
-//! This extends the property-test coverage in `aozora-cst`'s lossless
-//! invariant to the full 青空文庫 corpus. Skipped when
-//! `AOZORA_CORPUS_ROOT` is unset; never hard-fails on missing corpus.
+//! `tests/splice_api.rs` checks the same tiling on hand-written inputs; this
+//! test applies it to the full 青空文庫 corpus. The test is skipped when `AOZORA_CORPUS_ROOT` is
+//! unset and does not fail on a missing corpus.
 
 use ab_aozora_encoding::decode_auto;
 use ab_aozora_facade::{CoupledKind, Document, Region, RegionRole, SpliceSafety};
@@ -108,8 +107,8 @@ fn check_tiling(sanitized: &str, regions: &[Region]) -> Result<(), String> {
     Ok(())
 }
 
-/// One representative region per safety class — containers split into open vs
-/// close, the two marker shapes the edit path handles differently.
+/// Sample bucket per safety class. Container regions split into open and close
+/// because the edit path handles the two marker shapes differently.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Sample {
     Direct,
@@ -138,11 +137,9 @@ fn sample_of(r: &Region) -> Option<Sample> {
     }
 }
 
-/// No region is `Opaque` (checked for *every* region), and the identity splice
-/// of one representative region per safety class reproduces the sanitized source
-/// through the real `Tree::splice` machinery. `check_tiling` already proves the
-/// byte-level tiling for all regions; this proves the *machinery* is sound on
-/// real constructs while bounding the number of `splice` calls (≤ 6 per doc).
+/// Checks that no region is `Opaque`, and that the identity splice of one region
+/// per safety class reproduces the sanitized source through `Tree::splice`, with
+/// at most six `splice` calls per document.
 fn check_splice_sampled(
     tree: &ab_aozora_facade::Tree<'_>,
     sanitized: &str,

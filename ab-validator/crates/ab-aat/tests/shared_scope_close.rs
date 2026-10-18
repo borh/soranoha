@@ -30,17 +30,13 @@ fn nested_columns_and_frame_share_the_actual_close_marker() {
             assert!(!aat["blocks"].to_string().contains("interpretation_problem"));
         } else {
             assert!(columns.to_string().contains("段間に未知の罫"));
-            assert_eq!(
-                columns["interpretation_marker_spans"]
-                    .as_array()
-                    .unwrap()
-                    .len(),
-                1
-            );
-            assert_eq!(
-                columns["interpretation_marker_spans"][0],
-                frame["interpretation_marker_spans"][1]
-            );
+            let markers = columns["interpretation_marker_spans"].as_array().unwrap();
+            let opener = "［＃ここから２段組み、";
+            let opener_start = source.find(opener).unwrap();
+            assert_eq!(markers.len(), 3);
+            assert_eq!(markers[0]["byte_start"], opener_start);
+            assert_eq!(markers[0]["byte_end"], opener_start + opener.len());
+            assert_eq!(markers[2], frame["interpretation_marker_spans"][1]);
         }
     }
 }

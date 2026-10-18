@@ -62,7 +62,7 @@ pub fn node_line(node: &Value) -> Option<usize> {
 fn collect_comparison_block(node: &Value, out: &mut String) {
     // The source side of the body-order comparison (properties::body_text)
     // ends at the 底本 trailer, so the structured source_note block that
-    // carries that trailer must not project into the comparison either.
+    // contains that trailer is not projected into the comparison either.
     if node.get("kind").and_then(Value::as_str) == Some("source_note") {
         return;
     }
@@ -88,6 +88,16 @@ fn collect_comparison_inline(node: &Value, out: &mut String) {
                 }
             } else {
                 push_string_field(node, "base", out);
+            }
+        }
+        "ruby_group" => {
+            for inline in node
+                .get("base_content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                collect_comparison_inline(inline, out);
             }
         }
         "gaiji" => {}
@@ -161,15 +171,34 @@ fn collect_inline<'a>(node: &'a Value, path: &str, fragments: &mut Vec<VisibleFr
             path: path.to_owned(),
             node,
         }),
-        "ruby" => fragments.push(VisibleFragment::Text {
-            value: node
-                .get("base")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            path: path.to_owned(),
-            node,
-        }),
+        "ruby" => {
+            if let Some(base_content) = node.get("base_content").and_then(Value::as_array) {
+                for (idx, inline) in base_content.iter().enumerate() {
+                    collect_inline(inline, &format!("{path}.base_content[{idx}]"), fragments);
+                }
+            } else {
+                fragments.push(VisibleFragment::Text {
+                    value: node
+                        .get("base")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    path: path.to_owned(),
+                    node,
+                });
+            }
+        }
+        "ruby_group" => {
+            for (idx, inline) in node
+                .get("base_content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                collect_inline(inline, &format!("{path}.base_content[{idx}]"), fragments);
+            }
+        }
         "gaiji" => fragments.push(VisibleFragment::Gaiji {
             resolved: node
                 .get("resolved")
@@ -275,6 +304,12 @@ mod tests {
                 "content": [
                     {"kind": "text", "value": "A"},
                     {"kind": "ruby", "base": "B", "reading": "ビー"},
+                    {
+                        "kind": "ruby_group",
+                        "base": "XY",
+                        "base_content": [{"kind": "text", "value": "X"}, {"kind": "text", "value": "Y"}],
+                        "readings": []
+                    },
                     {"kind": "gaiji", "description": "desc", "resolved": "C"},
                     {"kind": "gaiji", "description": "empty", "resolved": ""},
                     {
@@ -299,8 +334,9 @@ mod tests {
             fragments_to_text(&aat),
             ab_plaintext::visible_text_projection(&aat)
         );
-        // the raw node ("E") is a layout/markup marker and must not project
-        assert_eq!(fragments_to_text(&aat), "ABCDFGH");
+        // The raw node ("E") is a layout/markup marker and is not projected.
+        assert_eq!(fragments_to_text(&aat), "ABXYCDFGH");
+        assert_eq!(comparison_visible_text_projection(&aat), "ABXYEFGH");
     }
 
     #[test]

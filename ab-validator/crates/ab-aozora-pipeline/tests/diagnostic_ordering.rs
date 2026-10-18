@@ -1,31 +1,27 @@
 //! Diagnostic ordering invariants for the fused lex pipeline.
 //!
-//! Pins the [`Pipeline::build`] documented order:
+//! Pins the order documented at [`Pipeline::build`]:
 //!
 //!   sanitize → pair → classify
 //!
 //! Downstream tooling (IDE diagnostics, the CLI's miette renderer,
-//! property tests that grep for diagnostic positions) relies on this
-//! order being stable, so any change to the pipeline that re-orders
-//! diagnostic emission lights up here.
+//! property tests that grep for diagnostic positions) depends on a stable
+//! order; a pipeline change that reorders diagnostic emission fails here.
 //!
-//! The current `Diagnostic` enum (see `crates/aozora-spec/src/diagnostic.rs`)
-//! exposes no classify-stage variant for "unrecognised annotation keyword"; an
-//! unknown body is folded into `DirectiveKind::Unknown` silently. We
-//! therefore pin the sanitize ↔ pair ordering only, with a
-//! `classify` placeholder comment marking where a future variant would
-//! slot in. The insta snapshot freezes the multi-diagnostic shape
-//! end-to-end.
+//! The `Diagnostic` enum (`crates/ab-aozora-spec/src/diagnostic.rs`)
+//! has no classify-stage variant for "unrecognised annotation keyword"; an
+//! unknown body is folded into `DirectiveKind::Unknown` without a
+//! diagnostic. The tests therefore pin the sanitize ↔ pair ordering only.
+//! The insta snapshot records the complete multi-diagnostic output.
 
 use ab_aozora_pipeline::lex;
 use ab_aozora_spec::{Diagnostic, DiagnosticSource, codes};
 /// Ordinal position of a diagnostic in the documented pipeline order
 /// (sanitize → pair → classify → "later").
 ///
-///  the four legacy `Registry*` / `Unregistered*` /
-/// `ResidualAnnotationMarker` variants are folded into
-/// [`Diagnostic::Internal`] with a stable `code` payload: they
-/// remain post-classify validators and still sort last.
+/// The `Registry*`, `Unregistered*` and `ResidualAnnotationMarker`
+/// diagnostics are [`Diagnostic::Internal`] values with a stable `code`
+/// payload; they come from post-classify validators and sort last.
 fn phase_ordinal(d: &Diagnostic) -> u8 {
     match d.source() {
         // Source-side diagnostics: match by stable code.
@@ -52,8 +48,8 @@ fn phase_ordinal(d: &Diagnostic) -> u8 {
         },
         // Pipeline-internal validators run after the classify stage.
         DiagnosticSource::Internal => 4,
-        // `DiagnosticSource` is `#[non_exhaustive]`. Any future
-        // category lands here until classified explicitly.
+        // `DiagnosticSource` is `#[non_exhaustive]`. A category added
+        // later maps here until it is classified explicitly.
         _ => 99,
     }
 }
@@ -90,9 +86,9 @@ fn phase0_then_phase2_diagnostics_are_emitted_in_pipeline_order() {
 }
 
 /// Insta snapshot of the diagnostic vector for a hand-curated
-/// multi-diagnostic input. Freezes the *shape* (variants, kinds, span
-/// payloads) byte-for-byte so any reorder, payload drift, or
-/// over/under-emission lights up as a snapshot diff.
+/// multi-diagnostic input. Records the variants, kinds and span payloads
+/// byte for byte; a reorder, a payload change, or a missing or extra
+/// diagnostic produces a snapshot diff.
 ///
 /// The input combines:
 ///   * sanitize-stage accent decomposition at position 0.

@@ -9,16 +9,15 @@ use std::path::PathBuf;
 
 /// Errors that may arise while iterating a corpus source.
 ///
-/// Marked `#[non_exhaustive]` so additional variants (missing root,
-/// malformed file layout, etc.) can be added in follow-up milestones
-/// without breaking downstream `match` sites.
+/// `#[non_exhaustive]` allows a variant (missing root, malformed file
+/// layout, etc.) to be added without breaking downstream `match` sites.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CorpusError {
     /// An I/O call failed on a specific path. The underlying
-    /// [`io::Error`] is preserved as `source` so callers can inspect
-    /// [`io::ErrorKind`] when they care (e.g. to distinguish `NotFound`
-    /// from `PermissionDenied`).
+    /// [`io::Error`] is preserved as `source`, so callers can inspect its
+    /// [`io::ErrorKind`] (e.g. to distinguish `NotFound` from
+    /// `PermissionDenied`).
     #[error("failed to read corpus item at {path}: {source}")]
     Io {
         /// Path of the corpus item whose I/O call failed.
@@ -30,10 +29,9 @@ pub enum CorpusError {
     },
 
     /// Constructor was given a path that does not exist or is not a
-    /// directory. Construction is rejected eagerly rather than deferring
-    /// to iteration time so the error surfaces where the mistake was
-    /// made (the caller's configuration code, not deep inside a sweep
-    /// loop).
+    /// directory. The constructor returns this error, not the iterator,
+    /// so the error is reported in the caller's configuration code
+    /// rather than inside a sweep loop.
     #[error("corpus root is not a directory: {path}")]
     RootNotDirectory {
         /// The configured root path that was missing or not a directory.
@@ -91,8 +89,8 @@ mod tests {
         let err = CorpusError::RootNotDirectory {
             path: PathBuf::from("/irrelevant"),
         };
-        // Structural variant — the offending path is self-contained, there's
-        // no underlying cause to forward.
+        // The variant carries only the path; it has no underlying error
+        // to expose as `source`.
         assert!(err.source().is_none());
     }
 }

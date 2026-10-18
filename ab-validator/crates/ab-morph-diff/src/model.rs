@@ -41,8 +41,8 @@ impl FeatureMap {
     }
 
     /// Builds a map from entries with a single sort instead of a
-    /// binary-search insertion per entry. Later duplicates win, matching
-    /// repeated `insert` semantics.
+    /// binary-search insertion per entry. A later duplicate replaces an
+    /// earlier one, matching repeated `insert` semantics.
     #[must_use]
     pub fn from_entries(
         entries: impl IntoIterator<Item = (FeatureKey, Option<FeatureValue>)>,

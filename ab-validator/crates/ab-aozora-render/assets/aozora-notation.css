@@ -134,6 +134,12 @@
   text-emphasis-style: open triangle;
 }
 
+/* 白四角 */
+.aozora-bouten-shiroshikaku {
+  -webkit-text-emphasis-style: "\25a1";
+  text-emphasis-style: "\25a1";
+}
+
 /* ×（ばつ） */
 .aozora-bouten-batsu {
   -webkit-text-emphasis-style: "\00d7";
@@ -176,7 +182,7 @@
   text-emphasis-style: none;
 }
 
-/* 傍点の位置（右／左／両側）。既定は over right。 */
+/* Decoration placement; above and below retain physical source directions. */
 .aozora-bouten-right {
   -webkit-text-emphasis-position: over right;
   text-emphasis-position: over right;
@@ -190,6 +196,14 @@
 .aozora-bouten-both {
   -webkit-text-emphasis-position: over right;
   text-emphasis-position: over right;
+}
+
+.aozora-bouten-above {
+  text-decoration-line: overline;
+}
+
+.aozora-bouten-below {
+  text-decoration-line: underline;
 }
 
 /* ── 太字・斜体 (§emphasis) ────────────────────────────────────────── */

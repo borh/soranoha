@@ -7,7 +7,7 @@ This directory contains the workspace crates listed in the root `Cargo.toml`
 
 The AAT JSON schema is the normative adapter contract:
 
-- Schema: `data/aat-schema.json`
+- Schema: `schemas/outputs/aat-schema.json`
 - Semantics: `docs/aat-contract.md`
 - Adapter fidelity notes: `docs/adapter-fidelity.md`
 
