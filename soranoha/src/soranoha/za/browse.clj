@@ -461,6 +461,20 @@
         head (when-not (string/blank? code) (str (first code)))]
     (if (some #(= head (first %)) (butlast ndc-classes)) head "other")))
 
+(defn ndc-subclass-key
+  "The three-digit code the work's first NDC code begins with, or nil where
+  the first code is not a three-digit main-class code: K-prefixed children's
+  codes and unclassified works have no subclass."
+  [work]
+  (some->> (get work "ndc") (re-find #"^NDC (\d{3})") second))
+
+(defn ndc-subclasses
+  "Every three-digit subclass present in `works`, as `[key works]` in code
+  order. Present ones only: a page or archive is published for a subclass
+  with works in it, and a link to an empty one would be a link to nothing."
+  [works]
+  (sort-by first (group-by ndc-subclass-key (filter ndc-subclass-key works))))
+
 (defn- source-edition-title [work]
   (get (first (get work "source_editions")) "title"))
 
@@ -776,14 +790,39 @@
                classes))]))
 
 (defn- ndc-class-page [{:keys [key ja en]} works]
+  (let [subclasses (ndc-subclasses works)]
+    (chrome
+     (str "NDC " key " " ja)
+     [[:h1 (bilingual (str key " " ja) en)]
+      [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
+      (when (seq subclasses)
+        [:section
+         [:h2 (bilingual "細目" "Subclasses")]
+         [:p (bilingual "三桁の分類ごとのページと一括ダウンロードがあります。"
+                        "Each three-digit subclass has its own page and archives.")]
+         (into [:ul {:class "cols plain"}]
+               (map (fn [[subclass members]]
+                      [:li [:a {:href (str "/ndc/" subclass)} (str "NDC " subclass)]
+                       [:span {:class "by"} (str " (" (count members) ")")]])
+                    subclasses))])
+      (if (seq works) (author-groups works) (work-list works))
+      (bulk-section
+       (str "この分類の" (count works) "作品を一括取得できます。")
+       (str "All " (count works) " works in this class, in one archive.")
+       (map (juxt #(naming/ndc-bundle-path key %) identity)
+            naming/bulk-artifact-types))])))
+
+(defn- ndc-subclass-page [{:keys [key class-key ja en]} works]
   (chrome
-   (str "NDC " key " " ja)
-   [[:h1 (bilingual (str key " " ja) en)]
+   (str "NDC " key)
+   [[:h1 (str "NDC " key)]
+    [:p {:class "reading"}
+     [:a {:href (str "/ndc/" class-key)} (bilingual (str class-key " " ja) en)]]
     [:p (bilingual (str "全" (count works) "作品（著者別）。") (str (count works) " works, by author."))]
-    (if (seq works) (author-groups works) (work-list works))
+    (author-groups works)
     (bulk-section
-     (str "この分類の" (count works) "作品を一括取得できます。")
-     (str "All " (count works) " works in this class, in one archive.")
+     (str "この細目の" (count works) "作品を一括取得できます。")
+     (str "All " (count works) " works in this subclass, in one archive.")
      (map (juxt #(naming/ndc-bundle-path key %) identity)
           naming/bulk-artifact-types))]))
 
@@ -1468,6 +1507,13 @@
                   (ndc-class-page {:key key :ja ja :en en}
                                   (vec (sort-by reading-key (get by-ndc key))))))
           ndc-classes)
+
+     (map (fn [[subclass members]]
+            (let [[class-key ja en] (some #(when (= (subs subclass 0 1) (first %)) %) ndc-classes)]
+              (page (str "ndc/" subclass ".html")
+                    (ndc-subclass-page {:key subclass :class-key class-key :ja ja :en en}
+                                       (vec (sort-by reading-key members))))))
+          (ndc-subclasses works))
 
      ;; the works, each with its bibliography page and its reading page. This
      ;; is the part that must stay lazy.

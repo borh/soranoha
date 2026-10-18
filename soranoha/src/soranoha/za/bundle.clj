@@ -128,7 +128,13 @@
                      (map (fn [[key _ _]]
                             {:path (naming/ndc-bundle-path key artifact-type)
                              :works (vec (get by-ndc key))})
-                          browse/ndc-classes))]
+                          browse/ndc-classes)
+                     ;; the three-digit subclasses, present ones only, as
+                     ;; the class pages link them
+                     (map (fn [[key members]]
+                            {:path (naming/ndc-bundle-path key artifact-type)
+                             :works (vec members)})
+                          (browse/ndc-subclasses works)))]
       (assoc selection :artifact-type artifact-type))))
 
 (defn archives

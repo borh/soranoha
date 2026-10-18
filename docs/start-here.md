@@ -103,8 +103,10 @@ The full corpus is distributed in two archives:
 - `https://soranoha.org/bulk/soranoha-tei.zip`
 - `https://soranoha.org/bulk/soranoha-plaintext.zip`
 
-Author and NDC class pages also provide pre-built TEI and plaintext ZIP archives
-for their respective subsets.
+Author, NDC class and three-digit NDC subclass pages (such as
+`https://soranoha.org/ndc/912` for 戯曲) also provide pre-built TEI and
+plaintext ZIP archives for their respective subsets. Those are the four
+archive granularities: the corpus, a person, a class and a subclass.
 
 Each archive contains the readable filenames plus `catalog.csv` at its root,
 carrying the structured citation fields for the works inside it:

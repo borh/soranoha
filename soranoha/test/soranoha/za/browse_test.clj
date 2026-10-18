@@ -243,6 +243,22 @@
     (is (string/includes? (page pages "ndc/other.html") "児童書")
         "Aozora's K-prefixed children's codes are not a main class and are not invented into one")))
 
+(deftest a-class-page-links-the-three-digit-subclasses-it-holds-test
+  (let [pages (pages (inputs [(work "000001_000001" "戯曲" "ぎきょく" :ndc "NDC 912")
+                              (work "000002_000002" "小説" "しょうせつ" :ndc "NDC 913")
+                              (work "000003_000003" "児童書" "じどうしょ" :ndc "NDC K913")]))
+        class-page (page pages "ndc/9.html")]
+    (is (string/includes? class-page "href=\"/ndc/912\""))
+    (is (string/includes? class-page "href=\"/ndc/913\""))
+    (testing "a subclass page lists its works and links its archives"
+      (let [subclass-page (page pages "ndc/912.html")]
+        (is (string/includes? subclass-page "戯曲"))
+        (is (not (string/includes? subclass-page "小説")))
+        (is (string/includes? subclass-page (naming/ndc-bundle-path "912" "tei")))))
+    (testing "and a K-coded work has no subclass page"
+      (is (nil? (get pages "ndc/K91.html")))
+      (is (not (string/includes? (page pages "ndc/other.html") "href=\"/ndc/K91"))))))
+
 (deftest a-work-with-no-recorded-reading-is-still-listed-test
   (let [pages (pages (inputs [(work "000003_000003" "読みなし" nil)]))]
     (is (string/includes? (page pages "titles/other.html") "読みなし"))

@@ -151,7 +151,13 @@
 
     (testing "and one per NDC class, including the classes this release empties"
       (is (contains? paths "bulk/ndc/soranoha-ndc-9-tei.zip"))
-      (is (contains? paths "bulk/ndc/soranoha-ndc-other-tei.zip"))))
+      (is (contains? paths "bulk/ndc/soranoha-ndc-other-tei.zip")))
+
+    (testing "and one per three-digit subclass present in the release"
+      (is (contains? paths "bulk/ndc/soranoha-ndc-913-tei.zip"))
+      (is (contains? paths "bulk/ndc/soranoha-ndc-002-plaintext.zip"))
+      (is (not (contains? paths "bulk/ndc/soranoha-ndc-912-tei.zip"))
+          "a subclass with nothing in it has no archive")))
 
   (testing "a person's archive holds their works and no others"
     (let [dazai-archive (entries (build "bulk/authors/soranoha-Dazai_Osamu-000035-tei.zip"))]
@@ -162,6 +168,13 @@
     (let [general (entries (build "bulk/ndc/soranoha-ndc-0-plaintext.zip"))]
       (is (= #{"catalog.csv" "Akutagawa_Ryunosuke-ronbun-000001_000001.txt"}
              (set (:order general))))))
+
+  (testing "a subclass archive holds that subclass and no others"
+    (let [fiction (entries (build "bulk/ndc/soranoha-ndc-913-tei.zip"))]
+      (is (= #{"catalog.csv"
+               "Akutagawa_Ryunosuke-kumono_ito-000092_000879.xml"
+               "Dazai_Osamu-hashire_merosu-000035_001567.xml"}
+             (set (:order fiction))))))
 
   (testing "a work reaches a person's archive once even when both roles are theirs"
     (let [twice (assoc-in catalog ["works" 0 "contributors"]
