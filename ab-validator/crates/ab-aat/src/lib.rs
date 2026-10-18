@@ -6579,6 +6579,12 @@ fn gaiji_json(decoded: &DecodedSource, span: &Span, gaiji: &AozoraGaiji) -> Valu
         "span": span_json(span, &decoded.span_ctx)
     });
     if gaiji.resolved.is_none()
+        && let Some(identity) = encoding::gaiji::external_identity(&gaiji.description)
+    {
+        glyph["ids"] = json!(identity.ids);
+        glyph["glyphwiki_glyph"] = json!(identity.glyphwiki);
+    }
+    if gaiji.resolved.is_none()
         && !source.starts_with("［＃")
         && !source.starts_with("[#")
         && !source.starts_with("※［＃")
@@ -10353,6 +10359,42 @@ mod tests {
         assert_eq!(gaiji["description"], "「参らせ候」のくずし字");
         assert!(gaiji["resolved"].is_null());
         assert_eq!(gaiji["unresolved_reason"], "unresolved");
+    }
+
+    /// A gaiji Unicode does not encode carries the identity the GlyphWiki
+    /// table records for its description; a resolved gaiji and an unlisted
+    /// description carry neither field.
+    #[test]
+    fn unencoded_gaiji_carries_ids_and_glyphwiki_glyph() {
+        let aat = aat_value_for("※［＃「冫＋虫」、12-3］と※［＃「参らせ候」のくずし字、13-9］\n");
+        let gaiji: Vec<&Value> = aat["blocks"][0]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["kind"] == "gaiji")
+            .collect();
+        assert_eq!(gaiji.len(), 2);
+        assert!(gaiji[0]["resolved"].is_null());
+        assert_eq!(gaiji[0]["ids"], "⿰冫虫");
+        assert_eq!(gaiji[0]["glyphwiki_glyph"], "u2ff0-u51ab-u866b");
+        assert!(gaiji[1].get("ids").is_none());
+        assert!(gaiji[1].get("glyphwiki_glyph").is_none());
+
+        let resolved = aat_value_for("※［＃「けものへん＋苗」、第3水準1-87-64］\n");
+        let gaiji = find_first_node(&resolved, "gaiji");
+        assert_eq!(gaiji["resolved"], "燄");
+        assert!(gaiji.get("ids").is_none());
+    }
+
+    /// A `濁点付き…` description without a precomposed character resolves
+    /// to the base and the combining mark.
+    #[test]
+    fn voiced_description_resolves_to_a_combining_sequence() {
+        let aat = aat_value_for("※［＃濁点付き片仮名エ、45-2］\n");
+        let gaiji = find_first_node(&aat, "gaiji");
+        assert_eq!(gaiji["resolved"], "エ\u{3099}");
+        assert!(gaiji["unresolved_reason"].is_null());
+        assert!(gaiji["x-codepoint"].is_null());
     }
 
     /// A stray plain `［` left open on one line (a gloss bracket in a

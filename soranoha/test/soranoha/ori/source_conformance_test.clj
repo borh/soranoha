@@ -208,7 +208,7 @@
                 (get-in result [:ir "interpretation_problems"]))))))
 
 (deftest retrospective-ruby-keeps-unmapped-glyph-identities
-  (let [glyph "※［＃濁点付き井、379-1］"
+  (let [glyph "※［＃感嘆符三つ、379-1］"
         target (str "甲" glyph "乙")
         marker (fn [base] (str "［＃「" base "」の左に「ひだり」のルビ］"))]
     (doseq [[body plain readings glyph-count]
@@ -246,7 +246,7 @@
           (is (= glyph-count (count (elements result "g"))))
           (when (string/includes? body "太字")
             (is (= ["甲\uFFFC乙"] (texts result "hi"))))
-          (is (string/includes? (:tei result) "濁点付き井"))
+          (is (string/includes? (:tei result) "感嘆符三つ"))
           (is (empty? (get-in result [:ir "interpretation_problems"])))
           (let [dir (fs/create-temp-dir {:prefix "gaiji-ruby"})
                 path (str (fs/path dir "tei.xml"))]
@@ -255,7 +255,7 @@
               (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
                 (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
               (finally (fs/delete-tree dir)))))))
-    (let [other "※［＃濁点付き中、380-1］"
+    (let [other "※［＃感嘆符四つ、380-1］"
           result (transcribe (source (str "｜" glyph "《みぎ》 " other (marker glyph))))
           left (first (filter #(= "left" (attribute % "rend")) (elements result "ruby")))]
       (is (= "\uFFFC \uFFFC" (:plaintext result)))
@@ -265,7 +265,7 @@
         (let [selected (.item (.getElementsByTagNameNS ^Element left "*" "g") 0)]
           (is (= (attribute (first (elements result "g")) "source") (attribute selected "source")))))
       (is (empty? (get-in result [:ir "interpretation_problems"]))))
-    (doseq [quoted ["甲※［＃濁点付き中、379-1］乙" "甲\uFFFC乙"]]
+    (doseq [quoted ["甲※［＃感嘆符四つ、379-1］乙" "甲\uFFFC乙"]]
       (let [result (transcribe (source (str "｜" target "《みぎ》" (marker quoted))))]
         (is (= "甲\uFFFC乙" (:plaintext result)))
         (is (= ["みぎ"] (texts result "rt")))
@@ -1328,7 +1328,7 @@
   (doseq [[body plain container target reading]
           [["｜前［＃左にルビ付き］※［＃「りっしんべん＋夢」、U+61DC、163-12］憧市様［＃左に「タナモノフウ」のルビ付き終わり］後《よみ》"
             "前懜憧市様後" "rb" "懜憧市様" "タナモノフウ"]
-           ["｜字《前［＃左にルビ付き］※［＃濁点付き井、379-1］［＃左に「い」のルビ付き終わり］後》"
+           ["｜字《前［＃左にルビ付き］※［＃感嘆符三つ、379-1］［＃左に「い」のルビ付き終わり］後》"
             "字" "rt" "\uFFFC" "い"]]]
     (let [result (transcribe (source body))
           outer (first (elements result "ruby"))
@@ -1708,7 +1708,7 @@
       (is (seq (get-in result [:ir "interpretation_problems"]))))))
 
 (deftest exact-unmapped-glyph-target-preserves-both-source-alternatives
-  (let [glyph "※［＃濁点付き井、379-1］"
+  (let [glyph "※［＃感嘆符三つ、379-1］"
         current (str "ダ・" glyph "ンチ等の")
         result (transcribe (source (str current "［＃「" current "」は底本では「ダ" glyph "ンチ等の」］")))
         glyphs (elements result "g")]
@@ -1718,7 +1718,7 @@
     (is (every? #(string/blank? (.getTextContent ^Node %)) glyphs))
     (is (every? #(not (string/blank? (attribute % "ref"))) glyphs))
     (is (= 1 (count (elements result "app")))))
-  (let [result (transcribe (source "甲※［＃濁点付き井、379-1］乙［＃「甲※［＃濁点付き中、379-1］乙」は底本では「別」］"))]
+  (let [result (transcribe (source "甲※［＃感嘆符三つ、379-1］乙［＃「甲※［＃感嘆符四つ、379-1］乙」は底本では「別」］"))]
     (is (= "甲\uFFFC乙" (:plaintext result)))
     (is (empty? (elements result "app")))
     (is (seq (get-in result [:ir "interpretation_problems"])))))

@@ -501,6 +501,8 @@
             "null"
           ]
         },
+        "ids": {"type":"string","minLength":1},
+        "glyphwiki_glyph": {"type":"string","pattern":"^[a-z0-9-]+$"},
         "resolved": {
           "type": "boolean"
         }

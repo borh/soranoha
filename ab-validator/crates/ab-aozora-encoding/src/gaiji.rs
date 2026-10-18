@@ -22,8 +22,10 @@
 //! Unicode scalars that must be emitted together. A single `char` cannot
 //! hold them, so the resolved value is either a [`char`] (~99.4% of
 //! cells) or a `&'static str` borrowed from the generated combo table.
-//! Both variants are `Copy`, so the parser's `Gaiji` payload, which
-//! embeds `Option<Resolved>`, and the tree containing it remain `Copy`.
+//! A `濁点付き…` description with no precomposed form resolves to a base
+//! and a combining mark, two `char`s. Every variant is `Copy`, so the
+//! parser's `Gaiji` payload, which embeds `Option<Resolved>`, and the
+//! tree containing it remain `Copy`.
 //!
 //! ## Lookup order
 //!
@@ -42,9 +44,13 @@
 //!    (外字注記辞書 entries and placeholders such as 〓, 〻).
 //! 6. **Roman numeral**: a bare `ローマ数字N` description, composed from
 //!    the U+2160 / U+2170 blocks.
-//! 7. **Single-character description**: a description that is one
+//! 7. **Voicing mark**: a `濁点付き…` / `半濁点付き…` description,
+//!    composed as the base followed by U+3099 / U+309A.
+//! 8. **Single-character description**: a description that is one
 //!    character resolves to that character.
-//! 8. **None**: unresolved. The renderer outputs the raw `description`.
+//! 9. **None**: unresolved. The renderer outputs the raw `description`.
+//!    [`external_identity`] may still name the character by its
+//!    Ideographic Description Sequence and `GlyphWiki` glyph.
 //!
 //! ## Two PHF maps
 //!
@@ -61,8 +67,8 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use crate::jisx0213_table::{
-    DESCRIPTION_TO_CHAR, JISX0213_MENCODE_TO_CHAR, JISX0213_MENCODE_TO_STR, ROMAN_NUMERAL_LOWER,
-    ROMAN_NUMERAL_UPPER,
+    DESCRIPTION_TO_CHAR, DESCRIPTION_TO_EXTERNAL, JISX0213_MENCODE_TO_CHAR,
+    JISX0213_MENCODE_TO_STR, ROMAN_NUMERAL_LOWER, ROMAN_NUMERAL_UPPER,
 };
 
 /// Resolution outcome — either a single Unicode scalar or a static
@@ -80,6 +86,16 @@ pub enum Resolved {
     /// (Ainu か゚ family, IPA tone marks, accented Latin). The string
     /// is borrowed from a static `phf::Map` value.
     Multi(&'static str),
+    /// A base character followed by a combining voicing mark, from a
+    /// `濁点付き…` / `半濁点付き…` description whose voiced form Unicode
+    /// has not precomposed (`エ` + U+3099, `井` + U+3099).
+    Voiced {
+        /// The kana, iteration mark or kanji the description names.
+        base: char,
+        /// U+3099 COMBINING KATAKANA-HIRAGANA VOICED SOUND MARK or
+        /// U+309A, its semi-voiced counterpart.
+        mark: char,
+    },
 }
 
 /// Plane, row, and cell of a single Unicode scalar in JIS X 0213.
@@ -135,16 +151,20 @@ impl Resolved {
         match self {
             Self::Char(c) => w.write_char(c),
             Self::Multi(s) => w.write_str(s),
+            Self::Voiced { base, mark } => {
+                w.write_char(base)?;
+                w.write_char(mark)
+            }
         }
     }
 
     /// Returns the resolved single `char` if and only if this is a
-    /// [`Resolved::Char`]. Combo cells return `None`.
+    /// [`Resolved::Char`]. Combo cells and voiced sequences return `None`.
     #[must_use]
     pub fn as_char(self) -> Option<char> {
         match self {
             Self::Char(c) => Some(c),
-            Self::Multi(_) => None,
+            Self::Multi(_) | Self::Voiced { .. } => None,
         }
     }
 
@@ -155,6 +175,7 @@ impl Resolved {
         match self {
             Self::Char(c) => c.len_utf8(),
             Self::Multi(s) => s.len(),
+            Self::Voiced { base, mark } => base.len_utf8() + mark.len_utf8(),
         }
     }
 }
@@ -202,6 +223,9 @@ pub fn lookup(
     // forms have no single JIS cell and no entry in the description table.
     if let Some(s) = roman_numeral_glyph(description) {
         return Some(Resolved::Multi(s));
+    }
+    if let Some(voiced) = voiced_glyph(description) {
+        return Some(voiced);
     }
     // A description that is itself a single character resolves to that
     // character. The corpora contain this form where the transcriber could
@@ -363,6 +387,114 @@ fn roman_numeral_glyph(description: &str) -> Option<&'static str> {
     table.get(n).copied().filter(|s| !s.is_empty())
 }
 
+/// The small kana Unicode encodes, each with its regular form, so that a
+/// `小書き` description names the small code point rather than a size.
+const SMALL_KANA: &[(char, char)] = &[
+    ('あ', 'ぁ'),
+    ('い', 'ぃ'),
+    ('う', 'ぅ'),
+    ('え', 'ぇ'),
+    ('お', 'ぉ'),
+    ('つ', 'っ'),
+    ('や', 'ゃ'),
+    ('ゆ', 'ゅ'),
+    ('よ', 'ょ'),
+    ('わ', 'ゎ'),
+    ('か', 'ゕ'),
+    ('け', 'ゖ'),
+    ('ゐ', '\u{1B150}'),
+    ('ゑ', '\u{1B151}'),
+    ('を', '\u{1B152}'),
+    ('ア', 'ァ'),
+    ('イ', 'ィ'),
+    ('ウ', 'ゥ'),
+    ('エ', 'ェ'),
+    ('オ', 'ォ'),
+    ('ツ', 'ッ'),
+    ('ヤ', 'ャ'),
+    ('ユ', 'ュ'),
+    ('ヨ', 'ョ'),
+    ('ワ', 'ヮ'),
+    ('カ', 'ヵ'),
+    ('ケ', 'ヶ'),
+    ('ク', 'ㇰ'),
+    ('シ', 'ㇱ'),
+    ('ス', 'ㇲ'),
+    ('ト', 'ㇳ'),
+    ('ヌ', 'ㇴ'),
+    ('ハ', 'ㇵ'),
+    ('ヒ', 'ㇶ'),
+    ('フ', 'ㇷ'),
+    ('ヘ', 'ㇸ'),
+    ('ホ', 'ㇹ'),
+    ('ム', 'ㇺ'),
+    ('ラ', 'ㇻ'),
+    ('リ', 'ㇼ'),
+    ('ル', 'ㇽ'),
+    ('レ', 'ㇾ'),
+    ('ロ', 'ㇿ'),
+    ('ヰ', '\u{1B164}'),
+    ('ヱ', '\u{1B165}'),
+    ('ヲ', '\u{1B166}'),
+    ('ン', '\u{1B167}'),
+];
+
+/// Strip one leading `小書き`, reporting whether it was there.
+fn strip_small(text: &str) -> (&str, bool) {
+    text.strip_prefix("小書き")
+        .map_or((text, false), |rest| (rest, true))
+}
+
+/// Compose the voiced form a `濁点付き…` / `半濁点付き…` description
+/// names, when Unicode has no precomposed character for it: the base
+/// followed by U+3099 or U+309A, which the Unicode Standard defines as
+/// the representation of a voicing mark on any base (chapter 18.3,
+/// Hiragana and Katakana).
+///
+/// The description grammar the corpus uses is `[小書き](半)濁点付き[の]
+/// [小書き][片仮名|平仮名]<base>`, where `<base>` is one character or
+/// `二の字点` (〻). A stated script rejects a base outside it; `小書き`
+/// selects the small code point from [`SMALL_KANA`] and rejects a base
+/// that has none. [`lookup`] consults the description table first, so a
+/// voiced form the 外字注記辞書 or JIS X 0213 precomposes (ヷ, ゔ, か゚) never
+/// reaches this rule.
+fn voiced_glyph(description: &str) -> Option<Resolved> {
+    let (rest, small_before) = strip_small(description);
+    let (rest, mark) = if let Some(rest) = rest.strip_prefix("半濁点付き") {
+        (rest, '\u{309A}')
+    } else {
+        (rest.strip_prefix("濁点付き")?, '\u{3099}')
+    };
+    let rest = rest.strip_prefix('の').unwrap_or(rest);
+    let (rest, small_after) = strip_small(rest);
+    let (rest, script) = [("片仮名", 'ア'..='ヺ'), ("平仮名", 'ぁ'..='ゖ')]
+        .into_iter()
+        .find_map(|(name, range)| rest.strip_prefix(name).map(|rest| (rest, Some(range))))
+        .unwrap_or((rest, None));
+    let base = if rest == "二の字点" {
+        '\u{303B}'
+    } else {
+        let mut chars = rest.chars();
+        let only = chars.next()?;
+        if chars.next().is_some() {
+            return None;
+        }
+        only
+    };
+    if script.is_some_and(|range| !range.contains(&base)) {
+        return None;
+    }
+    let base = if small_before || small_after {
+        SMALL_KANA
+            .iter()
+            .find(|(regular, _)| *regular == base)
+            .map(|(_, small)| *small)?
+    } else {
+        base
+    };
+    Some(Resolved::Voiced { base, mark })
+}
+
 /// Parse a `U+XXXX` style mencode — 1 to 6 hex digits after the
 /// literal `U+` prefix — and validate the result via
 /// [`char::from_u32`]. Returns `None` for surrogates, non-characters,
@@ -399,6 +531,27 @@ pub fn table_sizes() -> (usize, usize, usize) {
         JISX0213_MENCODE_TO_STR.len(),
         DESCRIPTION_TO_CHAR.len(),
     )
+}
+
+/// The identity of a gaiji that Unicode does not encode: its Ideographic
+/// Description Sequence and the `GlyphWiki` glyph drawn for it, from
+/// `data/aozora-gaiji-glyphwiki.tsv`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalIdentity {
+    /// Ideographic Description Sequence (Unicode chapter 18.2).
+    pub ids: &'static str,
+    /// `GlyphWiki` glyph name. The glyph is served at
+    /// `https://glyphwiki.org/glyph/<name>.svg`.
+    pub glyphwiki: &'static str,
+}
+
+/// The external identity recorded for `description`, the key
+/// [`parse_gaiji_body`] derives from the marker body.
+#[must_use]
+pub fn external_identity(description: &str) -> Option<ExternalIdentity> {
+    DESCRIPTION_TO_EXTERNAL
+        .get(description)
+        .map(|&(ids, glyphwiki)| ExternalIdentity { ids, glyphwiki })
 }
 
 // The functions below are the only code that extracts `※［＃…］`
@@ -2108,4 +2261,112 @@ fn reverse_jis_cell_finds_accented_latin() {
             cell: 63,
         })
     );
+}
+
+#[cfg(test)]
+mod voiced_and_external_tests {
+    use super::*;
+
+    fn resolved_string(description: &str) -> Option<String> {
+        lookup(None, None, description).map(|r| {
+            let mut s = String::new();
+            _ = r.write_to(&mut s);
+            s
+        })
+    }
+
+    #[test]
+    fn voicing_descriptions_compose_the_base_and_the_combining_mark() {
+        for (description, expected) in [
+            ("濁点付き片仮名エ", "エ\u{3099}"),
+            ("濁点付き片仮名ア", "ア\u{3099}"),
+            ("濁点付き井", "井\u{3099}"),
+            ("濁点付き二の字点", "\u{303B}\u{3099}"),
+            ("濁点付きの二の字点", "\u{303B}\u{3099}"),
+            ("半濁点付き平仮名と", "と\u{309A}"),
+            ("半濁点付き片仮名ラ", "ラ\u{309A}"),
+            ("小書き濁点付き片仮名カ", "ヵ\u{3099}"),
+            ("濁点付き小書き片仮名カ", "ヵ\u{3099}"),
+            ("濁点付き小書き平仮名か", "ゕ\u{3099}"),
+        ] {
+            assert_eq!(
+                resolved_string(description).as_deref(),
+                Some(expected),
+                "{description}"
+            );
+            let resolved = lookup(None, None, description).expect("resolves");
+            assert!(
+                matches!(resolved, Resolved::Voiced { .. }),
+                "{description}: {resolved:?}"
+            );
+            assert_eq!(resolved.as_char(), None);
+            assert_eq!(resolved.utf8_len(), expected.len());
+        }
+    }
+
+    #[test]
+    fn precomposed_voiced_forms_come_from_the_tables_first() {
+        assert_eq!(
+            lookup(None, None, "濁点付き片仮名ワ"),
+            Some(Resolved::Char('ヷ'))
+        );
+        assert_eq!(
+            lookup(None, None, "濁点付き平仮名う"),
+            Some(Resolved::Char('ゔ'))
+        );
+        assert!(matches!(
+            lookup(None, Some("第3水準1-4-87"), "半濁点付き平仮名か"),
+            Some(Resolved::Multi(_))
+        ));
+    }
+
+    #[test]
+    fn voicing_rule_rejects_what_it_cannot_name() {
+        for description in [
+            "濁点付き",
+            "濁点付き片仮名",
+            "濁点付き片仮名エル",
+            "濁点付き片仮名か",
+            "濁点付き平仮名カ",
+            "小書き濁点付き片仮名ネ",
+            "濁点付き感嘆符三つ",
+        ] {
+            assert_eq!(voiced_glyph(description), None, "{description}");
+        }
+    }
+
+    #[test]
+    fn external_identity_names_unencoded_kanji_by_ids_and_glyphwiki_glyph() {
+        let identity = external_identity("冫＋虫").expect("listed in the GlyphWiki table");
+        assert_eq!(identity.ids, "⿰冫虫");
+        assert_eq!(identity.glyphwiki, "u2ff0-u51ab-u866b");
+        assert_eq!(lookup(None, None, "冫＋虫"), None, "no Unicode claim");
+        assert_eq!(external_identity("けものへん＋苗"), None);
+    }
+
+    #[test]
+    fn glyphwiki_table_keys_are_what_the_body_parser_derives() {
+        let table = include_str!("../data/aozora-gaiji-glyphwiki.tsv");
+        let mut rows = 0;
+        for line in table
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
+            let cols: Vec<&str> = line.split('\t').collect();
+            let (description, notation) = (cols[0], cols[1]);
+            assert_eq!(
+                parse_gaiji_body(notation).description,
+                description,
+                "{notation}"
+            );
+            assert_eq!(
+                parse_gaiji_body(&format!("{notation}、466-8")).description,
+                description,
+                "{notation} with a page-line locator"
+            );
+            assert!(external_identity(description).is_some(), "{description}");
+            rows += 1;
+        }
+        assert_eq!(rows, DESCRIPTION_TO_EXTERNAL.len());
+    }
 }

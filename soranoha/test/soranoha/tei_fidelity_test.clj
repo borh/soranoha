@@ -114,6 +114,41 @@
     (is (= [:rb [:g {:ref "#gaiji-1-87-71"} "犍"] "陀多"] rb))
     (is (= "犍" (:unicode (first (:char_declarations rendered)))))))
 
+(deftest gaiji-declarations-state-composed-sequences-and-external-identities
+  (let [dir (fs/create-temp-dir {:prefix "gaiji-identity"})
+        xml-path (str (fs/path dir "tei.xml"))
+        voiced {"type" "gaiji"
+                "gaiji" {"raw_marker" "濁点付き片仮名エ" "reference" "45-2"
+                         "unicode" "エ\u3099" "resolved" true}}
+        unencoded {"type" "gaiji"
+                   "gaiji" {"raw_marker" "冫＋虫" "reference" "12-3" "unicode" nil "resolved" false
+                            "unresolved_reason" "unresolved"
+                            "ids" "⿰冫虫" "glyphwiki_glyph" "u2ff0-u51ab-u866b"}}
+        rendered (tei/render {"nodes" [voiced unencoded]})
+        chars (map #(drop 2 (#'header/declaration->char %)) (:char_declarations rendered))
+        ^String xml (:tei (render/render-work
+                           {:rights @fixture/grant
+                            :parser-ir {"nodes" [voiced unencoded]}
+                            :metadata-record {"work" {"title" "試験" "aozora_modified" "2026-10-19"}
+                                              "contributors" []}
+                            :persons-by-id {}}))]
+    (try
+      (is (= [:mapping {:type "composed"} "エ\u3099"] (first (first chars))))
+      (is (= #{[:mapping {:type "IDS"} "⿰冫虫"]
+               [:localProp {:name "glyphwiki" :value "u2ff0-u51ab-u866b"}]
+               [:figure
+                [:graphic {:url "https://glyphwiki.org/glyph/u2ff0-u51ab-u866b.svg"}]
+                [:figDesc "⿰冫虫"]]}
+             (set (remove #(and (= :localProp (first %)) (not= "glyphwiki" (:name (second %))))
+                          (second chars)))))
+      (is (not (string/includes? xml "type=\"unicode\">エ")))
+      (spit xml-path xml)
+      (is (empty? (:violations (rng/validate! {:schema-path "schemas/tei-profile.rng"
+                                               :xml-path xml-path :label "gaiji identities"}))))
+      (is (empty? (:findings (schematron/validate! {:schema-path "schemas/tei-profile.sch"
+                                                    :xml-path xml-path :label "gaiji identities"}))))
+      (finally (fs/delete-tree dir)))))
+
 (deftest gaiji-reference-schema-rejects-mixed-domains-and-invalid-values
   (let [dir (fs/create-temp-dir {:prefix "gaiji-reference-profile"})
         xml-path (str (fs/path dir "tei.xml"))

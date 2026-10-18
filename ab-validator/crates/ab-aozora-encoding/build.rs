@@ -51,6 +51,7 @@ fn main() {
     let combo_tsv = data_dir.join("jisx0213-combo.tsv");
     let dict_tsv = data_dir.join("aozora-gaiji-chuki.tsv");
     let special_tsv = data_dir.join("aozora-gaiji-special.tsv");
+    let external_tsv = data_dir.join("aozora-gaiji-glyphwiki.tsv");
     // The full table supplies older cells for explicit gaiji references
     // and level annotations for the reverse character classifier.
     let std_txt = data_dir.join("jisx0213-2004-std.txt");
@@ -60,6 +61,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", combo_tsv.display());
     println!("cargo:rerun-if-changed={}", dict_tsv.display());
     println!("cargo:rerun-if-changed={}", special_tsv.display());
+    println!("cargo:rerun-if-changed={}", external_tsv.display());
     println!("cargo:rerun-if-changed={}", std_txt.display());
 
     let mut single = parse_single_tsv(&single_tsv);
@@ -67,6 +69,7 @@ fn main() {
     let combo = parse_combo_tsv(&combo_tsv);
     let dict = parse_description_tsv(&dict_tsv);
     let special = parse_description_tsv(&special_tsv);
+    let external = parse_external_tsv(&external_tsv);
     let levels = build_level_table(&std_txt);
 
     // Hand-curated specials take precedence over dictionary entries
@@ -166,6 +169,22 @@ fn main() {
     .expect(INFALLIBLE);
     writeln!(out).expect(INFALLIBLE);
 
+    let mut external_builder = phf_codegen::Map::<&str>::new();
+    let external_values: Vec<String> = external
+        .iter()
+        .map(|e| format!("({:?}, {:?})", e.ids, e.glyphwiki))
+        .collect();
+    for (entry, value) in external.iter().zip(external_values.iter()) {
+        external_builder.entry(entry.description.as_str(), value.as_str());
+    }
+    writeln!(
+        out,
+        "pub(crate) static DESCRIPTION_TO_EXTERNAL: phf::Map<&'static str, (&'static str, &'static str)> = {};",
+        external_builder.build(),
+    )
+    .expect(INFALLIBLE);
+    writeln!(out).expect(INFALLIBLE);
+
     // Reverse char → JIS 水準 table: a codepoint-sorted `&[(u32, u8)]`
     // queried by binary search in `suijun::jis_level`. A plain slice
     // needs no phf codegen, and binary search is fast enough for a
@@ -259,6 +278,12 @@ struct ComboEntry {
     row: u8,
     cell: u8,
     codepoints: Vec<u32>,
+}
+
+struct ExternalEntry {
+    description: String,
+    ids: String,
+    glyphwiki: String,
 }
 
 #[derive(Clone)]
@@ -366,6 +391,52 @@ fn parse_description_tsv(path: &std::path::Path) -> Vec<DescriptionEntry> {
         out.push(DescriptionEntry {
             description: cols[0].to_owned(),
             codepoint,
+        });
+    }
+    out
+}
+
+/// `description<TAB>notation<TAB>ids<TAB>glyphwiki<TAB>ucs_candidate<TAB>note`
+/// rows of `aozora-gaiji-glyphwiki.tsv`. Only the first, third and fourth
+/// columns reach the binary; `ucs_candidate` waits for review.
+fn parse_external_tsv(path: &std::path::Path) -> Vec<ExternalEntry> {
+    let text =
+        fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+    let mut out: Vec<ExternalEntry> = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let cols: Vec<&str> = trimmed.split('\t').collect();
+        assert!(
+            cols.len() >= 4,
+            "{}: expected at least 4 columns: {trimmed}",
+            path.display()
+        );
+        assert!(
+            cols[2].starts_with(|c: char| ('\u{2FF0}'..='\u{2FFF}').contains(&c)),
+            "{}: IDS must start with an ideographic description character: {trimmed}",
+            path.display()
+        );
+        assert!(
+            !cols[3].is_empty()
+                && cols[3]
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+            "{}: GlyphWiki glyph names are lowercase ASCII with hyphens: {trimmed}",
+            path.display()
+        );
+        assert!(
+            out.iter().all(|e| e.description != cols[0]),
+            "{}: duplicate description {}",
+            path.display(),
+            cols[0]
+        );
+        out.push(ExternalEntry {
+            description: cols[0].to_owned(),
+            ids: cols[2].to_owned(),
+            glyphwiki: cols[3].to_owned(),
         });
     }
     out

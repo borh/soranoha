@@ -315,7 +315,13 @@
       (assoc :reference-parts (get gaiji "reference_parts"))
 
       (seq (get gaiji "unresolved_reason"))
-      (assoc :unresolved-reason (get gaiji "unresolved_reason")))))
+      (assoc :unresolved-reason (get gaiji "unresolved_reason"))
+
+      (seq (get gaiji "ids"))
+      (assoc :ids (get gaiji "ids"))
+
+      (seq (get gaiji "glyphwiki_glyph"))
+      (assoc :glyphwiki (get gaiji "glyphwiki_glyph")))))
 
 (declare render-node)
 

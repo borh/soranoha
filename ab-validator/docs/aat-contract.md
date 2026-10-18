@@ -163,6 +163,8 @@ Gaiji fields:
 | `resolved` | string or null | Adapter-emitted character resolution, if any. |
 | `jis_code` | string or null | Adapter-emitted JIS plane-row-cell or row-cell code, if known. |
 | `unresolved_reason` | string or null | Reason the adapter did not resolve the gaiji. Null or empty means resolved/no unresolved reason. |
+| `ids` | string | Ideographic Description Sequence of an unresolved gaiji that Unicode does not encode. Present only with `glyphwiki_glyph`. |
+| `glyphwiki_glyph` | string | GlyphWiki glyph name for the same character; the glyph is served at `https://glyphwiki.org/glyph/<name>.svg`. |
 
 ## Selector Protocol v1
 

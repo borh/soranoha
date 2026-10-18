@@ -89,7 +89,7 @@ fn every_combo_entry_is_exactly_two_scalars() {
             .unwrap_or_else(|| panic!("combo mencode {mencode} must resolve"));
         let s = match r {
             Resolved::Multi(s) => s,
-            Resolved::Char(c) => panic!("expected Multi for {mencode}, got Char({c:?})"),
+            other => panic!("expected Multi for {mencode}, got {other:?}"),
         };
         assert_eq!(
             s.chars().count(),

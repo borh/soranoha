@@ -236,10 +236,19 @@
    (publication-stmt work slug rights-grant)
    (source-desc work source-content-hash primary-text-hash witness-declarations)])
 
+(defn- mapping-type
+  "`unicode` for one code point, `composed` for a sequence of them, the
+  distinction TEI P5 chapter 5 draws between the two."
+  [^String value]
+  (if (> (.codePointCount value 0 (.length value)) 1) "composed" "unicode"))
+
 (defn- declaration->char [declaration]
   (cond-> [:char {:xml/id (:xml-id declaration)}]
     (:unicode declaration)
-    (conj [:mapping {:type "unicode"} (:unicode declaration)])
+    (conj [:mapping {:type (mapping-type (:unicode declaration))} (:unicode declaration)])
+
+    (:ids declaration)
+    (conj [:mapping {:type "IDS"} (:ids declaration)])
 
     (:raw-marker declaration)
     (conj [:localProp {:name "rawMarker"
@@ -265,7 +274,13 @@
                        :value (:name declaration)}])
 
     (:desc declaration)
-    (conj [:desc (:desc declaration)])))
+    (conj [:desc (:desc declaration)])
+
+    (:glyphwiki declaration)
+    (conj [:localProp {:name "glyphwiki" :value (:glyphwiki declaration)}]
+          [:figure
+           [:graphic {:url (str "https://glyphwiki.org/glyph/" (:glyphwiki declaration) ".svg")}]
+           [:figDesc (or (:ids declaration) (:glyphwiki declaration))]])))
 
 (defn- char-decl [declarations]
   (when (seq declarations)

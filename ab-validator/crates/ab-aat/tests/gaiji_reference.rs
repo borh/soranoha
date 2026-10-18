@@ -681,7 +681,7 @@ fn ruled_box_note_without_one_boxed_refmark_remains_raw() {
 
 #[test]
 fn a_quoted_unresolved_gaiji_establishes_its_structure_alone() {
-    let marker = "※［＃濁点付き井、379-1］";
+    let marker = "※［＃感嘆符三つ、379-1］";
     let body = format!(
         "ダ・{marker}ンチ等の［＃「ダ・{marker}ンチ等の」は底本では「ダ{marker}ンチ等の」］"
     );

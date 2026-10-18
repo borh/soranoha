@@ -49,6 +49,9 @@ fn main() {
                 c as u32
             ),
             Some(Resolved::Multi(s)) => eprintln!("  desc={desc:?} men={men:?} → MULTI {s:?}"),
+            Some(Resolved::Voiced { base, mark }) => {
+                eprintln!("  desc={desc:?} men={men:?} → VOICED {base}{mark}");
+            }
             None => eprintln!("  desc={desc:?} men={men:?} → NONE"),
         }
     }

@@ -149,6 +149,16 @@ fn retrospective_gaiji_retains_target_and_marker_identity() {
 }
 
 #[test]
+fn unencoded_gaiji_keeps_its_ids_and_glyphwiki_glyph() {
+    let ir = convert("詩集※［＃「冫＋虫」、12-3］後");
+    let all = nodes(&ir);
+    let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], Value::Null);
+    assert_eq!(glyph["gaiji"]["ids"], "⿰冫虫");
+    assert_eq!(glyph["gaiji"]["glyphwiki_glyph"], "u2ff0-u51ab-u866b");
+}
+
+#[test]
 fn unresolved_combined_punctuation_retains_visible_fallback() {
     let marker = "［＃「!!!」は一文字、95-13］";
     let body = format!("詩集!!!{marker}後");
@@ -1502,7 +1512,7 @@ fn edition_targets_remain_inside_their_normal_heading() {
 
 #[test]
 fn unresolved_glyph_targets_require_the_same_structured_identity() {
-    let glyph = "※［＃濁点付き井、379-1］";
+    let glyph = "※［＃感嘆符三つ、379-1］";
     let current = format!("ダ・{glyph}ンチ等の");
     let ir = convert(&format!(
         "{current}［＃「{current}」は底本では「ダ{glyph}ンチ等の」］"
@@ -1522,8 +1532,8 @@ fn unresolved_glyph_targets_require_the_same_structured_identity() {
     );
 
     for (actual, quoted) in [
-        (glyph, "※［＃濁点付き中、379-1］"),
-        (glyph, "※［＃濁点付き井、380-1］"),
+        (glyph, "※［＃感嘆符四つ、379-1］"),
+        (glyph, "※［＃感嘆符三つ、380-1］"),
         (glyph, "\u{fffc}"),
         ("\u{fffc}", glyph),
     ] {
@@ -1538,7 +1548,7 @@ fn unresolved_glyph_targets_require_the_same_structured_identity() {
         );
         assert!(!ir["interpretation_problems"].as_array().unwrap().is_empty());
     }
-    for actual in [glyph, "※［＃濁点付き中、379-1］", "\u{fffc}"] {
+    for actual in [glyph, "※［＃感嘆符四つ、379-1］", "\u{fffc}"] {
         let ir = convert(&format!(
             "｜甲{actual}《こう》［＃「｜甲{glyph}《こう》」は底本では「別」］"
         ));

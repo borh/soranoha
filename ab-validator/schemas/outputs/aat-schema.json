@@ -439,6 +439,8 @@
         "jis_code": { "type": ["string", "null"] },
         "reference_parts": {"type":"array","items":{"$ref":"#/$defs/gaijiReferencePart"}},
         "unresolved_reason": { "type": ["string", "null"] },
+        "ids": { "type": "string", "minLength": 1 },
+        "glyphwiki_glyph": { "type": "string", "pattern": "^[a-z0-9-]+$" },
         "interpretation_marker_spans": {"type":"array","minItems":1,"items":{"$ref":"#/$defs/span"}},
         "span": { "$ref": "#/$defs/span" }
       }

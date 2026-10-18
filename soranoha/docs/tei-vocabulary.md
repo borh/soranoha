@@ -87,6 +87,25 @@ The header declares this unit in a `refsDecl` that points back at this document.
 Notes whose `xml:id` starts with `parser-source` are parser diagnostics, not
 body elements; their byte extent is JSON in the element content.
 
+## Character declarations
+
+Each gaiji in the text is a `g` element whose `ref` points at a `char` in
+`encodingDesc/charDecl`. The declaration carries what is known about the
+character:
+
+| Child | Meaning |
+|---|---|
+| `mapping[@type='unicode']` | The one code point the converter chose from the marker's JIS X 0213 cell, `U+` code or description. |
+| `mapping[@type='composed']` | A sequence of code points: a JIS X 0213 cell whose Unicode form is a base and a combining mark, a roman numeral above twelve, or a `濁点付き…` description composed as the base followed by U+3099 or U+309A. |
+| `mapping[@type='IDS']` | The Ideographic Description Sequence of a character Unicode does not encode, from the GlyphWiki group for Aozora Bunko gaiji. |
+| `localProp[@name='glyphwiki']` | The GlyphWiki glyph name for that character; `figure/graphic/@url` beside it points at the glyph image on glyphwiki.org. |
+| `localProp[@name='rawMarker']`, `localProp[@name='sourceReference']`, `localProp[@name='unresolvedReason']` | The marker's description, its reference clause and, when nothing above applies, the reason. |
+| `snh:gaiji-reference` | One element per reference clause, in source order, with its exact spelling in `original`. |
+
+A character with no mapping of any type keeps its description and source span
+only. Plaintext and Markdown write the composed sequence where TEI declares
+one, and the marker text where TEI declares none.
+
 ## Emendations
 
 When the parser corrects a transcription defect in the source before parsing,
