@@ -9,7 +9,7 @@ consolidated revision. The implemented rule and its limits are described in
 The applicable term follows from more than a catalog death year. The wartime
 addition and the old-law transition both bear on it, and the
 copyright-relevant contributions to an edition can exceed the roles the catalog
-names.
+lists.
 
 All retrievals 2026-08-27 (UTC), except S-E (旧著作権法 text,
 retrieved 2026-08-28). Retrieval channels:
@@ -94,7 +94,7 @@ Non-revival: the transition rule itself (S-D, 附則第7条第1項,
 > 原則として昭和43年（1968年）以降に亡くなった方の著作物の保護期間が延長されることとなります。
 
 問3's worked example: 藤田嗣治 died 昭和43 (1968); the 50-year term
-would have ended 2018-12-31, the amendment arrived 2018-12-30 while
+would have ended 2018-12-31, the amendment took effect 2018-12-30 while
 the right subsisted, so the term became 70 years (to 2038-12-31).
 
 ## when within a year a term expires
@@ -195,7 +195,7 @@ each date, 施行 1971-01-01 / 1997-03-25 / 2004-01-01 / 2018-12-30):
 (※ the PDF table's second row is rendered near-identically to the
 first at this resolution; the statute itself resolves the 死後公表
 cell: see 旧法第4条 below: the old-law posthumous-publication term
-is PUBLICATION-counted, not death-counted, whatever the table cell's
+is publication-counted, not death-counted, whatever the table cell's
 label. Film rows omitted here; no films in scope.)
 
 The old law's own term articles (S-E; base figures before the

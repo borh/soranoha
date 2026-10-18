@@ -4,28 +4,26 @@
 
   `soranoha.snh.release-delta` answers the same question between two
   releases, from published bytes alone. This answers it for a revision no
-  release was ever cut at, which no amount of manifest reading can reach: the
-  bytes at that revision are not in the chain. Someone has to read the archives
-  at that revision, and the choice made here is that the reader does, against
-  their own aozorabunko checkout, rather than asking a server to rebuild
-  history on demand.
+  release was built at, which no manifest describes: the bytes at that
+  revision are not in the chain. The archives at that revision must be read,
+  and the reader reads them from their own aozorabunko checkout, rather than
+  a server rebuilding history on demand.
 
   No parser runs. A work's `source_content_hash` is the hash of its archive's
   identity object, produced by the `extract` stage before any parsing, so a
   release's per-work source identity can be recomputed from the archive alone.
-  That is what keeps the cost proportional to reading the corpus rather than to
+  The cost is proportional to reading the corpus rather than to
   converting it.
 
-  The comparison is therefore about sources, and it says nothing about
-  documents. Under one toolchain a source difference is the only thing that can
-  move a document, so the sources answer the whole question; across a toolchain
+  The comparison is therefore about sources, not about documents. Under one
+  toolchain a source difference is the only thing that can change a
+  document, so the sources answer the whole question; across a toolchain
   change it does not, and a full rebuild of both revisions is the only thing
   that does. `docs/performance.md` has that recipe.
 
   Comparability is checked rather than assumed. A `source_content_hash` means
   what the `extract` stage version that produced it means, so a release built by
-  a different version of that stage is refused instead of being differenced
-  against."
+  a different version of that stage is rejected rather than compared."
   (:require [clojure.set :as set]
             [soranoha.aozora.csv :as csv]
             [soranoha.aozora.source-bundle :as source-bundle]
@@ -37,9 +35,9 @@
 
 (def source-hash-stage-version
   "The `extract` stage version whose source identity this namespace
-  recomputes. Read off the stage rather than restated, so the scan cannot go on
-  claiming a version the stage has moved past. The constructor argument is the
-  toolchain identity, which keys derivations and does not reach the version."
+  recomputes. Read off the stage rather than restated, so the scan cannot
+  report a version other than the stage's own. The constructor argument is the
+  toolchain identity, which keys derivations and does not affect the version."
   (:stage-version (stages/extract-stage nil)))
 
 (defn- bare-hex
@@ -57,10 +55,9 @@
   "Every selected work's `source_content_hash` in an aozorabunko checkout.
 
   Returns `{:works {slug hex} :unreadable [{:slug :relpath :reason}]}`. An
-  archive the admission rules refuse is bucketed rather than thrown: an
-  arbitrary historical revision is exactly where one is plausible, and one
-  refused archive out of the corpus should not cost the reader the other
-  seventeen thousand answers."
+  archive the admission rules refuse is collected rather than thrown: an
+  arbitrary historical revision is where one is likely, and one refused
+  archive should not withhold the results for the other seventeen thousand."
   [aozora-root {:keys [concurrency limit]}]
   (let [{:keys [csv-text]} (catalog/read-catalog-zip aozora-root)
         rows (csv/read-rows-from-string csv-text)
@@ -98,7 +95,7 @@
      :unreadable [{:slug :relpath :reason}]}
 
   `:withdrawn` is separated out of `:only-in-checkout` because it is the one
-  case where the release is missing a work on purpose: the slug is named in the
+  case where the release omits a work by decision: the slug is listed in the
   manifest's `withdrawn` map, so a governance event removed it and the reader's
   checkout still holding the source is expected rather than a difference.
 

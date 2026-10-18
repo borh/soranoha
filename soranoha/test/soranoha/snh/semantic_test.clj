@@ -39,7 +39,7 @@
 
 (deftest valid-fixture-vectors-satisfy-the-semantic-rules
   ;; decode already applies these on every accept vector; this pins the
-  ;; per-type checks directly. Rejection coverage lives in the full-boundary
+  ;; per-type checks directly. Rejection coverage is in the full-boundary
   ;; reject vectors and the verifier mutation table.
   (let [manifest (vector-value "release-manifest-valid.json" "release-manifest")
         snapshot (vector-value "assessment-snapshot-valid.json" "assessment-snapshot")]
@@ -67,7 +67,7 @@
              (reason-of "release-manifest"
                         (assoc manifest "validation_summary"
                                {"invalid_count" 1 "invalid_slugs" []})))))
-    (testing "manifest summary naming a non-work slug"
+    (testing "manifest summary listing a non-work slug"
       (is (= :invalid-slugs-outside-works
              (reason-of "release-manifest"
                         (assoc manifest "validation_summary"

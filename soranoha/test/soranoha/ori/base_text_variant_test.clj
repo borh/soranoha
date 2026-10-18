@@ -45,7 +45,71 @@
           (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
         (finally (fs/delete-tree dir))))))
 
-(deftest explicit-source-correspondence-survives-without-parser-offset-fallback
+(deftest named-witnesses-are-declared-and-linked-to-grouped-readings
+  (let [result (render/render-work
+                {:rights @fixture/grant
+                 :parser-ir {"nodes" [{"type" "text-apparatus" "text" "ことは"
+                                       "source_span" {"coordinate_system" "decoded_utf8"
+                                                      "start" 9 "end" 200}
+                                       "inline_children" [{"type" "text" "text" "ことは"}]
+                                       "readings" [{"text" "ことを"
+                                                    "reading_children" [{"type" "text" "text" "ことを"}]
+                                                    "witnesses" [{"label" "『全集　第十九巻』"
+                                                                  "span" {"coordinate_system" "decoded_utf8"
+                                                                          "start" 40 "end" 70}}
+                                                                 {"label" "『全集　第十五卷』"
+                                                                  "span" {"coordinate_system" "decoded_utf8"
+                                                                          "start" 90 "end" 120}}]}]}]}
+                 :metadata-record {"work" {"title" "試験" "work_id" "1"
+                                           "aozora_modified" "2026-09-07"}
+                                   "contributors" []}
+                 :persons-by-id {}})
+        reading (view/from-tei (:tei result))
+        ^Document doc (:view/document reading)
+        ^Element rdg (.item (.getElementsByTagNameNS doc view/tei-namespace "rdg") 0)
+        witnesses (.getElementsByTagNameNS doc view/tei-namespace "witness")]
+    (is (= "ことは" (:view/text reading)))
+    (is (= "ことを" (.getTextContent rdg)))
+    (is (= "#witness-1 #witness-2" (.getAttribute rdg "wit")))
+    (is (= ["『全集　第十九巻』" "『全集　第十五卷』"]
+           (mapv #(.getTextContent (.item witnesses %)) (range (.getLength witnesses)))))))
+
+(deftest original-text-witness-authority-is-retained-as-apparatus
+  (let [result (render/render-work
+                {:rights @fixture/grant
+                 :parser-ir {"nodes" [{"type" "base-text-variant" "text" "しました。"
+                                       "inline_children" [{"type" "text" "text" "しました。"}]
+                                       "variant" {"witness_kind" "original-text"
+                                                  "base_text" "しました、"
+                                                  "base_children" [{"type" "text" "text" "しました、"}]}}
+                                      {"type" "editor-note" "note_kind" "original-text"
+                                       "source_locator" "136-2"
+                                       "text" "「しました。」は原文では「しました、」と誤記、136-2"}]}
+                 :metadata-record {"work" {"title" "試験" "work_id" "1"
+                                           "aozora_modified" "2026-09-07"}
+                                   "contributors" []}
+                 :persons-by-id {}})
+        reading (view/from-tei (:tei result))
+        ^Document doc (:view/document reading)
+        ^Element rdg (.item (.getElementsByTagNameNS doc view/tei-namespace "rdg") 0)
+        notes (.getElementsByTagNameNS doc view/tei-namespace "note")
+        ^Element note (first (filter #(= "original-text" (.getAttribute ^Element % "type"))
+                                     (map #(.item notes %) (range (.getLength notes)))))]
+    (is (= "しました。" (:view/text reading)))
+    (is (= "original-text" (.getAttribute rdg "type")))
+    (is (= "しました、" (.getTextContent rdg)))
+    (is (= "136-2" (.getAttribute note "n")))
+    (is (= "「しました。」は原文では「しました、」と誤記、136-2" (.getTextContent note)))
+    (let [dir (fs/create-temp-dir {:prefix "original-text-variant"})
+          path (str (fs/path dir "tei.xml"))]
+      (try
+        (spit path (:tei result))
+        (is (= "passed" (get (validation/tei-validation-result
+                              (validation/profile-paths ".") path)
+                             "status")))
+        (finally (fs/delete-tree dir))))))
+
+(deftest explicit-source-correspondence-is-retained-without-parser-offset-fallback
   (let [source-hash (hash/format-sha256 (hash/sha256-string "original source"))
         source-span {"coordinate_system" "decoded_utf8" "start" 3 "end" 12}
         supplied {"type" "text" "text" "本文" "source_span" source-span}
@@ -74,7 +138,7 @@
            (.getAttributeNS note view/xml-namespace "id")))
     (is (= "" (.getAttribute note "n")) "no line was supplied, so none is claimed")
     (is (string/includes? (:tei output) (str "<idno type=\"primary-text-hash\">" source-hash "</idno>"))
-        "the hash the notes used to repeat is declared once")
+        "the hash is declared once rather than repeated in each note")
     (is (= (str "#" (.getAttributeNS note view/xml-namespace "id"))
            (.getAttribute ^Element (.item segments 0) "source")
            (.getAttribute ^Element (.item segments 1) "source")))

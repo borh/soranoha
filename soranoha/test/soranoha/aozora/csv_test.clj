@@ -55,8 +55,8 @@
   (is (nil? (get (csv/parse-work-fields-from-row (assoc row "初出" "")) "first_published"))))
 
 (defn- reading-notation
-  "Stands in for the parser: one gaiji annotation becomes the character it
-  names, so a test can see which fields were read."
+  "Replaces the parser: one gaiji annotation becomes the character it
+  identifies, so a test can see which fields were read."
   [s]
   (string/replace s "※［＃小書き片仮名ガ］" "ガ"))
 

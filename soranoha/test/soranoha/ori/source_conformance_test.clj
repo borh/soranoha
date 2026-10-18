@@ -7,10 +7,12 @@
             [soranoha.core.hash :as hash]
             [soranoha.kura.cas :as cas]
             [soranoha.kura.engine :as engine]
+            [soranoha.ori.accountability :as accountability]
             [soranoha.ori.projection :as projection]
             [soranoha.ori.fixture :as fixture]
             [soranoha.ori.render :as render]
-            [soranoha.ori.stages :as stages])
+            [soranoha.ori.stages :as stages]
+            [soranoha.ori.validate :as validation])
   (:import [org.w3c.dom Document Element Node]))
 
 (def ^:dynamic *store* nil)
@@ -73,6 +75,279 @@
       (recur (.getParentNode node) style))))
 (defn- texts [result tag] (mapv view/visible-text (elements result tag)))
 
+(deftest malformed-annotation-closers-preserve-body-with-explicit-uncertainty
+  (doseq [[prefix marker readings unresolved-readings]
+          [["前" "［＃改丁」" ["あと" "つぎ"] []]
+           ["山" "［＃「山」に傍点」" ["あと" "つぎ"] []]
+           ["半" "※［＃「※」は「ひへん＋向」、読みは「とき」、第3水準1-85-25、44-2」" ["つぎ"] ["《あと》"]]
+           ["" "｜※［＃「※」は「ひへん＋向」、読みは「とき」、第3水準1-85-25、44-2」" ["つぎ"] ["《あと》"]]]
+          newline ["\n" "\r\n" "\r"]]
+    (let [text (string/replace (source (str prefix marker "後《あと》。\n次《つぎ》。")) "\n" newline)
+          result (transcribe text)
+          raw-notes (into [marker] unresolved-readings)
+          references (mapv (fn [^String raw]
+                             (let [start (count (.getBytes (subs text 0 (string/index-of text raw)) "UTF-8"))
+                                   end (+ start (count (.getBytes raw "UTF-8")))]
+                               (str "#source-" start "-" end))) raw-notes)
+          notes (filter #(= "unresolved" (attribute % "subtype")) (elements result "note"))
+          problems (get-in result [:ir "interpretation_problems"])]
+      (is (= (str prefix "後。\n次。") (:plaintext result)))
+      (is (= readings (texts result "rt")))
+      (is (= raw-notes (mapv #(.getTextContent ^Node %) notes)))
+      (is (= references (mapv #(attribute % "source") notes)))
+      (is (= raw-notes (mapv #(get % "raw") problems)))
+      (is (= (repeat (count raw-notes) "unparsed-source-gap") (mapv #(get % "code") problems)))
+      (is (empty? (elements result "pb")))
+      (is (empty? (elements result "hi"))))))
+
+(deftest source-indentation-questions-preserve-the-paragraph-without-correcting-it
+  (doseq [locator ["200-14" "207-4" "211-6"]
+          newline ["\n" "\r\n" "\r"]
+          indent ["" "　"]]
+    (let [marker (str "［＃一字下げ忘れか？" locator "］")
+          paragraph (str indent marker "本文《ほんぶん》。" newline)
+          text (string/replace (source (str "前。\n" indent marker "本文《ほんぶん》。\n後。")) "\n" newline)
+          result (transcribe text)
+          notes (filter #(= "indentation-question" (attribute % "type")) (elements result "note"))
+          start (count (.getBytes (subs text 0 (string/index-of text (str indent marker))) "UTF-8"))
+          end (+ start (count (.getBytes paragraph "UTF-8")))]
+      (is (= (str "前。\n" indent "本文。\n後。") (:plaintext result)))
+      (is (= 1 (count notes)))
+      (when-let [^Element note (first notes)]
+        (is (= "possible-omission" (attribute note "subtype")))
+        (is (= (str "一字下げ忘れか？" locator) (.getTextContent note)))
+        (is (= (str "#source-" start "-" end) (attribute note "target")))
+        (let [^Element parent (.getParentNode note)
+              measure (.item (.getElementsByTagNameNS note view/tei-namespace "measure") 0)
+              reference (.item (.getElementsByTagNameNS note view/tei-namespace "ref") 0)]
+          (is (= "p" (view/local-name parent)))
+          (is (= "本文。" (string/trim (view/visible-text parent))))
+          (is (= (if (empty? indent) "" "text-indent: 1em") (attribute parent "style")))
+          (is (= "1" (attribute measure "quantity")))
+          (is (= "character" (attribute measure "unit")))
+          (is (= locator (.getTextContent ^Node reference)))))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))))
+
+(deftest unsupported-indentation-questions-retain-explicit-uncertainty
+  (doseq [body ["［＃一字下げ忘れか？200］本文。"
+                "［＃一字下げ忘れか！200-14］本文。"
+                "［＃二字下げ忘れか？200-14］本文。"
+                "文［＃一字下げ忘れか？200-14］末。"
+                "［＃一字下げ忘れか？200-14］\n本文。"
+                "名［＃「名」の左に「［＃一字下げ忘れか？200-14］よみ」のルビ］"]]
+    (let [result (transcribe (source body))]
+      (is (empty? (filter #(= "indentation-question" (attribute % "type")) (elements result "note"))))
+      (is (seq (get-in result [:ir "interpretation_problems"]))))))
+
+(deftest retrospective-ruby-preserves-every-reading-without-duplicating-body
+  (doseq [[body plain readings emphasis]
+          [["名［＃「名」の左に「な」のルビ］" "名" #{["left" "名" "な"]}]
+           ["青空文庫《あおぞらぶんこ》［＃「青空文庫」の左に「aozora bunko」のルビ］"
+            "青空文庫" #{["right" "青空文庫" "あおぞらぶんこ"] ["left" "青空文庫" "aozora bunko"]}]
+           ["前｜牛《うし》の舌［＃「牛の舌」の左に「べごのした」のルビ］後"
+            "前牛の舌後" #{["right" "牛" "うし"] ["left" "牛の舌" "べごのした"]}]
+           ["漢《かん》［＃「漢」に傍点］［＃「漢」の左に「kan」のルビ］"
+            "漢" #{["right" "漢" "かん"] ["left" "漢" "kan"]} ["漢"]]
+           ["［＃左にルビ付き］青空文庫《あおぞらぶんこ》［＃左に「aozora bunko」のルビ付き終わり］"
+            "青空文庫" #{["right" "青空文庫" "あおぞらぶんこ"] ["left" "青空文庫" "aozora bunko"]}]
+           ["［＃左にルビ付き］※［＃「木＋靈」、第3水準1-86-29］子窓［＃左に「れんじまど」のルビ付き終わり］"
+            "欞子窓" #{["left" "欞子窓" "れんじまど"]}]
+           ["［＃白丸傍点］刀禰［＃白丸傍点終わり］［＃「刀禰」の左に「とね」のルビ］"
+            "刀禰" #{["left" "刀禰" "とね"]} ["刀禰"]]
+           ["大和城下郡杜戸村の楽戸［＃「大和城下郡杜戸村の楽戸」に傍点］［＃「楽戸」の左に「がくこ」のルビ］"
+            "大和城下郡杜戸村の楽戸" #{["left" "楽戸" "がくこ"]} ["大和城下郡杜戸村の楽戸"]]
+           ["という妙な鼓［＃「という妙な鼓」に傍点］［＃「鼓」の左に「つづみ」のルビ］"
+            "という妙な鼓" #{["left" "鼓" "つづみ"]} ["という妙な鼓"]]
+           ["抜頭などの林邑楽［＃「抜頭などの林邑楽」に傍点］［＃「抜頭」の左に「ばとう」のルビ］"
+            "抜頭などの林邑楽" #{["left" "抜頭" "ばとう"]} ["抜頭などの林邑楽"]]
+           ["一屁《いつひ》［＃「屁」の左に「ヘ」のルビ］"
+            "一屁" #{["right" "一屁" "いつひ"] ["left" "屁" "ヘ"]}]
+           ["甲《こう》乙丙［＃「甲乙」の左に「こうおつ」のルビ］"
+            "甲乙丙" #{["right" "甲" "こう"] ["left" "甲乙" "こうおつ"]}]
+           ["甲乙｜丙《へい》丁［＃「乙丙」の左に「おつへい」のルビ］"
+            "甲乙丙丁" #{["right" "丙" "へい"] ["left" "乙丙" "おつへい"]}]
+           ["田※［＃「にんべん＋舞」、第4水準2-3-4］［＃「田※［＃「にんべん＋舞」、第4水準2-3-4］」に傍点］［＃「田※［＃「にんべん＋舞」、第4水準2-3-4］」の左に「たまい」のルビ］"
+            "田儛" #{["left" "田儛" "たまい"]} ["田儛"]]]]
+    (testing body
+      (let [result (transcribe (source body))
+            actual (for [ruby (elements result "ruby")
+                         :let [children (view/children ruby)
+                               base (first (filter #(= "rb" (view/local-name %)) children))
+                               reading (first (filter #(= "rt" (view/local-name %)) children))]]
+                     [(attribute ruby "rend") (view/visible-text base)
+                      (.getTextContent ^Node reading)])]
+        (is (= plain (:plaintext result)))
+        (is (= readings (set actual)))
+        (is (= (count readings) (count actual)))
+        (when emphasis
+          (is (= emphasis (texts result "hi"))))
+        (is (empty? (get-in result [:ir "interpretation_problems"])))
+        (let [dir (fs/create-temp-dir {:prefix "ruby-conformance"})
+              path (str (fs/path dir "tei.xml"))]
+          (try
+            (spit path (:tei result))
+            (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+              (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+            (finally (fs/delete-tree dir))))))))
+
+(deftest retrospective-ruby-rejects-reading-markup-in-target
+  (doseq [[body target]
+          [["青空文庫《あおぞらぶんこ》" "青空文庫《あおぞらぶんこ》"]
+           ["［＃太字］青空文庫《あおぞらぶんこ》［＃太字終わり］"
+            "［＃太字］青空文庫《あおぞらぶんこ》［＃太字終わり］"]]]
+    (let [marker (str "［＃「" target "」の左に「aozora bunko」のルビ］")
+          result (transcribe (source (str body marker)))]
+      (is (= "青空文庫" (:plaintext result)))
+      (is (= ["あおぞらぶんこ"] (texts result "rt")))
+      (is (= ["right"] (mapv #(attribute % "rend") (elements result "ruby"))))
+      (when (string/includes? body "太字")
+        (is (= ["青空文庫"] (texts result "hi"))))
+      (is (string/includes? (:tei result) marker))
+      (is (some #(and (= marker (get % "raw"))
+                      (= "uninterpreted-notation" (get % "code")))
+                (get-in result [:ir "interpretation_problems"]))))))
+
+(deftest retrospective-ruby-keeps-unmapped-glyph-identities
+  (let [glyph "※［＃濁点付き井、379-1］"
+        target (str "甲" glyph "乙")
+        marker (fn [base] (str "［＃「" base "」の左に「ひだり」のルビ］"))]
+    (doseq [[body plain readings glyph-count]
+            [[(str target (marker target)) "甲\uFFFC乙" #{["left" "甲\uFFFC乙" "ひだり"]} 1]
+             [(str "｜" target "《みぎ》" (marker target)) "甲\uFFFC乙"
+              #{["right" "甲\uFFFC乙" "みぎ"] ["left" "甲\uFFFC乙" "ひだり"]} 1]
+             [(str "［＃太字］" target "［＃太字終わり］" (marker target)) "甲\uFFFC乙"
+              #{["left" "甲\uFFFC乙" "ひだり"]} 1]
+             [(str glyph "漢《かん》" (marker "漢")) "\uFFFC漢"
+              #{["right" "\uFFFC漢" "かん"] ["left" "漢" "ひだり"]} 1]
+             [(str glyph "｜漢《かん》" (marker "漢")) "\uFFFC漢"
+              #{["right" "漢" "かん"] ["left" "漢" "ひだり"]} 1]
+             [(str "｜" target "《みぎ》" (marker glyph)) "甲\uFFFC乙"
+              #{["right" "甲\uFFFC乙" "みぎ"] ["left" "\uFFFC" "ひだり"]} 1]
+             [(str "｜甲" glyph "《みぎ》乙" (marker (str glyph "乙"))) "甲\uFFFC乙"
+              #{["right" "甲\uFFFC" "みぎ"] ["left" "\uFFFC乙" "ひだり"]} 1]
+             [(str "｜甲" glyph "《みぎ》乙" (marker (str glyph "乙")) (marker glyph)) "甲\uFFFC乙"
+              #{["right" "甲\uFFFC" "みぎ"] ["left" "\uFFFC乙" "ひだり"] ["left" "\uFFFC" "ひだり"]} 1]]]
+      (testing body
+        (let [result (transcribe (source body))
+              actual (mapcat
+                      (fn [ruby]
+                        (let [children (view/children ruby)
+                              base (first (filter #(= "rb" (view/local-name %)) children))
+                              reading (first (filter #(= "rt" (view/local-name %)) children))]
+                          (if (seq (attribute reading "from"))
+                            (map (fn [{:keys [target reading place]}]
+                                   [place target (view/visible-text reading)])
+                                 (view/ranged-ruby-readings ruby))
+                            [[(attribute ruby "rend") (view/visible-text base) (view/visible-text reading)]])))
+                      (elements result "ruby"))]
+          (is (= plain (:plaintext result)))
+          (is (= readings (set actual)))
+          (is (= (count readings) (count actual)))
+          (is (= glyph-count (count (elements result "g"))))
+          (when (string/includes? body "太字")
+            (is (= ["甲\uFFFC乙"] (texts result "hi"))))
+          (is (string/includes? (:tei result) "濁点付き井"))
+          (is (empty? (get-in result [:ir "interpretation_problems"])))
+          (let [dir (fs/create-temp-dir {:prefix "gaiji-ruby"})
+                path (str (fs/path dir "tei.xml"))]
+            (try
+              (spit path (:tei result))
+              (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+                (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+              (finally (fs/delete-tree dir)))))))
+    (let [other "※［＃濁点付き中、380-1］"
+          result (transcribe (source (str "｜" glyph "《みぎ》 " other (marker glyph))))
+          left (first (filter #(= "left" (attribute % "rend")) (elements result "ruby")))]
+      (is (= "\uFFFC \uFFFC" (:plaintext result)))
+      (is (= 2 (count (elements result "g"))))
+      (is (some? left))
+      (when left
+        (let [selected (.item (.getElementsByTagNameNS ^Element left "*" "g") 0)]
+          (is (= (attribute (first (elements result "g")) "source") (attribute selected "source")))))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))
+    (doseq [quoted ["甲※［＃濁点付き中、379-1］乙" "甲\uFFFC乙"]]
+      (let [result (transcribe (source (str "｜" target "《みぎ》" (marker quoted))))]
+        (is (= "甲\uFFFC乙" (:plaintext result)))
+        (is (= ["みぎ"] (texts result "rt")))
+        (is (= 1 (count (elements result "g"))))
+        (is (seq (get-in result [:ir "interpretation_problems"])))))))
+
+(deftest incomplete-ruby-pairs-remain-publishable-with-explicit-uncertainty
+  (doseq [[body plain markers]
+          [["［＃左にルビ付き］漢" "漢" ["［＃左にルビ付き］"]]
+           ["漢［＃左に「かん」のルビ付き終わり］" "漢" ["［＃左に「かん」のルビ付き終わり］"]]
+           ["［＃左にルビ付き］［＃左に「かん」のルビ付き終わり］" ""
+            ["［＃左にルビ付き］" "［＃左に「かん」のルビ付き終わり］"]]]]
+    (let [result (transcribe (source body))]
+      (is (= plain (:plaintext result)))
+      (is (empty? (elements result "ruby")))
+      (doseq [marker markers]
+        (is (string/includes? (:tei result) marker))
+        (is (some #(and (= marker (get % "raw"))
+                        (= "uninterpreted-notation" (get % "code")))
+                  (get-in result [:ir "interpretation_problems"]))))
+      (let [dir (fs/create-temp-dir {:prefix "incomplete-ruby"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest crossing-ruby-retains-each-reading-and-its-base
+  (doseq [[body plain expected]
+          [["｜甲乙《こうおつ》丙［＃「乙丙」の左に「おつへい」のルビ］"
+            "甲乙丙" #{["甲乙" "こうおつ" "right"] ["乙丙" "おつへい" "left"]}]
+           ["甲｜乙丙《おつへい》［＃「甲乙」の左に「こうおつ」のルビ］"
+            "甲乙丙" #{["乙丙" "おつへい" "right"] ["甲乙" "こうおつ" "left"]}]
+           ["｜甲乙［＃「乙」は太字］《こうおつ》丙［＃「乙丙」の左に「おつへい」のルビ］"
+            "甲乙丙" #{["甲乙" "こうおつ" "right"] ["乙丙" "おつへい" "left"]}]
+           ["｜甲※［＃「にんべん＋舞」、第4水準2-3-4］《こうまい》丙［＃「※［＃「にんべん＋舞」、第4水準2-3-4］丙」の左に「まいへい」のルビ］"
+            "甲儛丙" #{["甲儛" "こうまい" "right"] ["儛丙" "まいへい" "left"]}]
+           ["｜𠮷乙《よしおつ》丙［＃「乙丙」の左に「おつへい」のルビ］"
+            "𠮷乙丙" #{["𠮷乙" "よしおつ" "right"] ["乙丙" "おつへい" "left"]}]
+           ["｜甲乙《こうおつ》丙［＃「乙丙」の左に「おつへい」のルビ］丁［＃「丙丁」の左に「へいてい」のルビ］"
+            "甲乙丙丁" #{["甲乙" "こうおつ" "right"] ["乙丙" "おつへい" "left"] ["丙丁" "へいてい" "left"]}]]]
+    (testing body
+      (let [result (transcribe (source body))
+            actual (mapcat view/ranged-ruby-readings (elements result "ruby"))]
+        (is (= plain (:plaintext result)))
+        (is (= expected (set (map (fn [{:keys [target reading place]}]
+                                    [target (view/visible-text reading) place]) actual))))
+        (is (= (count expected) (count actual)))
+        (is (empty? (get-in result [:ir "interpretation_problems"])))
+        (let [dir (fs/create-temp-dir {:prefix "crossing-ruby"})
+              path (str (fs/path dir "tei.xml"))]
+          (try
+            (spit path (:tei result))
+            (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+              (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+            (finally (fs/delete-tree dir))))))))
+
+(deftest page-spacing-preserves-position-and-source-gaps
+  (doseq [[before after position] [[2 2 "center"] [1 3 "right-of-center"] [3 1 "left-of-center"] [1 1 "undetermined"]]
+          boundary ["改ページ" "改丁"]
+          body ["扉" "［＃３字下げ］扉［＃「扉」は大見出し］"]]
+    (let [result (transcribe (source (str "［＃ページの左右中央］" (apply str (repeat (inc before) "\n"))
+                                          body (apply str (repeat (inc after) "\n"))
+                                          "［＃" boundary "］\n後")))
+          scope (first (filter #(get % "page_spacing") (get-in result [:ir "layout_blocks"])))
+          layout (first (filter #(string/includes? (attribute % "rend") "page-horizontal-")
+                                (elements result "div")))]
+      (is (= {"before_blank_lines" before "after_blank_lines" after "position" position}
+             (get scope "page_spacing")))
+      (is (= (str "page-horizontal-" position " source-blank-lines-before(" before ") source-blank-lines-after(" after ")")
+             (attribute layout "rend")))
+      (is (= "扉\n後" (:plaintext result)))
+      (is (= (= position "undetermined") (boolean (seq (get-in result [:ir "interpretation_problems"])))))
+      (let [dir (fs/create-temp-dir {:prefix "page-conformance"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
 (deftest unmapped-witness-glyph-remains-apparatus
   (let [result (transcribe (source "貳朱《にしゅ》を［＃「貳朱を」は底本では「※［＃「弋＋頁」、74-10］朱を」］"))
         witness (first (elements result "rdg"))
@@ -130,12 +405,12 @@
     (is (= "beat\tbutu\n\nlaugh\twalahu" (projection/markdown (:view result))))
     (is (empty? (elements result "cell")))
     (is (empty? (get-in result [:ir "interpretation_problems"]))))
-  ;; An opener with no close names no scope, so nothing is typed from it.
+  ;; An opener with no close opens no scope, so nothing is typed from it.
   (let [result (transcribe (source "［＃ここから表組］\n甲"))]
     (is (not-any? #(= "table" (attribute % "type")) (elements result "div")))
     (is (seq (get-in result [:ir "interpretation_problems"]))))
   ;; A clause the table reading does not cover is retained beside the role
-  ;; rather than sinking the role the source did state.
+  ;; rather than discarding the role the source did state.
   (let [result (transcribe (source "［＃ここから表組、不明］\n甲\n［＃ここで表組終わり］"))]
     (is (some #(= "table" (attribute % "type")) (elements result "div")))
     (is (seq (filter #(= "不明" (get % "raw"))
@@ -159,6 +434,20 @@
       (is (some #(= rend (attribute % "rend")) (elements result "hi")))
       (is (empty? (get-in result [:ir "interpretation_problems"])))
       (is (= ["layout"] (mapv #(get % "kind") (get-in result [:ir "interpretation_facts"])))))))
+
+(deftest plural-italic-selection-preserves-unselected-text
+  (doseq [encoding ["UTF-8" "windows-31j"]]
+    (let [result (transcribe (source "心（mind, animus or mens［＃「animus」、「mens」の部分はイタリック体］）後") encoding)
+          scopes (filterv #(= "italic" (attribute % "rend")) (elements result "hi"))]
+      (is (= "心（mind, animus or mens）後" (:plaintext result)))
+      (is (= ["animus" "mens"] (mapv view/visible-text scopes)))
+      (is (empty? (elements result "g")))
+      (is (= 1 (count (set (map #(attribute % "corresp") scopes)))))
+      (is (every? #(not (string/blank? (attribute % "corresp"))) scopes))
+      (is (every? #(not= (attribute % "source") (attribute % "corresp")) scopes))
+      (is (every? (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+                  (map #(attribute % "corresp") scopes)))
+      (is (every? #(not (string/blank? (attribute % "source"))) scopes)))))
 
 (deftest partial-paragraph-typography-retains-source-paragraphs
   (let [result (transcribe (source "　［＃ここから斜体］First speech.\n\n　Second speech.［＃ここで斜体終わり］＊"))
@@ -269,6 +558,20 @@
   (let [result (transcribe "こころ\n今野大力\n\nこころ　こころ\nくるしいこころ\n\n底本：本\n")]
     (is (= "こころ　こころ\nくるしいこころ" (:plaintext result)))))
 
+(deftest isolated-consonant-accents-retain-emphasis-in-published-xml
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          [spelling expected] [["c," "ç"] ["T," "Ţ"] ["m'" "ḿ"] ["Z'" "Ź"]]
+          body [(str "［＃傍点］〔" spelling "〕［＃傍点終わり］")
+                (str "〔" spelling "〕［＃「〔" spelling "〕」に傍点］")]]
+    (let [result (transcribe (source body) encoding)]
+      (is (= expected (:plaintext result)))
+      (let [highlights (elements result "hi")
+            emphasis (filterv #(= "bouten 傍点 right" (attribute % "rend")) highlights)
+            accents (filterv #(= "accent" (attribute % "rend")) highlights)]
+        (is (= [expected] (mapv #(.getTextContent ^Node %) emphasis)))
+        (is (= ["bouten 傍点 right"] (mapv #(attribute % "rend") emphasis)))
+        (is (= [expected] (mapv #(.getTextContent ^Node %) accents)))))))
+
 (deftest unfinished-accent-scopes-do-not-change-later-paragraphs
   (doseq [encoding ["UTF-8" "windows-31j"]]
     (let [result (transcribe
@@ -295,7 +598,7 @@
     (is (= "本文" (projection/markdown (:view result))))
     (is (= ["本文"] (texts result "p")))
     ;; The marker is the boundary between body and colophon, which TEI states
-    ;; by where the source division begins. Publishing it as well put an Aozora
+    ;; by where the source division begins. Publishing it as well would put an Aozora
     ;; Bunko directive at the head of the block a reader reads for the source
     ;; edition, and in the note category a consumer reads for provenance.
     (is (= ["翻訳の底本：原書" "※利用条件" "翻訳者：訳者"]
@@ -303,13 +606,34 @@
                  (filter #(= "source-line" (attribute % "type")) (elements result "seg"))))
         "everything the marker introduces is published; the marker is not")))
 
+(deftest ambiguous-accent-punctuation-retains-source-evidence-in-published-xml
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          newline ["\n" "\r\n" "\r"]]
+    (let [body "〔Passantes du chemin qu'on eut peut-e^tre aime'es,〕"
+          text (string/replace (source body) "\n" newline)
+          result (transcribe text encoding)
+          problems (get-in result [:ir "interpretation_problems"])]
+      (is (= "Passantes du chemin qúon eut peut-être aimées," (:plaintext result)))
+      (is (= ["s,"] (mapv #(get % "raw") problems)))
+      (is (= #{"s,"} (set (map #(get-in % [:view/evidence "raw"])
+                               (get-in result [:view :view/problems])))))
+      (doseq [problem problems]
+        (let [raw (get problem "raw")
+              start (count (.getBytes (subs text 0 (string/index-of text raw)) "UTF-8"))]
+          (is (= ["content"] (get problem "aspects")))
+          (is (= start (get-in problem ["source_span" "start"])))
+          (is (= (+ start (count (.getBytes ^String raw "UTF-8")))
+                 (get-in problem ["source_span" "end"])))))
+      (is (empty? (get-in result [:view :view/eligible-spans]))))))
+
 (deftest unsupported-multiline-accents-retain-text-and-mark-analysis-uncertain
-  (let [body "〔Pardonnez a` mon bavardage\nA line without accent decomposition.〕"
-        result (transcribe (source body))
-        problems (get-in result [:view :view/problems])]
-    (is (= body (:plaintext result)))
-    (is (some #(= body (get-in % [:view/evidence "raw"])) problems))
-    (is (empty? (get-in result [:view :view/eligible-spans])))))
+  (doseq [body ["〔Pardonnez a` mon bavardage\nA line without accent decomposition.〕"
+                "〔qu'on\nA line without accent decomposition.〕"]]
+    (let [result (transcribe (source body))
+          problems (get-in result [:view :view/problems])]
+      (is (= body (:plaintext result)))
+      (is (some #(= body (get-in % [:view/evidence "raw"])) problems))
+      (is (empty? (get-in result [:view :view/eligible-spans]))))))
 
 (deftest malformed-notation-retains-visible-neighbors-and-uncertainty
   (doseq [[body expected raw]
@@ -404,7 +728,9 @@
     (is (= "前［„思想。］後。" (:plaintext result)))
     (is (= ["„"] (texts result "g")))
     (is (empty? (get-in result [:view :view/problems]))))
-  (let [marker "［＃未定義の指定］"
+  ;; without a notation term such as 字, a body after printed text is an
+  ;; editor's gloss on that text rather than unknown notation
+  (let [marker "［＃未定義の字指定］"
         result (transcribe (source (str "前［中" marker "後］末。")))]
     (is (= "前［中後］末。" (:plaintext result)))
     (is (= [marker] (mapv #(get-in % [:view/evidence "raw"])
@@ -418,7 +744,7 @@
     (is (within? upright (first (elements result "g"))))
     (is (empty? (get-in result [:view :view/problems])))))
 
-(deftest source-font-and-script-distinctions-survive-transcription
+(deftest source-font-and-script-distinctions-are-retained-in-transcription
   (doseq [[notation rendition]
           [["ゴシック体" "gothic"] ["斜体" "italic"]
            ["上付き小文字" "superscript"] ["下付き小文字" "subscript"]
@@ -475,6 +801,44 @@
                               (get-in result [:ir "interpretation_facts"])))))
       (is (empty? (filter #(= "layout-break" (get % "kind"))
                           (get-in result [:ir "interpretation_facts"])))))))
+
+(deftest uncertain-corrections-and-legibility-remain-source-apparatus
+  (let [result (transcribe (source "霰《みぞれ》［＃「霙」の誤り？、400-7］の音"))
+        note (first (filter #(= "correction" (attribute % "type")) (elements result "note")))
+        correction (first (elements result "corr"))]
+    (is (= "霰の音" (:plaintext result)))
+    (is (= ["みぞれ"] (texts result "rt")))
+    (is (= "uncertain" (attribute note "subtype")))
+    (is (= "400-7" (attribute note "n")))
+    (is (not (empty? (attribute note "target"))))
+    (is (= "low" (attribute correction "cert")))
+    (is (= "霙" (view/visible-text correction)))
+    (is (empty? (get-in result [:ir "interpretation_problems"]))))
+  (let [result (transcribe (source "勧《つと》めた［＃「勧《つと》めた」は「勤《つと》めた」の誤記か］"))
+        note (first (filter #(= "correction" (attribute % "type")) (elements result "note")))
+        correction (first (elements result "corr"))
+        dir (fs/create-temp-dir {:prefix "structured-correction"})
+        path (str (fs/path dir "tei.xml"))]
+    (try
+      (is (= "勧めた" (:plaintext result)))
+      (is (= "uncertain" (attribute note "subtype")))
+      (is (not (empty? (attribute note "target"))))
+      (is (= "" (attribute note "n")))
+      (is (= "low" (attribute correction "cert")))
+      (is (= "勤めた" (view/visible-text correction)))
+      (is (= ["つと" "つと"] (texts result "rt")))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (spit path (:tei result))
+      (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+        (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+      (finally (fs/delete-tree dir))))
+  (let [result (transcribe (source "あたしまつぴらだわ［＃印刷不鮮明、87-14］。"))
+        note (first (filter #(= "source-legibility" (attribute % "type"))
+                            (elements result "note")))]
+    (is (= "あたしまつぴらだわ。" (:plaintext result)))
+    (is (= "87-14" (attribute note "n")))
+    (is (= "印刷不鮮明、87-14" (.getTextContent ^Node note)))
+    (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
 (deftest supplied-omission-and-incompleteness-remain-source-statements
   (doseq [[statement kind] [["「註」略" "omission"] ["未完" "incompleteness"]
@@ -557,6 +921,26 @@
     (is (= "bosen 傍線 left" (attribute emphasis "rend")))
     (is (within? emphasis (first (elements result "ruby"))))))
 
+(deftest physical-lines-preserve-target-placement-and-source-locator
+  (doseq [[body plain target position locator]
+          [["Khayyam（Umar Khaiyam［＃「Kh」に下線］）"
+            "Khayyam（Umar Khaiyam）" "Kh" "below" nil]
+           ["hove［＃「v」は下線（_）付き、181-表組2行目］"
+            "hove" "v" "below" "181-表組2行目"]
+           ["P = 0.07693694［＃「P = 0.07693694」は上線（￣）付き］"
+            "P = 0.07693694" "P = 0.07693694" "above" nil]]]
+    (let [result (transcribe (source body))
+          emphasis (first (filter #(= (str "bosen 傍線 " position) (attribute % "rend"))
+                                  (elements result "hi")))
+          ir-emphasis (first (filter #(= "emphasis" (get % "type"))
+                                     (get-in result [:ir "nodes"])))]
+      (is (= plain (:plaintext result)))
+      (is (= target (.getTextContent ^Node emphasis)))
+      (is (= (or locator "") (attribute emphasis "snh:decoration-source-locator")))
+      (is (= position (get-in ir-emphasis ["decoration" "position"])))
+      (is (= locator (get-in ir-emphasis ["decoration" "source_locator"])))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))))
+
 (deftest unresolved-base-target-retains-exact-note-at-its-source-position
   (let [result (transcribe (source "甍《いらか》［＃「甍の」は底本では「薨の」］先。明《あ》［＃ルビの「あ」は底本では「あか」］かさう。"))
         ^Node note (first (filter #(= "variant" (attribute % "type")) (elements result "note")))
@@ -574,11 +958,14 @@
   (let [explanation "※「□」には、底本では「◆」が内接しています。"
         result (transcribe (str (source "本文。") explanation "\n　　　〔DIE FLU:CHTLINGE〕 〔本全集〕\n"))
         lines (filter #(= "source-line" (attribute % "type")) (elements result "seg"))
+        line-texts (mapv #(.getTextContent ^Node %) lines)
         accent (first (filter #(= "DIE FLÜCHTLINGE 〔本全集〕" (.getTextContent ^Node %)) lines))]
     (is (= "本文。" (:plaintext result)))
-    (is (some #{explanation} (map #(.getTextContent ^Node %) lines)))
-    (is (some #{"入力：人"} (map #(.getTextContent ^Node %) lines)))
-    (is (= "padding-inline-start: 3em" (attribute accent "style")))))
+    (is (some #{explanation} line-texts) (pr-str line-texts))
+    (is (some #{"入力：人"} line-texts) (pr-str line-texts))
+    (is (some? accent) (pr-str line-texts))
+    (when accent
+      (is (= "padding-inline-start: 3em" (attribute accent "style"))))))
 
 (deftest nested-warichu-preserves-forced-break-and-supplied-kunten
   (let [result (transcribe (source "［＃地から３字上げ］［＃割り注］磯。此云［＃レ］志。［＃改行］次［＃割り注終わり］後。"))
@@ -739,7 +1126,7 @@
     (is (within? emphasis note))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
-(deftest source-indentation-survives-hanging-layout-and-its-end
+(deftest source-indentation-is-retained-through-hanging-layout-and-its-end
   (let [result (transcribe (source "［＃ここから改行天付き、折り返して１字下げ］\n　内。\n［＃ここで字下げ終わり］\n　外。"))
         paragraphs (elements result "p")]
     (is (= "　内。\n　外。" (:plaintext result)))
@@ -821,6 +1208,148 @@
     (is (string/includes? (.getTextContent ^Node description) "かん"))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
+(deftest retrospective-ruby-readings-preserve-inline-semantics
+  (doseq [[prefix target plain]
+          [["乙丙" "乙丙" "乙丙"]
+           ["｜甲乙《こうおつ》丙" "乙丙" "甲乙丙"]]
+          [markup expected tag shown source-text]
+          [["［＃太字］おつ［＃太字終わり］へい" "おつへい" "hi" "おつ" "おつ"]
+           ["※［＃片仮名ヱ濁点、U+30F9］へい" "ヹへい" "g" "ヹ" "※［＃片仮名ヱ濁点、U+30F9］"]]]
+    (let [body (str prefix "［＃「" target "」の左に「" markup "」のルビ］")
+          result (transcribe (source body))
+          reading (first (filter #(= expected (view/visible-text %)) (elements result "rt")))
+          child (first (filter #(= shown (view/visible-text %)) (elements result tag)))]
+      (is (= plain (:plaintext result)))
+      (is (some? reading))
+      (is (some? child))
+      (when (and reading child)
+        (is (within? reading child))
+        (when (= tag "hi") (is (= "bold" (attribute child "rend"))))
+        (let [segment (if (= tag "g") child
+                          (first (filter #(and (= shown (view/visible-text %)) (within? child %))
+                                         (elements result "seg"))))
+              [_ start end] (re-matches #"#source-(\d+)-(\d+)" (attribute segment "source"))
+              bytes (.getBytes ^String (source body) "UTF-8")]
+          (is (= source-text (String. bytes (Integer/parseInt start)
+                                      (- (Integer/parseInt end) (Integer/parseInt start)) "UTF-8")))))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (let [dir (fs/create-temp-dir {:prefix "rich-ruby"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest unknown-directive-in-left-reading-retains-uncertainty
+  (let [marker "［＃未知の読み］"
+        result (transcribe (source (str "｜甲乙《こうおつ》丙［＃「乙丙」の左に「おつ" marker "へい」のルビ］")))
+        problems (get-in result [:ir "interpretation_problems"])]
+    (is (= "甲乙丙" (:plaintext result)))
+    (is (= ["こうおつ" "おつへい"] (texts result "rt")))
+    (is (= [marker] (mapv #(get % "raw") problems)))
+    (is (some #(string/includes? (.getTextContent ^Node %) marker) (elements result "note")))
+    (is (empty? (get-in result [:view :view/eligible-spans])))))
+
+(deftest colophon-ruby-remains-semantic-back-matter
+  (doseq [newline ["\n" "\r\n" "\r"]
+          [note readings prefix]
+          [["※表題は底本では、「海援隊［＃「海援隊」の左に「ウミヨリタスケ」のルビ］｜約規《ヤツキ》」となっています。"
+            ["ウミヨリタスケ" "ヤツキ"] "※表題"]
+           ["※表題は底本では、「間人《まひと》［＃「間人」の左に「はしひと」のルビ］考」となっています。"
+            ["まひと" "はしひと"] "※表題"]
+           ["※注：｜甲乙《こうおつ》丙［＃「乙丙」の左に「［＃太字］おつ［＃太字終わり］へい」のルビ］"
+            ["こうおつ" "おつへい"] "※注"]]]
+    (let [text (string/replace (str "題\n作者\n\n本文\n\n底本：本\n" note "\n") "\n" newline)
+          result (transcribe text)
+          back (first (elements result "back"))]
+      (is (= "本文" (:plaintext result)))
+      (is (= (set readings) (set (texts result "rt"))))
+      (is (every? #(within? back %) (elements result "ruby")))
+      (is (some #(string/starts-with? (.getTextContent ^Node %) prefix) (elements result "note")))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (let [dir (fs/create-temp-dir {:prefix "colophon-ruby"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest colophon-rich-content-preserves-lines-and-source-spans
+  (doseq [newline ["\n" "\r\n" "\r"]
+          encoding ["UTF-8" "windows-31j"]]
+    (let [marker "※［＃「にんべん＋舞」、第4水準2-3-4］"
+          text (string/replace (str "題\n作者\n\n本文\n\n底本：本\n"
+                                    "※注：\n［＃ここから太字］\n甲\n　　乙\n［＃ここで太字終わり］\n" marker "\n") "\n" newline)
+          result (transcribe text encoding)
+          back (first (elements result "back"))
+          bold (first (filter #(= "bold" (attribute % "rend")) (elements result "hi")))
+          glyph (first (elements result "g"))]
+      (is (= "本文" (:plaintext result)))
+      (is (= "甲\n　　乙" (some-> bold view/visible-text)))
+      (is (= ["儛"] (texts result "g")))
+      (when glyph
+        (is (within? back glyph))
+        (let [[_ start end] (re-matches #"#source-(\d+)-(\d+)" (attribute glyph "source"))
+              bytes (.getBytes ^String text "UTF-8")]
+          (is (= marker (String. bytes (Integer/parseInt start)
+                                 (- (Integer/parseInt end) (Integer/parseInt start)) "UTF-8")))))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (let [dir (fs/create-temp-dir {:prefix "colophon-rich"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest colophon-textual-notation-and-unresolved-scopes
+  (let [result (transcribe "題\n作者\n\n本文\n\n底本：本\n※注：≪例≫\n")]
+    (is (= "本文" (:plaintext result)))
+    (is (some #(= "※注：《例》" (.getTextContent ^Node %)) (elements result "seg")))
+    (is (empty? (get-in result [:ir "interpretation_problems"]))))
+  (doseq [note ["※注：［＃太字］甲\n乙［＃太字終わり］"
+                "※注：甲［＃未定義の字書式］"
+                "※注：〔Pardonnez a` mon bavardage\nA line without accent decomposition.〕"]]
+    (let [result (transcribe (str "題\r\n作者\r\n\r\n本文\r\n\r\n底本：本\r\n"
+                                  (string/replace note "\n" "\r\n") "\r\n"))]
+      (is (= "本文" (:plaintext result)))
+      (is (seq (get-in result [:ir "interpretation_problems"])))
+      (is (empty? (elements result "hi")))
+      (let [dir (fs/create-temp-dir {:prefix "colophon-unresolved"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest ruby-components-preserve-contained-paired-readings
+  (doseq [[body plain container target reading]
+          [["｜前［＃左にルビ付き］※［＃「りっしんべん＋夢」、U+61DC、163-12］憧市様［＃左に「タナモノフウ」のルビ付き終わり］後《よみ》"
+            "前懜憧市様後" "rb" "懜憧市様" "タナモノフウ"]
+           ["｜字《前［＃左にルビ付き］※［＃濁点付き井、379-1］［＃左に「い」のルビ付き終わり］後》"
+            "字" "rt" "\uFFFC" "い"]]]
+    (let [result (transcribe (source body))
+          outer (first (elements result "ruby"))
+          inner (first (filter #(= "left" (attribute % "rend")) (elements result "ruby")))
+          component (first (filter #(= container (view/local-name %)) (view/children outer)))]
+      (is (= plain (:plaintext result)))
+      (is (= 2 (count (elements result "ruby"))))
+      (is (some? inner))
+      (when inner
+        (is (within? component inner))
+        (is (= reading (view/visible-text (first (filter #(= "rt" (view/local-name %)) (view/children inner))))))
+        (is (= target (view/visible-text (first (filter #(= "rb" (view/local-name %)) (view/children inner)))))))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (let [dir (fs/create-temp-dir {:prefix "nested-ruby"})
+            path (str (fs/path dir "tei.xml"))]
+        (try
+          (spit path (:tei result))
+          (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+            (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+          (finally (fs/delete-tree dir)))))))
+
 (deftest explicit-ruby-base-preserves-internal-formatting
   (doseq [[body base styled]
           [["｜宜引［＃「引」は小書き右寄せ］縞《いいしま》" "宜引縞" "引"]
@@ -847,6 +1376,36 @@
       (is (some #(= "gaiji-ruby" (get % "kind"))
                 (get-in result [:ir "interpretation_facts"]))))))
 
+(deftest encoded-retrospective-gaiji-replaces-its-source-character
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          [body expected resolved reading?]
+          [["LACLARTE［＃「E」はアキュートアクセント付きE、1-9-32］後" "LACLARTÉ後" "É" false]
+           ["タックネップ［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］ネ" "タックネッㇷ゚ネ" "ㇷ゚" false]
+           ["シサム［＃「ム」は小書き片仮名ム、1-6-89］達" "シサㇺ達" "ㇺ" false]
+           ["太陽《チュプ》［＃「プ」は小書き半濁点付き片仮名フ、1-6-88］" "太陽" "ㇷ゚" true]
+           ["和人《シサム》［＃「ム」は小書き片仮名ム、1-6-89］達" "和人達" "ㇺ" true]
+           ["和人《シサム［＃「ム」は小書き片仮名ム、1-6-89］》" "和人" "ㇺ" true]]]
+    (let [result (transcribe (source body) encoding)
+          glyph (first (elements result "g"))]
+      (is (= expected (:plaintext result)))
+      (is (= resolved (.getTextContent ^Node glyph)))
+      (is (= reading? (boolean (some #(within? % glyph) (elements result "rt")))))
+      (is (not (string/blank? (attribute glyph "source"))))
+      (is (not (string/blank? (attribute glyph "corresp"))))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))))
+
+(deftest standalone-encoded-gaiji-inserts-at-its-declaration-position
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          marker ["［＃「※」は「題の頁の代わりに韋」、第4水準2-92-15、182-13］"
+                  "［＃「※」は「題の頁の代わりに韋」、第4水準2-92-15、184-11］"]]
+    (let [result (transcribe (source (str "丁" marker "良")) encoding)
+          glyph (first (elements result "g"))]
+      (is (= "丁韙良" (:plaintext result)))
+      (is (= "韙" (.getTextContent ^Node glyph)))
+      (is (not (string/blank? (attribute glyph "source"))))
+      (is (string/blank? (attribute glyph "corresp")))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))))
+
 (deftest source-page-reference-keeps-the-printed-label
   (let [result (transcribe (source "三五頁［＃「三五頁」は「須佐の男の神」の「穀物の種」］にある。"))
         note (first (filter #(= "cross-reference" (attribute % "type")) (elements result "note")))]
@@ -854,6 +1413,69 @@
     (is (= "「須佐の男の神」の「穀物の種」" (.getTextContent ^Node note)))
     (is (= "" (attribute note "target"))))
   (is (seq (get-in (transcribe (source "本文［＃「三五頁」は「章」］")) [:ir "interpretation_problems"]))))
+
+(deftest edition-statements-with-locations-remain-apparatus
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          [principal statement]
+          [["一抱え" "底本は「一抱へ」、32-10"]
+           ["せいたか" "底本は「せいだか」、34-9"]
+           ["で" "「で」は底本どおり、岩波文庫版では「ど」、151-11"]
+           ["セプルクルム" "底本7-10、63-13、69-6ではセブルクルムと表記。ここ30-10での表記は誤りか"]]]
+    (let [result (transcribe (source (str principal "［＃" statement "］後")) encoding)
+          notes (filter #(= "base-edition" (attribute % "type")) (elements result "note"))]
+      (is (= (str principal "後") (:plaintext result)))
+      (is (= [statement] (mapv #(.getTextContent ^Node %) notes)))
+      (is (empty? (elements result "g")))
+      (is (every? #(not (string/blank? (attribute % "source"))) notes)))))
+
+(deftest gaiji-declarations-retain-exact-source-references
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          [body references plaintext]
+          [["※［＃ローマ数字19、37-上-11］※［＃ローマ数字19、37-下-11］"
+            ["37-上-11" "37-下-11"] "ⅩⅠⅩⅩⅠⅩ"]
+           ["※［＃下側の右ダブル引用符、U+201E、189-8］※［＃ローマ数字1、1-13-21］"
+            ["U+201E、189-8" "1-13-21"] "„Ⅰ"]
+           ["※［＃「衙」の「吾」に代えて「干」、U+884E、225-図のキャプション］"
+            ["U+884E、225-図のキャプション"] "衎"]]]
+    (let [result (transcribe (source body) encoding)
+          declarations (elements result "char")
+          properties (filter #(= "sourceReference" (attribute % "name"))
+                             (elements result "localProp"))]
+      (is (= plaintext (:plaintext result)))
+      (is (= references (mapv #(attribute % "value") properties)))
+      (is (= (count references) (count declarations)))
+      (is (= (count references) (count (distinct (map #(attribute % "ref") (elements result "g"))))))
+      (is (every? #(not (string/blank? (attribute % "source"))) (elements result "g"))))))
+
+(deftest gaiji-reference-parts-are-retained-from-source-to-xml
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          [marker expected]
+          [["※［＃ローマ数字1、1-13-21］"
+            [{"kind" "jis-code" "original" "1-13-21" "plane" "1" "row" "13" "cell" "21"}]]
+           ["※［＃「竹かんむり／瓜」、U+7B1F、1巻-23-下-6］"
+            [{"kind" "unicode-code" "original" "U+7B1F" "codepoint" "31519"}
+             {"kind" "source-location" "original" "1巻-23-下-6" "volume" "1巻" "page" "23" "column" "下" "line" "6"}]]
+           ["※［＃「衙」の「吾」に代えて「干」、U+884E、225-図のキャプション］"
+            [{"kind" "unicode-code" "original" "U+884E" "codepoint" "34894"}
+             {"kind" "source-location" "original" "225-図のキャプション" "page" "225" "part" "図のキャプション"}]]
+           ["※［＃「木＋著」、読みは「ちょ」、374-14］"
+            [{"kind" "reading" "original" "読みは「ちょ」" "text" "ちょ"}
+             {"kind" "source-location" "original" "374-14" "page" "374" "line" "14"}]]
+           ["※［＃「ユ－一」、屋号を示す記号、273-2］"
+            [{"kind" "uninterpreted" "original" "屋号を示す記号"}
+             {"kind" "source-location" "original" "273-2" "page" "273" "line" "2"}]]]]
+    (let [result (transcribe (source marker) encoding)
+          ^Document doc (get-in result [:view :view/document])
+          parts (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "gaiji-reference")
+          actual (mapv (fn [i]
+                         (let [attrs (.getAttributes (.item parts i))]
+                           (into {} (for [j (range (.getLength attrs))
+                                          :let [attr (.item attrs j)]]
+                                      [(.getNodeName attr) (.getNodeValue attr)]))))
+                       (range (.getLength parts)))]
+      (is (= expected actual))
+      (is (every? #(= "char" (view/local-name (.getParentNode (.item parts %))))
+                  (range (.getLength parts)))))))
 
 (deftest implicit-ruby-retains-cyrillic-and-decimal-source-bases
   (doseq [[body base reading]
@@ -866,6 +1488,22 @@
       (is (empty? (get-in result [:ir "interpretation_problems"])))
       (is (some #(= "ruby" (get % "kind"))
                 (get-in result [:ir "interpretation_facts"]))))))
+
+(deftest internal-latin-punctuation-preserves-published-ruby-targets
+  (doseq [encoding ["UTF-8" "windows-31j"]
+          newline ["\n" "\r\n" "\r"]]
+    (let [body "〔J'avoue《ジャヴウ》 J'ai《ジェ》 a-t-il《ザテイル》 gou:t《グウ》〕"
+          text (string/replace (source body) "\n" newline)
+          result (transcribe text encoding)]
+      (is (= "J'avoue J'ai a-t-il goüt" (:plaintext result)))
+      (is (= ["J'avoue" "J'ai" "a-t-il" "goüt"] (texts result "rb")))
+      (is (= ["ジャヴウ" "ジェ" "ザテイル" "グウ"] (texts result "rt")))
+      (doseq [[ruby raw] (map vector (elements result "ruby")
+                              ["J'avoue《ジャヴウ》" "J'ai《ジェ》" "a-t-il《ザテイル》" "gou:t《グウ》"])]
+        (let [start (count (.getBytes (subs text 0 (string/index-of text raw)) "UTF-8"))
+              end (+ start (count (.getBytes ^String raw "UTF-8")))]
+          (is (= (str "#source-" start "-" end) (attribute ruby "source")))))
+      (is (empty? (get-in result [:ir "interpretation_problems"]))))))
 
 (deftest annotations-retain-source-selected-rich-targets
   (doseq [[target visible]
@@ -903,7 +1541,7 @@
       (is (= [reading] (texts result "rt")))
       (is (empty? (get-in result [:ir "interpretation_problems"]))))))
 
-(deftest literal-reference-signs-survive-visible-text-projections
+(deftest literal-reference-signs-are-retained-in-visible-text-projections
   (doseq [body ["句　※１／書簡" "［※２］" "（※三）" "※記号。この※番号。" "※"]]
     (let [result (transcribe (source body))]
       (is (= body (:plaintext result)))
@@ -1062,7 +1700,9 @@
   (let [result (transcribe (source "前［＃「不在」は大見出し］後"))]
     (is (= "前後" (:plaintext result)))
     (is (empty? (elements result "head"))))
-  (doseq [separator ["\n" "［＃未知の意味］"]]
+  ;; the bracketed separator contains a notation term, so it is unknown
+  ;; notation and not a gloss on the heading
+  (doseq [separator ["\n" "［＃未知の字指定］"]]
     (let [result (transcribe (source (str "見出し［＃「見出し」は大見出し］" separator "［＃「見出し」は底本では「別題」］")))]
       (is (empty? (elements result "app")))
       (is (seq (get-in result [:ir "interpretation_problems"]))))))
@@ -1163,9 +1803,9 @@
       (is (= "香港にて" (:plaintext result)) body)
       (is (empty? (get-in result [:ir "interpretation_problems"])) body))))
 
-(deftest a-line-measure-naming-a-target-stays-source-apparatus
-  ;; The marker is about a piece of the line rather than the line, and which
-  ;; piece is not something it settles.
+(deftest a-line-measure-with-a-target-stays-source-apparatus
+  ;; The marker is about a piece of the line rather than the line, and it
+  ;; does not state which piece.
   (let [result (transcribe (source "香港にて［＃この行はポイントを下げ、「昔の武蔵野今は東京府下」は地より１１字上げ］"))]
     (is (= "香港にて" (:plaintext result)))
     (is (seq (get-in result [:ir "interpretation_problems"])))))
@@ -1232,12 +1872,40 @@
 
 (deftest supplied-modern-translation-remains-rich-apparatus
   (let [result (transcribe (source "前［＃現代語訳「松籟《しょうらい》を聞かせる。」］後"))
-        note (first (filter #(= "explanation" (attribute % "type")) (elements result "note")))]
+        note (first (filter #(= "translation" (attribute % "type")) (elements result "note")))]
     (is (= "前後" (:plaintext result)))
     (is (= "前後" (projection/markdown (:view result))))
     (is (= ["松籟"] (texts result "rb")))
     (is (= ["しょうらい"] (texts result "rt")))
-    (is (= "現代語訳「松籟しょうらいを聞かせる。」" (.getTextContent ^Node note)))
+    (is (= "松籟しょうらいを聞かせる。" (.getTextContent ^Node note)))
+    (is (not (string/blank? (attribute note "source"))))
+    (is (empty? (get-in result [:ir "interpretation_problems"])))))
+
+(deftest ruby-reading-annotation-keeps-its-axis-and-source-target
+  (let [result (transcribe (source "間人連老《ハシビトノムラジオユ》［＃ルビの「ハシビトノムラジオユ」に〈原〉の注記］"))
+        note (first (filter #(= "ruby-reading-annotation" (attribute % "type"))
+                            (elements result "note")))]
+    (is (= "間人連老" (:plaintext result)))
+    (is (= "<ruby><rb>間人連老</rb><rt>ハシビトノムラジオユ</rt></ruby>"
+           (projection/markdown (:view result))))
+    (is (= ["間人連老"] (texts result "rb")))
+    (is (= ["ハシビトノムラジオユ"] (texts result "rt")))
+    (is (= "〈原〉" (.getTextContent ^Node note)))
+    (is (not (string/blank? (attribute note "source"))))
+    (is (not (string/blank? (attribute note "target"))))
+    (is (empty? (get-in result [:ir "interpretation_problems"])))))
+
+(deftest ruby-reading-sic-can-target-a-unique-reading-subrange
+  (let [result (transcribe (source "東海美人《しうり》［＃ルビの「しう」にママの注記］"))
+        note (first (filter #(= "sic" (attribute % "type")) (elements result "note")))]
+    (is (= "東海美人" (:plaintext result)))
+    (is (= "<ruby><rb>東海美人</rb><rt>しうり</rt></ruby>"
+           (projection/markdown (:view result))))
+    (is (= ["東海美人"] (texts result "rb")))
+    (is (= ["しうり"] (texts result "rt")))
+    (is (= "ママ" (.getTextContent ^Node note)))
+    (is (not (string/blank? (attribute note "source"))))
+    (is (not (string/blank? (attribute note "target"))))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
 (deftest source-note-roles-preserve-operands-without-invented-links
@@ -1251,6 +1919,27 @@
       (is (string/blank? (attribute note field))))
     (is (= 3 (count (distinct (map #(attribute (.getParentNode ^Node %) "source") notes)))))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
+
+(deftest attached-author-notes-preserve-spacing-and-rich-targets
+  (let [result (transcribe (source "Ongo ［＃「Ongo」に「＊」の著者註］と御｜正忌《しやうき》［＃「御正忌」に「＊」の著者註］"))
+        notes (filterv #(and (= "source-role" (attribute % "type"))
+                             (= "author-note" (attribute % "subtype")))
+                       (elements result "note"))
+        dir (fs/create-temp-dir {:prefix "attached-author-note"})
+        path (str (fs/path dir "tei.xml"))]
+    (try
+      (is (= "Ongo と御正忌" (:plaintext result)))
+      (is (= ["＊" "＊"] (mapv #(.getTextContent ^Node %) notes)))
+      (is (= ["正忌"] (texts result "rb")))
+      (is (= ["しやうき"] (texts result "rt")))
+      (is (= 2 (count (filter #(= "annotated-text" (attribute % "type"))
+                              (elements result "seg")))))
+      (is (empty? (get-in result [:ir "interpretation_problems"])))
+      (spit path (:tei result))
+      (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+        (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+      (finally (fs/delete-tree dir)))))
+
 (deftest figure-explanations-preserve-below-placement-without-figure-binding
   (let [result (transcribe (source "前。\n［＃ここから図表下部解説文］\n説明一。\n説明二。\n［＃ここで図表下部解説文終わり］\n後。"))
         wrapper (first (filter #(= "figure-explanation" (attribute % "type")) (elements result "div")))]
@@ -1379,14 +2068,16 @@
     (is (empty? (filter #(= "quotation" (attribute % "type")) (elements result "div"))))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
-(deftest a-supplied-gap-inside-a-quotation-stays-retained-source
+(deftest a-supplied-gap-inside-a-quotation-is-an-explanation
   ;; The source states a three-line gap the enclosed lines do not carry.
   ;; Executing it would add blank lines the source does not have.
   (let [result (transcribe (source "［＃ここから引用文、３字下げ、３行アキ］\n引いた文\n［＃引用文終わり］"))
-        quote-div (first (filter #(= "quotation" (attribute % "type")) (elements result "div")))]
+        quote-div (first (filter #(= "quotation" (attribute % "type")) (elements result "div")))
+        notes (filter #(= "explanation" (attribute % "type")) (elements result "note"))]
     (is (some? quote-div))
     (is (= "引いた文" (:plaintext result)))
-    (is (seq (get-in result [:ir "interpretation_problems"])))))
+    (is (= ["３行アキ"] (mapv #(.getTextContent ^Node %) notes)))
+    (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
 (deftest supplied-table-role-preserves-indentation-and-source-lines
   (let [result (transcribe (source "前。\n［＃ここから１字下げ、表組み］\n王朝　　年代\n西漢　　元始二年\n［＃ここで字下げ終わり］\n後。"))
@@ -1403,7 +2094,7 @@
     (is (empty? (get-in result [:ir "interpretation_problems"])))
     (is (= 2 (count (filter #(= "table" (get % "kind")) (get-in result [:ir "interpretation_facts"])))))))
 
-(deftest a-standalone-table-scope-keeps-the-axes-named-beside-the-role
+(deftest a-standalone-table-scope-keeps-the-axes-stated-beside-the-role
   (let [result (transcribe (source "前。\n［＃ここから横組みの表］\n甲　乙\n［＃ここで横組みの表終わり］\n後。"))
         table (first (filter #(= "table" (attribute % "type")) (elements result "div")))]
     (is (some? table))
@@ -1414,13 +2105,14 @@
     (is (= "前。\n甲　乙\n後。" (:plaintext result)))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
-(deftest a-clause-a-standalone-table-opener-does-not-cover-stays-source
+(deftest a-clause-a-standalone-table-opener-does-not-cover-is-an-explanation
   (let [result (transcribe (source "［＃ここからプログラム、表罫囲み］\n甲　乙\n［＃ここでプログラム（表罫囲み）終わり］"))
-        table (first (filter #(= "table" (attribute % "type")) (elements result "div")))]
+        table (first (filter #(= "table" (attribute % "type")) (elements result "div")))
+        notes (filter #(= "explanation" (attribute % "type")) (elements result "note"))]
     (is (some? table))
     (is (= "border-style: solid" (attribute table "style")))
-    (is (seq (filter #(= "プログラム" (get % "raw"))
-                     (get-in result [:ir "interpretation_problems"]))))))
+    (is (= ["プログラム"] (mapv #(.getTextContent ^Node %) notes)))
+    (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
 (deftest supplied-absence-of-table-rules-is-stated-and-a-silence-is-not
   (let [ruleless (transcribe (source "［＃ここから１字下げ、表組み、罫無し］\n甲　乙\n［＃ここで字下げ終わり］"))
@@ -1653,9 +2345,9 @@
       (is (= [plain] (texts result "p")))
       (is (empty? (get-in result [:ir "interpretation_problems"]))))))
 
-(deftest an-emphasis-selector-may-name-the-range-to-leave-out
-  ;; The cut-out is named once and applies to every occurrence of itself, and
-  ;; the characters it names stay in the text unmarked.
+(deftest an-emphasis-selector-may-state-the-range-to-leave-out
+  ;; The cut-out is stated once and applies to every occurrence of itself, and
+  ;; the characters it selects stay in the text unmarked.
   (doseq [[body plain selected]
           [["行・実践［＃「行・実践」の「・」を除く部分に傍点］後" "行・実践後" ["行" "実践"]]
            ["自律・自由・人格・性格［＃「自律・自由・人格・性格」の「・」を除く部分に傍点］後"
@@ -1669,8 +2361,8 @@
       (is (empty? (get-in result [:ir "interpretation_problems"])) body))))
 
 (deftest a-mark-between-two-characters-belongs-to-neither-of-them
-  ;; Three of these sit on one line of the source, so each has to claim only
-  ;; the pair it names.
+  ;; Three of these are on one line of the source, so each has to claim only
+  ;; the pair it identifies.
   (let [result (transcribe (source (str "自然［＃「自」と「然」の間に白三角傍点］"
                                         "はう［＃「は」と「う」の間に白三角傍点］"
                                         "たふ［＃「た」と「ふ」の間に白三角傍点］")))
@@ -1693,7 +2385,7 @@
                           (elements result "seg")))))
     (is (empty? (get-in result [:ir "interpretation_problems"])))))
 
-(deftest a-mark-naming-runs-that-do-not-meet-stays-source-apparatus
+(deftest a-mark-on-runs-that-do-not-meet-stays-source-apparatus
   (doseq [body ["自X然［＃「自」と「然」の間に白三角傍点］"
                 "自然他［＃「自」と「然」の間に白三角傍点］"
                 "自然は［＃「自」と「然」と「は」の間に白三角傍点］"]]
@@ -1710,3 +2402,349 @@
       (is (= "行・実践後" (:plaintext result)) body)
       (is (empty? (texts result "hi")) body)
       (is (seq (get-in result [:ir "interpretation_problems"])) body))))
+
+(deftest compound-instructions-are-retained-in-rich-content-with-exact-operand-provenance
+  (let [marker "［＃「B1」は縦中横、「1」は下付き小文字］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "｜B1" marker "《びー》") "B1"]
+                              [(str "漢《B1" marker "》") "漢"]
+                              [(str "［＃太字］｜B1" marker "《びー》［＃太字終わり］") "B1"]
+                              [(str "字［＃「字」は底本では「｜B1" marker "《びー》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            instructions (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-instruction")
+            operands (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-operand")
+            targets (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-target")
+            selections (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-selection")
+            bytes (.getBytes ^String text "UTF-8")
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "compound-rich-content"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 1 (.getLength instructions)))
+        (is (= marker (attribute (.item instructions 0) "original")))
+        (is (= ["B1" "1"] (mapv #(.getTextContent ^Node (.item operands %)) (range (.getLength operands)))))
+        (is (= 2 (.getLength targets)))
+        (is (= 2 (.getLength selections)))
+        (doseq [[nodes expected] [[targets ["B1" "1"]] [selections ["B1" "B1"]]]
+                [i spelling] (map-indexed vector expected)]
+          (let [reference (attribute (.item ^org.w3c.dom.NodeList nodes i) "source")
+                [_ start end] (re-matches #"#source-(\d+)-(\d+)" reference)
+                start (Long/parseLong start)
+                end (Long/parseLong end)]
+            (is (contains? declarations reference))
+            (is (= spelling (String. bytes (int start) (int (- end start)) "UTF-8")))))
+        (doseq [i (range (.getLength operands))]
+          (let [operand (.item operands i)
+                reference (attribute operand "source")
+                [_ start end] (re-matches #"#source-(\d+)-(\d+)" reference)
+                start (Long/parseLong start)
+                end (Long/parseLong end)]
+            (is (contains? declarations reference))
+            (is (= (.getTextContent ^Node operand) (String. bytes (int start) (int (- end start)) "UTF-8")))))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest heading-typography-remains-a-nonstructural-source-rendition
+  (doseq [[marker variant] [["見出し文字" "heading"]
+                            ["小見出し文字" "small-heading"]]]
+    (let [result (transcribe (source (str "新聞標題［＃" marker "］")))
+          ^Document doc (get-in result [:view :view/document])
+          effects (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-effect")
+          effect (.item effects 0)
+          dir (fs/create-temp-dir {:prefix "heading-typography"})
+          path (str (fs/path dir "tei.xml"))]
+      (is (= "新聞標題" (:plaintext result)))
+      (is (= 1 (.getLength effects)))
+      (is (= "heading-typography" (attribute effect "kind")))
+      (is (= variant (attribute effect "variant")))
+      (is (empty? (elements result "head")))
+      (try
+        (spit path (:tei result))
+        (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+        (finally (fs/delete-tree dir))))))
+
+(deftest return-mark-policy-is-retained-as-typed-source-apparatus
+  (let [body "「偏信二一言一折レ獄者」［＃「一言」の「一」をのぞいて「レ一二三」は返り点、以下同じ］"
+        result (transcribe (source body))
+        ^Document doc (get-in result [:view :view/document])
+        namespace "https://w3id.org/soranoha/ns/tei"
+        effects (.getElementsByTagNameNS doc namespace "formatting-effect")
+        exclusions (.getElementsByTagNameNS doc namespace "kunten-exclusion")
+        operands (.getElementsByTagNameNS doc namespace "formatting-operand")
+        effect (.item effects 0)
+        declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+        bytes (.getBytes ^String (source body) "UTF-8")
+        dir (fs/create-temp-dir {:prefix "kunten-policy"})
+        path (str (fs/path dir "tei.xml"))]
+    (is (= "「偏信一言折獄者」" (:plaintext result)))
+    (is (= 3 (count (filter #(= "kunten" (attribute % "type"))
+                            (elements result "note")))))
+    (is (= 1 (.getLength effects)))
+    (is (= "kunten-policy" (attribute effect "kind")))
+    (is (= "quoted-region" (attribute effect "scope")))
+    (is (= "true" (attribute effect "repeat-following")))
+    (is (= "false" (attribute effect "vertical-rule-right")))
+    (is (= 1 (.getLength exclusions)))
+    (is (= [["marks" "レ一二三"] ["enclosing" "一言"] ["mark" "一"]]
+           (mapv (fn [^Element operand]
+                   [(attribute operand "role") (.getTextContent operand)])
+                 (map #(.item operands %) (range (.getLength operands))))))
+    (doseq [i (range (.getLength operands))]
+      (let [operand (.item operands i)
+            reference (attribute operand "source")
+            [_ start end] (re-matches #"#source-(\d+)-(\d+)" reference)
+            start (Long/parseLong start)
+            end (Long/parseLong end)]
+        (is (contains? declarations reference))
+        (is (= (.getTextContent ^Node operand)
+               (String. bytes (int start) (int (- end start)) "UTF-8")))))
+    (try
+      (spit path (:tei result))
+      (let [validation-result (validation/tei-validation-result
+                               (validation/profile-paths ".") path)]
+        (is (= "passed" (get validation-result "status")) (pr-str validation-result)))
+      (finally (fs/delete-tree dir)))))
+
+(deftest block-scoped-return-mark-policy-stays-with-its-layout-container
+  (let [marker "［＃ここから２字下げ、「レ」は返り点］"
+        body (str marker "\n漢レ文\n［＃ここで字下げ終わり］")
+        result (transcribe (source body))
+        ^Document doc (get-in result [:view :view/document])
+        namespace "https://w3id.org/soranoha/ns/tei"
+        instructions (.getElementsByTagNameNS doc namespace "formatting-instruction")
+        effects (.getElementsByTagNameNS doc namespace "formatting-effect")
+        instruction (.item instructions 0)
+        effect (.item effects 0)
+        ^Element parent (.getParentNode instruction)
+        ^Element container (.getParentNode parent)
+        dir (fs/create-temp-dir {:prefix "block-kunten-policy"})
+        path (str (fs/path dir "tei.xml"))]
+    (is (= "漢文" (:plaintext result)))
+    (is (= 1 (count (filter #(= "kunten" (attribute % "type"))
+                            (elements result "note")))))
+    (is (= 1 (.getLength instructions)))
+    (is (= marker (attribute instruction "original")))
+    (is (= "following-block" (attribute effect "scope")))
+    (is (= "note" (.getLocalName parent)))
+    (is (= "div" (.getLocalName container)))
+    (is (= "layout" (attribute container "type")))
+    (is (= "padding-inline-start: 2em" (attribute container "style")))
+    (try
+      (spit path (:tei result))
+      (let [validation-result (validation/tei-validation-result
+                               (validation/profile-paths ".") path)]
+        (is (= "passed" (get validation-result "status")) (pr-str validation-result)))
+      (finally (fs/delete-tree dir)))))
+
+(deftest preceding-block-return-mark-policy-stays-with-its-layout-container
+  (let [marker "［＃ここで字下げ終わり、「レ」は返り点］"
+        body (str "［＃ここから２字下げ］\n漢レ文\n" marker)
+        result (transcribe (source body))
+        ^Document doc (get-in result [:view :view/document])
+        namespace "https://w3id.org/soranoha/ns/tei"
+        instructions (.getElementsByTagNameNS doc namespace "formatting-instruction")
+        effects (.getElementsByTagNameNS doc namespace "formatting-effect")
+        instruction (.item instructions 0)
+        effect (.item effects 0)
+        ^Element container (.getParentNode (.getParentNode instruction))
+        dir (fs/create-temp-dir {:prefix "preceding-block-kunten-policy"})
+        path (str (fs/path dir "tei.xml"))]
+    (is (= "漢文" (:plaintext result)))
+    (is (= 1 (count (filter #(= "kunten" (attribute % "type"))
+                            (elements result "note")))))
+    (is (= 1 (.getLength instructions)))
+    (is (= marker (attribute instruction "original")))
+    (is (= "preceding-block" (attribute effect "scope")))
+    (is (= "div" (.getLocalName container)))
+    (try
+      (spit path (:tei result))
+      (let [validation-result (validation/tei-validation-result
+                               (validation/profile-paths ".") path)]
+        (is (= "passed" (get validation-result "status")) (pr-str validation-result)))
+      (finally (fs/delete-tree dir)))))
+
+(deftest relative-placement-retains-the-named-body-base
+  (let [marker "［＃「x」は太字、「-x」は「e」の上付き］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "e-x" marker) "e-x"]
+                              [(str "｜e-x" marker "《しき》") "e-x"]
+                              [(str "式《e-x" marker "》") "式"]
+                              [(str "字［＃「字」は底本では「｜e-x" marker "《しき》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            bases (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-base")
+            base (.item bases 0)
+            reference (attribute base "source")
+            [_ start end] (re-matches #"#source-(\d+)-(\d+)" reference)
+            start (Long/parseLong start)
+            end (Long/parseLong end)
+            bytes (.getBytes ^String text "UTF-8")
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "relative-base"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 1 (.getLength bases)))
+        (is (= "e" (String. bytes (int start) (int (- end start)) "UTF-8")))
+        (is (= "-x" (String. bytes (int end) 2 "UTF-8")))
+        (is (contains? declarations reference))
+        (is (= "upper-relative" (attribute (.getParentNode base) "kind")))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest character-position-instructions-retain-distinct-body-targets
+  (let [marker "［＃２文字目の「i」は下付き小文字、４文字目の「i」は上付き小文字］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "確率は biνi" marker) "確率は biνi"]
+                              [(str "｜biνi" marker "《しき》") "biνi"]
+                              [(str "式《biνi" marker "》") "式"]
+                              [(str "字［＃「字」は底本では「｜biνi" marker "《しき》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            selections (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-selection")
+            targets (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-target")
+            scope-start (alength (.getBytes (subs text 0 (string/index-of text "biνi")) "UTF-8"))
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "position-targets"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 2 (.getLength selections)))
+        (is (= 2 (.getLength targets)))
+        (doseq [[i offset] [[0 1] [1 4]]]
+          (let [scope-reference (attribute (.item selections i) "source")
+                target-reference (attribute (.item targets i) "source")]
+            (is (= (str "#source-" scope-start "-" (+ scope-start 5)) scope-reference))
+            (is (= (str "#source-" (+ scope-start offset) "-" (+ scope-start offset 1)) target-reference))
+            (is (contains? declarations scope-reference))
+            (is (contains? declarations target-reference))))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest indexed-template-instructions-retain-instances-and-decimal-indices
+  (let [marker "［＃「Ａｎ」はそれぞれ縦中横、数字は上付き小書き］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "もしＡ２Ａ１０" marker) "もしＡ２Ａ１０"]
+                              [(str "｜Ａ２Ａ１０" marker "《こうい》") "Ａ２Ａ１０"]
+                              [(str "式《Ａ２Ａ１０" marker "》") "式"]
+                              [(str "字［＃「字」は底本では「｜Ａ２Ａ１０" marker "《こうい》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            selections (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-selection")
+            targets (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-target")
+            operands (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-operand")
+            scope-start (alength (.getBytes (subs text 0 (string/index-of text "Ａ２Ａ１０")) "UTF-8"))
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "template-targets"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 2 (.getLength selections)))
+        (is (= 4 (.getLength targets)))
+        (is (= ["Ａｎ"] (mapv #(.getTextContent ^Node (.item operands %)) (range (.getLength operands)))))
+        (doseq [i (range (.getLength selections))]
+          (is (= (str "#source-" scope-start "-" (+ scope-start 15)) (attribute (.item selections i) "source"))))
+        (doseq [[i [start end]] (map-indexed vector [[0 6] [6 15] [3 6] [9 15]])]
+          (let [reference (attribute (.item targets i) "source")]
+            (is (= (str "#source-" (+ scope-start start) "-" (+ scope-start end)) reference))
+            (is (contains? declarations reference))))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest equation-instructions-retain-conditional-index-source-ranges
+  (let [marker "［＃ s に続くアラビア数字はすべて下付き小文字、νに続くアラビア数字はすべて上付き小文字］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "であるから P = s10 + ν20" marker) "であるから P = s10 + ν20"]
+                              [(str "｜P = s10 + ν20" marker "《しき》") "P = s10 + ν20"]
+                              [(str "式《P = s10 + ν20" marker "》") "式"]
+                              [(str "字［＃「字」は底本では「｜P = s10 + ν20" marker "《しき》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            selections (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-selection")
+            targets (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-target")
+            scope-start (alength (.getBytes (subs text 0 (string/index-of text "P = s10 + ν20")) "UTF-8"))
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "equation-targets"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 2 (.getLength selections)))
+        (is (= 2 (.getLength targets)))
+        (doseq [[i [start end]] (map-indexed vector [[5 7] [12 14]])]
+          (let [scope-reference (attribute (.item selections i) "source")
+                target-reference (attribute (.item targets i) "source")]
+            (is (= (str "#source-" scope-start "-" (+ scope-start 14)) scope-reference))
+            (is (= (str "#source-" (+ scope-start start) "-" (+ scope-start end)) target-reference))
+            (is (contains? declarations scope-reference))
+            (is (contains? declarations target-reference))))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest inconsistent-repeated-literal-does-not-partially-resolve-tcy
+  (let [marker "［＃「x2」、「y2」、「x2」はそれぞれ縦中横、すべての「2」は上付き小書き］"]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body plaintext] [[(str "例えば x2＋y2＝r2" marker) "例えば x2＋y2＝r2"]
+                              [(str "｜x2＋y2＝r2" marker "《しき》") "x2＋y2＝r2"]
+                              [(str "式《x2＋y2＝r2" marker "》") "式"]
+                              [(str "字［＃「字」は底本では「｜x2＋y2＝r2" marker "《しき》」］") "字"]]]
+      (let [text (string/replace (source body) "\n" "\r\n")
+            result (transcribe text encoding)
+            ^Document doc (get-in result [:view :view/document])
+            selections (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-selection")
+            targets (.getElementsByTagNameNS doc "https://w3id.org/soranoha/ns/tei" "formatting-target")
+            scope-start (alength (.getBytes (subs text 0 (string/index-of text "x2＋y2＝r2")) "UTF-8"))
+            declarations (set (map #(str "#" (attribute % "xml:id")) (elements result "note")))
+            dir (fs/create-temp-dir {:prefix "repeated-targets"})
+            path (str (fs/path dir "tei.xml"))]
+        (is (= plaintext (:plaintext result)))
+        (is (= 1 (.getLength selections)))
+        (is (= 3 (.getLength targets)))
+        (doseq [[i [start end]] (map-indexed vector [[1 2] [6 7] [11 12]])]
+          (let [scope-reference (attribute (.item selections 0) "source")
+                target-reference (attribute (.item targets i) "source")]
+            (is (= (str "#source-" scope-start "-" (+ scope-start 12)) scope-reference))
+            (is (= (str "#source-" (+ scope-start start) "-" (+ scope-start end)) target-reference))
+            (is (contains? declarations scope-reference))
+            (is (contains? declarations target-reference))))
+        (try
+          (spit path (:tei result))
+          (is (= "passed" (get (validation/tei-validation-result (validation/profile-paths ".") path) "status")))
+          (finally (fs/delete-tree dir)))))))
+
+(deftest compound-accountability-requires-complete-body-relationships
+  (let [stage (accountability/source-stage (accountability/resolve-tool))]
+    (doseq [encoding ["UTF-8" "windows-31j"]
+            [body marker kinds] [["B1" "［＃「B1」は縦中横、「1」は下付き小文字］" ["emphasis"]]
+                                 ["B11" "［＃「B11」は縦中横、「1」は下付き小文字］" []]
+                                 ["e-r2/4Dt" "［＃「2」は上付き小文字、「r2/4Dt」は分数、「-r2/4Dt」は「e」の上付き］"
+                                  ["emphasis" "exponent" "layout"]]
+                                 ["q-r2/4Dt" "［＃「2」は上付き小文字、「r2/4Dt」は分数、「-r2/4Dt」は「e」の上付き］" []]]]
+      (let [text (string/replace (source (str body marker)) "\n" "\r\n")
+            bytes (.getBytes ^String text ^String encoding)
+            scanned ((:f stage) {:blob {"source-id" bytes}} {"source" "source-id"})
+            oracle (json/read-json (String. ^bytes (get scanned "source-accountability") "UTF-8"))
+            result (transcribe text encoding)
+            coverage (accountability/coverage-report oracle (:ir result))
+            occurrence (first (filter #(= marker (get % "raw")) (get coverage "occurrences")))
+            facts (filter #(= (get occurrence "source_span") (get % "source_span"))
+                          (get-in result [:ir "interpretation_facts"]))
+            problems (filter #(= marker (get % "raw")) (get coverage "interpretation_problems"))]
+        (is (= body (:plaintext result)))
+        (is (some? occurrence))
+        (is (= kinds (mapv #(get % "kind") facts)))
+        (is (= (empty? kinds) (empty? (get occurrence "claims"))))
+        (is (= (if (empty? kinds) 1 0) (count problems)))
+        (is (= "not-assessed" (get coverage "semantic_certification")))
+        (is (= 1 (count (filter #(= "formatting-instruction" (attribute % "type")) (elements result "note")))))))))

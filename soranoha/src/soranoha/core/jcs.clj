@@ -87,7 +87,7 @@
 
 (defn rfc8785-string-domain-json-string
   "RFC 8785 canonical JSON for identity objects whose scalar domain is strings.
-  Numbers are rejected so callers cannot silently inherit the known ES6 number
+  Numbers are rejected so callers cannot inherit the known ES6 number
   formatting differences in the record canonicalizer. Every string and object key
   is rejected before serialization unless its UTF-16 is well-formed."
   [value]

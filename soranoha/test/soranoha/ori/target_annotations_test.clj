@@ -13,6 +13,8 @@
     (let [marker {"coordinate_system" "decoded_utf8" "start" 21 "end" 99}
           node (cond-> {"type" "annotated-text" "text" "漢" "note_kind" "gloss"
                         "source_span" marker
+                        "interpretation_marker_spans" [{"coordinate_system" "decoded_utf8" "start" 21 "end" 30}
+                                                       {"coordinate_system" "decoded_utf8" "start" 90 "end" 99}]
                         "inline_children" [{"type" "ruby" "ruby" {"base" "漢" "reading" "かん"}}]
                         "annotation_children" [{"type" "ruby" "ruby" {"base" "字" "reading" "じ"}}]}
                  position (assoc "position" position))
@@ -29,6 +31,7 @@
       (is (= "<ruby><rb>漢</rb><rt>かん</rt></ruby>後" (projection/markdown reading)))
       (is (= "annotated-text" (.getAttribute wrapper "type")))
       (is (= "#source-21-99" (.getAttribute wrapper "source")))
+      (is (= "#source-21-30 #source-90-99" (.getAttribute wrapper "corresp")))
       (is (= (or position "") (.getAttribute note "place")))
       (is (= "字じ" (.getTextContent note)))
       (let [dir (fs/create-temp-dir {:prefix "target-annotation"})
@@ -38,3 +41,65 @@
           (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
             (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
           (finally (fs/delete-tree dir)))))))
+
+(deftest ruby-retarget-apparatus-links-the-ruby-and-exact-base
+  (let [node {"type" "editor-note" "note_kind" "ruby-retarget"
+              "text" "ルビは「これは白い」にかかる" "target_text" "これは白い"
+              "source_span" {"coordinate_system" "decoded_utf8" "start" 51 "end" 102}
+              "target_source_spans" [{"coordinate_system" "decoded_utf8" "start" 0 "end" 15}]
+              "subject_source_span" {"coordinate_system" "decoded_utf8" "start" 0 "end" 51}}
+        result (render/render-work
+                {:rights @fixture/grant
+                 :parser-ir {"nodes" [{"type" "ruby" "span" {"start" 0 "end" 15}
+                                       "ruby" {"base" "これは白い" "reading" "エステ・エ・ブランコ"
+                                               "scope" "explicit"}}
+                                      node]}
+                 :metadata-record {"work" {"title" "試験" "work_id" "1"
+                                           "aozora_modified" "2026-09-23"}
+                                   "contributors" []}
+                 :persons-by-id {}})
+        reading (view/from-tei (:tei result))
+        ^Document doc (:view/document reading)
+        ^Element note (.item (.getElementsByTagNameNS doc view/tei-namespace "note") 0)]
+    (is (= "これは白い" (:view/text reading) (projection/plaintext reading)))
+    (is (= "ruby-retarget" (.getAttribute note "type")))
+    (is (= "#source-0-15" (.getAttribute note "target")))
+    (is (= "#source-0-51" (.getAttribute note "corresp")))
+    (is (= "#source-51-102" (.getAttribute note "source")))
+    (let [dir (fs/create-temp-dir {:prefix "ruby-retarget"})
+          path (str (fs/path dir "tei.xml"))]
+      (try
+        (spit path (:tei result))
+        (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+          (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+        (finally (fs/delete-tree dir))))))
+
+(deftest inputter-note-reference-retains-its-number
+  (let [result (render/render-work
+                {:rights @fixture/grant
+                 :parser-ir {"nodes" [{"type" "text" "text" "語"}
+                                      {"type" "editor-note"
+                                       "note_kind" "inputter-note-reference"
+                                       "note_number" 12
+                                       "text" "入力者注(12)"
+                                       "source_span" {"coordinate_system" "decoded_utf8"
+                                                      "start" 3 "end" 28}}
+                                      {"type" "text" "text" "後"}]}
+                 :metadata-record {"work" {"title" "試験" "work_id" "1"
+                                           "aozora_modified" "2026-09-23"}
+                                   "contributors" []}
+                 :persons-by-id {}})
+        reading (view/from-tei (:tei result))
+        ^Document doc (:view/document reading)
+        ^Element note (.item (.getElementsByTagNameNS doc view/tei-namespace "note") 0)]
+    (is (= "語後" (:view/text reading) (projection/plaintext reading)))
+    (is (= "inputter-note-reference" (.getAttribute note "type")))
+    (is (= "12" (.getAttribute note "n")))
+    (is (= "#source-3-28" (.getAttribute note "source")))
+    (let [dir (fs/create-temp-dir {:prefix "inputter-note"})
+          path (str (fs/path dir "tei.xml"))]
+      (try
+        (spit path (:tei result))
+        (let [validated (validation/tei-validation-result (validation/profile-paths ".") path)]
+          (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
+        (finally (fs/delete-tree dir))))))

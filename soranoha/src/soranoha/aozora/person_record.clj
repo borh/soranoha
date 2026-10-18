@@ -8,7 +8,7 @@
             [soranoha.core.schema :as schema]))
 
 (defn- assert-calendar-valid!
-  "Reject a record whose date field passes the schema regex but names a
+  "Reject a record whose date field passes the schema regex but states a
   day that does not exist. The schema bounds month and day separately;
   the calendar check needs a date library."
   [record]

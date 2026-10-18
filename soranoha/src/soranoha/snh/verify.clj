@@ -164,7 +164,7 @@
   only for tei-validation bytes). `reuse?` grants that the same path
   carried the same verified hex at the already-verified younger commit
   and the tree comparison proved this commit's entry identical, so the
-  bytes here ARE the bytes verified there; `facts` is the pass-level
+  bytes here are the bytes verified there; `facts` is the pass-level
   content cache {hex {:length :record}} those grants draw on. The
   declared length is checked against the actual bytes on either route."
   [v commit slug {:strs [type id bytes]} {:keys [reuse? facts]}]
@@ -191,7 +191,7 @@
 
 (defn- check-works-blobs!
   "Blob presence/hash/length for every per-work artifact, plus the
-  validation-summary re-derivation: each tei-validation record must name
+  validation-summary re-derivation: each tei-validation record must identify
   that work's TEI bytes, and invalid_slugs must equal exactly the sorted
   slugs whose status is failed. Returns {path hex} for every verified
   artifact (the younger-commit evidence `reuse?` grants draw on when the
@@ -267,10 +267,10 @@
         (fail! :works-not-admitted-minus-withdrawn {:commit commit})))))
 
 (defn- check-catalog!
-  "The catalog must describe THIS release: the same works, in the same order,
-  bound to the same source bytes. Without this a manifest could name any
-  catalog blob, including one that still describes a withdrawn work (which
-  is exactly what a takedown must remove)."
+  "The catalog must describe this release: the same works, in the same order,
+  bound to the same source bytes. Without this a manifest could refer to any
+  catalog blob, including one that still describes a withdrawn work (which a
+  takedown must remove)."
   [v commit manifest]
   (let [catalog (:value (decoded-artifact v commit (get manifest "catalog")
                                           "catalog"))
@@ -304,7 +304,7 @@
   [commit manifest predecessor events]
   ;; The covered ranges tile upstream history without gap or overlap, and
   ;; the field a detached reader takes a range from is checked against the
-  ;; chain rather than believed. A release that did not move the corpus,
+  ;; chain rather than accepted as stated. A release that did not change the corpus,
   ;; which is every governance event, carries its predecessor's corpus
   ;; unchanged and so does not restart the range.
   (when-not (or (= (get manifest "corpus") (get predecessor "corpus"))
@@ -380,13 +380,12 @@
 
   `younger` is the already-verified successor commit whose evidence grants
   blob reuse, or nil when there is none, in which case every artifact is
-  read and hashed. The transition against the predecessor manifest is NOT
-  checked here: it needs the predecessor decoded, which is the caller's
-  next move in both directions of travel.
+  read and hashed. The transition against the predecessor manifest is not
+  checked here: it needs the predecessor decoded, which the caller does next
+  in both walk directions.
 
   This is the one definition of what a commit must satisfy. The full walk
-  and the increment check both call it, so neither can drift into checking
-  less than the other."
+  and the increment check both call it, so both check the same conditions."
   [v c pinned-keys {:keys [m-hex m younger facts]}]
   (let [parents (view/parents-of v c)]
     (when-not (= 1 (count parents))
@@ -430,7 +429,7 @@
 
 (defn- pre-genesis-state!
   "The initial commit is the only one allowed to carry the zero head. A zero
-  head anywhere else is a chain reset, and saying so is a rule of its own
+  head anywhere else is a chain reset, and that is stated as a rule of its own
   rather than a consequence of the walk, so both entry points share it."
   [v commit]
   (when (seq (view/parents-of v commit))
@@ -440,26 +439,25 @@
 (defn- verify-run!
   "Everything a contiguous run of publication commits establishes standing
   alone: every commit from `commit` back to (but not including) `stop`
-  satisfies `verify-commit!`, and every transition INSIDE the run is
+  satisfies `verify-commit!`, and every transition inside the run is
   checked. A `stop` of nil means the run continues to genesis.
 
   The run's oldest commit is left open when `stop` is given: its
   predecessor is decoded by the next run, so what closing that transition
-  needs is handed back under `:open` instead. `:open` is nil exactly when
+  needs is returned under `:open` instead. `:open` is nil exactly when
   the run reached genesis.
 
-  Following real parent links and stopping only on the commit it was
-  given is what makes the spine that chose `stop` scheduling input rather
-  than evidence: a run that walks past its stop reaches genesis and
-  fails."
+  The run follows real parent links and stops only on the commit it was
+  given, so the spine that chose `stop` is scheduling input rather than
+  evidence: a run that walks past its stop reaches genesis and fails."
   [v commit stop pinned-keys]
   (let [head (head-at v commit)
         _ (when (= sign/zero-head-hex head)
             ;; The one commit allowed to carry the zero head is the root,
-            ;; and no run starts at one: the spine hands out publication
+            ;; and no run starts at one: the spine yields publication
             ;; commits and a chain short enough to have only a root takes
             ;; the single walk. `pre-genesis-state!` is the rule the single
-            ;; walk applies to the same commit, so both name a chain reset
+            ;; walk applies to the same commit, so both report a chain reset
             ;; the same way.
             (pre-genesis-state! v commit)
             (fail! :zero-head-after-genesis {:commit commit}))
@@ -498,7 +496,7 @@
 (defn- verify-chain-from
   "The chain walked in one pass: a run from `commit` with no stop, so it
   ends at genesis and leaves no transition open. The initial commit is the
-  one case a run refuses and this accepts, as the pre-genesis state."
+  one case a run rejects and this accepts, as the pre-genesis state."
   [v commit pinned-keys]
   (if (= sign/zero-head-hex (head-at v commit))
     (pre-genesis-state! v commit)
@@ -512,11 +510,11 @@
   commit reads and hashes every artifact of its manifest because no
   younger verified commit grants it reuse: 8.8 s against 0.95 s for a
   granted one, on the 17,602-work corpus `docs/performance.md` measures.
-  A run of 32 therefore gives back about a fifth of its own time, and a
-  shorter one gives back more than it wins by running alongside the
-  others. Only the automatic choice is bound by this. An explicit
-  `:segments` is honoured as asked, which is what lets a test drive the
-  seams over a chain of four."
+  A run of 32 therefore loses about a fifth of its time to that first
+  commit, and a shorter run loses more than it gains by running alongside
+  the others. Only the automatic choice is bound by this. An explicit
+  `:segments` is used as given, so a test can exercise the seams over a
+  chain of four."
   32)
 
 (defn- segment-count [requested publication-commits]
@@ -540,10 +538,10 @@
 
   The pool is created and shut down here rather than taken from the agent
   pool `future` uses, whose threads are not daemon threads and idle for a
-  minute before exiting: a command-line verification would have printed
-  its result and then held the process open.
+  minute before exiting: a command-line verification would print its
+  result and then keep the process running for that minute.
 
-  A thunk that throws surfaces its own exception rather than the
+  A thunk that throws raises its own exception rather than the
   ExecutionException the future wraps it in, so a segmented walk fails
   with the ex-info a single walk would have raised. Results are taken in
   order, so when two runs both fail it is the one nearer the head that
@@ -563,16 +561,15 @@
   Every invariant the walk establishes is local to one commit or to one
   adjacent pair: `verify-commit!` is the first and `check-transition!` the
   second, and nothing accumulates across the chain except the manifest ids
-  and executed event ids the result carries. That is what makes a split
-  possible at all, and it is checked rather than assumed:
-  `a-segmented-walk-rejects-exactly-what-one-walk-rejects` puts the whole
-  build mutation table through both.
+  and executed event ids the result carries. That locality permits the
+  split, and `a-segmented-walk-rejects-exactly-what-one-walk-rejects` checks
+  it by running the whole build mutation table through both.
 
-  A seam is the transition the runs deliberately left open, and closing it
+  A seam is the transition the runs leave open, and closing it
   consumes exactly what the sequential walk consumes at that point: the
   younger run's oldest manifest and events, and the older run's newest
   manifest. The older run decoded that manifest from the commit the
-  younger run's parent link named, at the head that commit carries, so the
+  younger run's parent link referred to, at the head that commit carries, so the
   two arguments are the same values a single walk would have passed. What
   the seam adds is the check that they are: a run reports the head its
   parent carried, and the run that claims to be that parent must carry the
@@ -617,7 +614,7 @@
           (verify-commit! v commit pinned-keys
                           {:m-hex head :m m :younger nil :facts (atom {})})]
       ;; the prior result is only a proof of the prefix if it is a proof of
-      ;; THIS parent, in the state this commit was built on
+      ;; this parent, in the state this commit was built on
       (when-not (= parent parent-commit)
         (fail! :increment-parent-mismatch
                {:commit commit :parent parent :claimed parent-commit}))
@@ -678,15 +675,15 @@
   returned for that commit>}. Returns and throws exactly as
   `verify-repository-at` does.
 
-  This is NOT a trust primitive and must not be used as one. It proves
+  This is not a trust primitive. It proves
   nothing about the prefix; it carries forward a proof the caller already
   holds, and it is sound only when the caller computed that proof itself,
   from the same view and the same pinned keys. A publisher verifying the
   commit it has just written against the head it verified moments earlier
-  is the case this exists for. A third party arriving at a repository has
+  is its intended use. A third party arriving at a repository has
   no such proof and must use `verify-repository-at`.
 
-  What it does check is that the proof it was handed is a proof of this
+  What it does check is that the proof it receives is a proof of this
   commit's actual parent, in the state this commit was built on: the
   parent id must match, and so must the head that parent carries. A stale
   or foreign result fails rather than being carried forward."
@@ -702,8 +699,8 @@
   "Total over readable views: always returns a report
   {:result :success | :failed, :commit, :pinned-fingerprints,
   :verifier-version, and on failure :reason/:detail}. The commit must be
-  the concrete lowercase commit id the publication repository names;
-  aliases and revision expressions are refused before any read, so the
+  the concrete lowercase commit id the publication repository uses;
+  aliases and revision expressions are rejected before any read, so the
   identity the report records is the identity that was verified. Success
   requires the commit to be present, to be a publication commit (not the
   pre-genesis empty state), and the full chain to verify with the

@@ -238,11 +238,11 @@
          {"source_revision" (str/trim (:out git))
           "observed_at" (or (:observed-at opts) today)
           "decision_date" (or (:decision-date opts) today)
-          ;; verbatim: every accepted declaration in data/assessment-source.json
-          ;; already records this exact sentence, and the basis is reviewed
-          ;; data rather than prose. Correcting the name here would make a
-          ;; freshly prepared declaration differ from the accepted ones, which
-          ;; is an owner re-review, not a wording fix.
+          ;; Kept verbatim: every accepted declaration in
+          ;; data/assessment-source.json records this exact sentence, and the
+          ;; basis is reviewed data. A changed sentence would make a newly
+          ;; prepared declaration differ from the accepted ones and require
+          ;; owner re-review.
           "basis" (or (:basis opts) "Reliance on Aozora's published copyright-expired classification for this exact edition in Japan.")
           "catalog_sha256" (retain! evidence-root catalog)
           "rules_sha256" (retain! evidence-root @rules)

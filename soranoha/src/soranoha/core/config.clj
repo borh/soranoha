@@ -3,9 +3,9 @@
             [clojure.string :as string]))
 
 (defn root
-  "Resolve SORANOHA_ROOT. `explicit` (a CLI --root value) wins over the
-  environment; there is no default: an unconfigured root is an error, never a
-  guessed location."
+  "Resolve SORANOHA_ROOT. `explicit` (a CLI --root value) takes precedence
+  over the environment. There is no default: an unconfigured root is an
+  error."
   [explicit]
   (let [value (or explicit (System/getenv "SORANOHA_ROOT"))]
     (when (or (nil? value) (empty? value))
@@ -15,8 +15,8 @@
 
 (defn require-env
   "The value of environment variable `k`, which the build wrapper supplies.
-  Blank counts as unset, and unset is an error naming `what` the variable was
-  for: there is no default location to guess."
+  Blank counts as unset, and unset is an error stating `what` the variable is
+  for: there is no default location."
   [k what]
   (let [value (System/getenv k)]
     (if (string/blank? value)

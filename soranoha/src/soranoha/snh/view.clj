@@ -20,7 +20,7 @@
 (defn- sanitized-env
   "Copy of `base-env` with every GIT_-prefixed variable removed and object
   replacement disabled. The subprocess environment is replaced wholesale, so
-  no inherited git redirect survives."
+  no inherited git redirect remains."
   [base-env]
   (assoc (into {}
                (remove (fn [[k _]] (str/starts-with? (str k) "GIT_")))
@@ -96,8 +96,8 @@
   "Run (f batched-view): read-at on the passed view is served by one
   persistent cat-file --batch subprocess instead of one subprocess per
   read; the subprocess starts under the view's binding, hardening flags,
-  and sanitized environment, with stderr inherited so it can neither
-  fill a pipe nor disappear.  On success the request stream is closed and
+  and sanitized environment, with stderr inherited so it neither
+  fills a pipe nor is lost. On success the request stream is closed and
   the subprocess must terminate cleanly; spawned reads check every git
   exit, and a batch pass ends with the same obligation; on failure the
   subprocess is destroyed."
@@ -129,7 +129,7 @@
 
 (defn read-at
   "Blob bytes at `path` in `commit`'s tree, or nil when absent. Only the tree
-  of the named commit is consulted; presence of the same bytes elsewhere in
+  of the given commit is read; presence of the same bytes elsewhere in
   the object graph does not satisfy a read."
   ^bytes [view commit path]
   (if-let [batch (:batch view)]
@@ -156,8 +156,8 @@
   "Commit ids from `commit` back to a root along first parents, newest
   first.
 
-  This is scheduling input, not evidence. It exists so a chain walk can
-  choose where to split, and every id it returns is re-derived from the
+  This is scheduling input, not evidence. It lets a chain walk choose
+  where to split, and every id it returns is re-derived from the
   commit graph by the walk itself: a run follows real parent links and
   stops only when it meets the commit the next run was given. A stale or
   wrong spine therefore fails the walk rather than shortening it. Merges
@@ -173,7 +173,7 @@
 (defn changed-paths
   "Set of repo paths under `prefix` whose entries differ between the trees
   of `commit-a` and `commit-b`; additions and removals differ by
-  definition. A path absent from this set therefore names bit-identical
+  definition. A path absent from this set therefore denotes bit-identical
   tree entries in both commits: the tree comparison is itself a
   reachability proof for the path in each commit where it exists. Paths
   are NUL-delimited on the wire, so no quoting ambiguity arises."

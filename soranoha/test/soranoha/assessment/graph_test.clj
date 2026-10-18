@@ -1,6 +1,6 @@
 (ns soranoha.assessment.graph-test
   "The evaluation on its own. Every assertion here runs with no store, which is
-  the property the namespace exists for: the logic that decides publication
+  the property of the namespace under test: the logic that decides publication
   admissibility can be read and exercised without one, and staging is what the
   store is for."
   (:require [babashka.fs :as fs]
@@ -25,7 +25,7 @@
 (defn- source [] (fixtures/assessed-source "work" ["author:000001"] captures))
 
 (defn- minted-source
-  "A contribution set resting on a minted person identity, which is the premise
+  "A contribution set based on a minted person identity, which is the premise
   kind whose grounding observations become dependency edges."
   []
   (let [identity {"id" "soranoha-example" "assessor" "Synthetic reviewer"
@@ -47,7 +47,7 @@
                                    :db-path (str (fs/path root "trace.sqlite"))})]
     (try (f store) (finally (engine/close-store! store) (fs/delete-tree root)))))
 
-(deftest a-work-is-decided-with-no-store-in-sight
+(deftest a-work-is-decided-without-a-store
   (let [resolved (resolve-source (source) inputs)
         work (get-in resolved [:facts (records/fact-key "work" "work-status")])]
     (is (= :assessment/available (:state work)))
@@ -64,7 +64,7 @@
       (is (= (count (:facts resolved)) (count (:order resolved)))))))
 
 (deftest staging-adds-two-identifiers-and-decides-nothing
-  ;; The characterization gate for the split. A snapshot-byte comparison would
+  ;; Characterizes the graph/staging split. A snapshot-byte comparison would
   ;; not cover it: stage-result! stages only the semantic value and the basis,
   ;; so :dependencies never reaches the snapshot and a provenance defect would
   ;; pass such a gate unchanged. This compares the whole resolved result.
@@ -86,7 +86,7 @@
   ;; contribution set that rests on a minted identity, and the identity's own
   ;; grounding is the evidence observation it was minted over. If that edge is
   ;; dropped the conclusion still reads public-domain and the snapshot bytes do
-  ;; not move; what is lost is the ability to trace it back.
+  ;; not change; what is lost is the ability to trace it back.
   (let [resolved (resolve-source (minted-source) inputs)
         work (get-in resolved [:facts (records/fact-key "work" "work-status")])
         observations (fn observations [edges]
@@ -97,7 +97,7 @@
                                edges))]
     (is (= :assessment/available (:state work)))
     (is (= ["bundle"] (distinct (observations (:dependencies work)))))
-    (testing "and the review that consumed it names the same evidence"
+    (testing "and the review that consumed it refers to the same evidence"
       (let [review (get-in resolved [:findings "complete"])
             identity-edge (first (filter #(= "identity" (get-in % [:premise "kind"]))
                                          (:dependencies review)))]
@@ -117,8 +117,8 @@
                                                               "contribution-status")]))))))
 
 (deftest one-cycle-check-decides-whether-the-recursion-terminates
-  ;; graph/resolve! has no cycle guard of its own, so this is the check that
-  ;; keeps it from recurring forever. Its failure is what a caller sees.
+  ;; graph/resolve! has no cycle guard of its own, so this check prevents
+  ;; unbounded recursion. Its failure is the error a caller sees.
   (let [key (records/fact-key "person:000001" "death-year")
         cyclic (assoc records/empty-source "findings"
                       [(fixtures/finding "cycle" "person:000001" "death-year" 1900
@@ -138,12 +138,12 @@
 (deftest a-status-nobody-has-classified-restricts-rather-than-permits
   (is (not (graph/restrictive? graph/permitting-status))
       "the one status a work may be published under")
-  (testing "every other status the snapshot vocabulary carries stands in the way"
+  (testing "every other status the snapshot vocabulary carries restricts publication"
     (let [statuses (snapshot-statuses)]
       (is (contains? statuses graph/permitting-status))
       (doseq [status (sort (disj statuses graph/permitting-status))]
         (is (graph/restrictive? status) status))))
-  (testing "including one the vocabulary does not carry yet, which is the point"
+  (testing "including one the vocabulary does not carry"
     (is (graph/restrictive? "orphan-work")))
   (testing "and an absent value is neither, because the fact carries no assessment"
     (is (not (graph/restrictive? nil)))))

@@ -102,14 +102,14 @@
         (is (fs/exists? (fs/path out "work" "source-accountability.json"))))
       (finally (engine/close-store! store) (fs/delete-tree dir)))))
 
-(deftest permanent-pointers-in-published-bytes-survive-a-move-of-the-site
+(deftest permanent-pointers-in-published-bytes-are-independent-of-the-serving-host
   ;; The publisher pointer and the vocabulary IRI are both written into every
   ;; published file, and the chain that carries them is append-only, so neither
-  ;; can be corrected after genesis. Both therefore name w3id rather than the
+  ;; can be corrected after genesis. Both therefore refer to w3id rather than the
   ;; host currently serving the corpus: `docs/w3id/htaccess` redirects them,
   ;; and moving the corpus is a change to a redirect rule instead of a pointer
-  ;; that published files can never follow. A serving hostname reaching these
-  ;; two places is the regression this guards.
+  ;; that published files can never follow. This test fails if a serving
+  ;; hostname appears in these two places.
   (let [tei (:tei (render/render-work
                    {:rights @fixture/grant
                     :parser-ir {"source" {"work_content_hash" (str "sha256:" (apply str (repeat 64 "a")))}

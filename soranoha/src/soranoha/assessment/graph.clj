@@ -2,15 +2,15 @@
   "The assessment evaluation itself: authored findings and captured
   observations in, resolved facts and their provenance out.
 
-  Nothing here reads or writes a store. The one effect the evaluation cannot
-  compute for itself is the derived-term rule, whose value has to come back
-  through the content-addressed engine so a release can point at the run that
-  produced it, and that arrives as the `:rule` function the caller supplies. A
-  caller with no store supplies `pure-rule` and gets the same answers.
+  Nothing here reads or writes a store. The only effect is the derived-term
+  rule, whose value must pass through the content-addressed engine so a
+  release can refer to the run that produced it; the caller supplies it as the
+  `:rule` function. A caller with no store supplies `pure-rule` and gets the
+  same results.
 
   This decides publication admissibility and mints the provenance the signed
-  snapshot carries, so it is separated from staging to be readable and testable
-  on its own rather than only through a store."
+  snapshot carries, so it is separate from staging and testable without a
+  store."
   (:require [charred.api :as json]
             [clojure.string :as str]
             [soranoha.assessment.records :as records]
@@ -70,7 +70,7 @@
   "Whether assessment status `value` precludes publication.
 
   Fails closed: any non-nil status other than `permitting-status` (\"public-domain\")
-  restricts publication, ensuring newly introduced statuses restrict by default."
+  restricts publication, so a status added later restricts by default."
   [value]
   (and (some? value) (not= permitting-status value)))
 
@@ -122,13 +122,13 @@
   The store-backed rule writes the computed value to the content-addressed
   store and reads it back, so the value the evaluation sees has been through
   canonical JSON. This does that round trip without the store, so a caller
-  without one gets the same value rather than a differently shaped one."
+  without one gets the same value in the same shape."
   [_key _inputs compute]
   (json/read-json
    (String. ^bytes (canonical/rfc8785-safe-integer-json-bytes-v1 (compute)) "UTF-8")))
 
 (defn validate-view!
-  "Refuse a source whose findings postdate `as-of`, whose captured observations
+  "Reject a source whose findings postdate `as-of`, whose captured observations
   are malformed, or whose contribution sets are not fully premised."
   [source observations as-of]
   (records/date! as-of)
@@ -171,13 +171,13 @@
             (records/fail! :missing-minted-person-premise {:contribution-id cid})))))))
 
 (defn- fact-edges
-  "Every fact key resolving `key` can reach: the fact premises its findings
-  name, plus the keys its predicate derives from.
+  "Every fact key that resolving `key` can reach: the fact premises its
+  findings refer to, plus the keys its predicate derives from.
 
-  Both this and the resolution below walk the same edges, and this is the one
-  that decides whether the walk terminates. Resolution reads the derived
-  values, which are always values some finding here authored, so what it
-  reaches is a subset of this."
+  The resolution below walks the same edges, and the cycle check over these
+  edges determines whether that walk terminates. Resolution reads the derived
+  values, which are always values a finding here authored, so the keys it
+  reaches are a subset of these."
   [by-fact key]
   (let [key-for records/fact-key
         subject (get key "subject")
@@ -206,8 +206,8 @@
     (concat explicit implicit)))
 
 (defn validate-acyclic!
-  "The single cycle check. Resolution has none of its own, so a source that
-  reaches this without failing is one the recursion below terminates on."
+  "The single cycle check. Resolution has none of its own, so the recursion
+  below terminates on every source that passes this check."
   [source candidates]
   (let [by-fact (group-by #(get % "fact") (get source "findings"))
         done (atom #{}) active (atom #{})]
@@ -230,7 +230,7 @@
   review that produced it, and the keys in the order they resolved. A result
   carries its value, effective date, supporting basis and `:dependencies`,
   which is the provenance edge list a later projection traces a conclusion back
-  through. `:order` is what lets a staging pass record the facts in the order
+  through. `:order` allows a staging pass to record the facts in the order
   the evaluation established them without re-deriving that order.
 
   `rule` is called as `(rule key inputs compute)` and returns the derived
@@ -238,9 +238,9 @@
   arguments give the same graph.
 
   The `resolved` atom is memoization and nothing else: a fact is resolved once
-  and every later reference reads that result, which is what keeps the shared
-  premises of a large source from being recomputed per path. Cycles are already
-  refused by `validate-acyclic!`, which the caller runs first."
+  and every later reference reads that result, so the shared premises of a
+  large source are not recomputed per path. Cycles are already rejected by
+  `validate-acyclic!`, which the caller runs first."
   [source {:keys [observations candidates as-of rule]}]
   (let [findings (get source "findings")
         by-fact (group-by #(get % "fact") findings)
@@ -285,10 +285,10 @@
                  ;; on the referenced fact's own grounding. An identity premise
                  ;; matches only when every evidence observation is available
                  ;; and its fingerprint is minted over all of them, so each one
-                 ;; is an edge; without them a finding resting on a minted
+                 ;; is an edge; without them a finding based on a minted
                  ;; identity could not be traced to the evidence that grounded
                  ;; it, which is the premise kind whose grounding is least
-                 ;; visible. An observation premise names its observation in
+                 ;; visible. An observation premise refers to its observation in
                  ;; `ref`, which the projection already carries, and an
                  ;; observation rests on nothing further, so it adds no edge.
                  :dependencies (if (= kind "identity")
@@ -408,7 +408,8 @@
                                          (update :order conj key)))
                     result)))]
       ;; Evaluate every authored key, including findings outside the selected
-      ;; publication population, so inconsistent source authority cannot hide.
+      ;; publication population, so an inconsistency in the source authority is
+      ;; detected.
       (doseq [key (sort-by records/fingerprint (keys by-fact))] (resolve-fact key))
       (doseq [[slug _] (sort-by key candidates)]
         (resolve-fact (records/fact-key slug "work-status")))

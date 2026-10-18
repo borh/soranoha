@@ -17,7 +17,7 @@
 
 (defn- tei-document [header body]
   [:TEI {:xmlns/snh "https://w3id.org/soranoha/ns/tei"
-         :snh/vocab-version "1"}
+         :snh/vocab-version "3"}
    header
    body])
 
@@ -68,16 +68,18 @@
   "Render one work's canonical TEI transcription. `rights` is the release
   rights grant; it is embedded in the header so a TEI file carries its own
   terms once detached from the site that served it. `slug` is the publication
-  identifier, embedded for the same reason: a downloaded file has to be able
-  to say what it should be cited as."
+  identifier, embedded for the same reason: a downloaded file must state what
+  it is cited as."
   [{:keys [parser-ir metadata-record persons-by-id slug rights]}]
   (let [tei-result (parser-ir-tei/render parser-ir)
         header (tei-header/build
                 (assoc (header-input metadata-record persons-by-id)
                        :slug slug
                        :char-declarations (:char_declarations tei-result)
+                       :witness-declarations (:witness_declarations tei-result)
                        :source-content-hash (get-in parser-ir ["source" "work_content_hash"])
                        :primary-text-hash (get-in parser-ir ["source" "primary_text_hash"])
-                       :rights rights))]
+                       :rights rights
+                       :emendations (get parser-ir "emendations")))]
     {:tei (tei-header/hiccup->pretty-xml-string
            (tei-document header (with-interpretation (:body tei-result) parser-ir)))}))

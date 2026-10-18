@@ -2,8 +2,8 @@
   "One way for a gate to read a protocol schema.
 
   Several tests compare something the build states with what a schema will
-  accept, and each needs the same thing first: every subschema, wherever it
-  sits. Written once because the recursion is easy to get subtly wrong, and a
+  accept, and each needs the same thing first: every subschema, at any
+  depth. Written once because the recursion is easy to get subtly wrong, and a
   copy that forgets to descend into a vector misses every `oneOf` branch while
   still passing.")
 

@@ -24,7 +24,7 @@
 
 (defn recorded-provider
   "Resolve URL-keyed responses from retained bodies. assert-complete! distinguishes
-  missing experiment data from intentionally recorded HTTP failures, even when the
+  missing experiment data from HTTP failures recorded as such, even when the
   acquisition layer catches the fetch exception and reports an unavailable work."
   [evidence-root responses]
   (when-not (map? responses)

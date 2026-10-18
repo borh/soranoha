@@ -159,7 +159,7 @@
                                 (vector-bytes "assessment-snapshot-valid.json"))
         report (decode/decode "admission-report"
                               (vector-bytes "admission-report-valid.json"))]
-    (testing "manifest admission ids name the fixture evidence artifacts"
+    (testing "manifest admission ids identify the fixture evidence artifacts"
       (is (= (:id snapshot) (get-in manifest ["admission" "assessment_snapshot"])))
       (is (= (:id report) (get-in manifest ["admission" "admission_report"]))))
     (testing "report binds the snapshot and matches admission field-for-field"

@@ -77,8 +77,8 @@
 
 (defn record-execution!
   "Record an executed derivation: history append first (the observation),
-  then the trace row (INSERT OR IGNORE keeps the first winner under races;
-  divergent losers remain visible in history)."
+  then the trace row (INSERT OR IGNORE keeps the first row written under
+  concurrent writes; divergent later executions remain in history)."
   [{:keys [conn] :as store} stage inputs outputs]
   (let [trace-key (derivation-key stage inputs)
         inputs-json (canonical/rfc8785-safe-integer-json-string-v1 inputs)

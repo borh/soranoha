@@ -1,5 +1,5 @@
 (ns soranoha.snh.fixture
-  "Shared machinery for verifier/transaction tests: a throwaway origin +
+  "Shared machinery for verifier/transaction tests: a temporary origin +
   clone pair, the fixture signing keys, a parameterized corpus assembler,
   and a low-level crafter for invalid publication commits used in negative tests."
   (:require [babashka.fs :as fs]
@@ -67,8 +67,8 @@
 
   The TEI artifact is real TEI, rendered by the publication path rather than
   spelled out here, because the serving layer reads it: an export renders
-  every published work for its reading view, so a marker string would no
-  longer be a stand-in for a TEI artifact."
+  every published work for its reading view, so a marker string cannot
+  substitute for a TEI artifact."
   [kind slug variant]
   (if (= "tei" kind)
     (.getBytes ^String (:tei (render/render-work
@@ -82,7 +82,7 @@
 
 (defn validation-blob-bytes
   "A representative tei-validation record carrying the consumed projection:
-  status and validated_artifact naming the work's TEI bytes."
+  status and validated_artifact identifying the work's TEI bytes."
   ^bytes [tei-hex failed?]
   (.getBytes ^String (json/write-json-str
                       {"status" (if failed? "failed" "passed")
@@ -160,9 +160,9 @@
   (fn [head-manifest]
     (let [withdrawn (set (map #(get % "slug") (get head-manifest "withdrawn")))
           live (vec (sort (remove withdrawn admitted)))
-          ;; a scalar variant moves every work at once, which is what a
-          ;; toolchain change does; a function of slug lets a caller move only
-          ;; the few works an upstream commit actually touches
+          ;; a scalar variant changes every work at once, which is what a
+          ;; toolchain change does; a function of slug lets a caller change
+          ;; only the few works an upstream commit touches
           variant-of (if (fn? variant) variant (constantly variant))
           works (mapv #(work-entry % (variant-of %) (contains? (set invalid) %)) live)
           all-candidates (vec (sort (concat admitted excluded quarantined)))
@@ -190,7 +190,7 @@
               "corpus" {"upstream_origin" "https://github.com/aozorabunko/aozorabunko.git"
                         "upstream_rev" upstream-rev
                         ;; the producer side of the covers_from invariant,
-                        ;; restated here rather than borrowed: this fixture is
+                        ;; restated here rather than imported: this fixture is
                         ;; an independent implementation of the assembler
                         ;; contract, and one that imported the real assembler
                         ;; would stop being evidence about it
@@ -254,8 +254,8 @@
   "A catalog matching `manifest-value`'s works, plus its blob file. Crafted
   releases get one by default: the manifest-to-catalog binding is checked on
   every commit, so a crafted manifest without a matching catalog would fail
-  there and mask the rule the test is actually about, exactly as a real
-  forger would have to supply one. Returns nil when the planted works cannot
+  there and mask the rule under test, as a real forger would also have to
+  supply one. Returns nil when the planted works cannot
   produce a valid catalog (duplicate or unsorted slugs), leaving the
   manifest's own catalog reference in place."
   [manifest-value]

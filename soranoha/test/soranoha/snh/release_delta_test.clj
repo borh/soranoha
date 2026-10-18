@@ -2,8 +2,8 @@
   "The release-to-release reading of two manifests. The properties under test
   are the ones a served diff would otherwise get wrong: that a re-conversion
   is never reported as a new edition, that a source change is not attributed
-  to the toolchain, and that documents moving with nothing else moving is
-  surfaced rather than absorbed."
+  to the toolchain, and that documents changing with no other change is
+  reported rather than absorbed."
   (:require [clojure.test :refer [deftest is testing]]
             [soranoha.snh.release-delta :as release-delta]))
 
@@ -45,11 +45,11 @@
     (is (= ["000001_1"] (:documents-changed works)))
     (is (= [] (:source-changed works)))
     (is (= 0 (:unchanged works)))
-    (testing "the stage that produced the new documents is named alongside"
+    (testing "the stage that produced the new documents is reported alongside"
       (is (= #{"convert"} (set (keys toolchain))))
       (is (= "closure-1" (get-in toolchain ["convert" :from "nix_closure_hash"])))
       (is (= "closure-2" (get-in toolchain ["convert" :to "nix_closure_hash"]))))
-    (testing "a moved stage coordinate explains it, so nothing is unexplained"
+    (testing "a changed stage coordinate explains it, so nothing is unexplained"
       (is (= [] unexplained)))))
 
 (deftest a-source-change-is-not-also-reported-as-a-document-change
@@ -65,7 +65,7 @@
 (def ^:private moved-documents
   ["snh:1:markdown:zz" "snh:1:plaintext:bb" "snh:1:tei:cc" "snh:1:tei-validation:dd"])
 
-(deftest documents-moving-with-no-declared-input-moving-is-surfaced
+(deftest documents-changing-with-no-declared-input-changing-is-reported
   (let [earlier (manifest "rev-a" [(work "000001_1" "sha256:src")])
         later (manifest "rev-b" [(work "000001_1" "sha256:src" :artifacts moved-documents)])
         {:keys [works unexplained]} (release-delta/delta earlier later)]
@@ -73,13 +73,13 @@
     (is (= ["000001_1"] unexplained)
         "same source, same toolchain, same catalog and same rights, different bytes")))
 
-(deftest a-catalog-edit-explains-documents-moving-and-is-not-unexplained
-  (testing "a metadata-only upstream revision moves documents for a knowable reason"
+(deftest a-catalog-edit-explains-changed-documents-and-is-not-unexplained
+  (testing "a metadata-only upstream revision changes documents for a known reason"
     ;; The metadata record comes from the catalog rows, so a catalog-only
-    ;; commit that edits a published work's title or contributors moves that
-    ;; work's documents with its source hash and every stage standing still.
+    ;; commit that edits a published work's title or contributors changes that
+    ;; work's documents while its source hash and every stage are unchanged.
     ;; About one commit in ten does, so absorbing this into the determinism
-    ;; finding would bury the finding.
+    ;; finding would obscure the finding.
     (let [earlier (manifest "rev-a" [(work "000001_1" "sha256:src")])
           later (manifest "rev-b" [(work "000001_1" "sha256:src" :artifacts moved-documents)]
                           :catalog (str "snh:1:catalog:" (apply str (repeat 64 "b"))))
@@ -89,7 +89,7 @@
       (is (not= (:from catalog) (:to catalog))
           "and the input that withdrew the claim is in the report")))
 
-  (testing "a moved rights block does the same"
+  (testing "a changed rights block does the same"
     ;; Rights reach the TEI header, so they are an input to every document.
     (let [earlier (manifest "rev-a" [(work "000001_1" "sha256:src")])
           later (manifest "rev-b" [(work "000001_1" "sha256:src" :artifacts moved-documents)]

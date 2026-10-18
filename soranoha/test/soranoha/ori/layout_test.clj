@@ -116,13 +116,13 @@
                     "gaiji" {"reference" "264-7" "unicode" nil "raw_marker" "てへん＋全"}}
         ir {"nodes" [known unresolved (assoc unresolved "span" {"start" 15330 "end" 15345})]}
         result (tei/render ir)]
-    (is (= [{:xml-id "gaiji-264-7" :unicode "糸" :raw-marker "糸＋率"}
-            {:xml-id "gaiji-264-7-at-15314" :unicode nil :raw-marker "てへん＋全"}]
+    (is (= [{:xml-id "gaiji-264-7" :source-reference "264-7" :unicode "糸" :raw-marker "糸＋率"}
+            {:xml-id "gaiji-264-7-at-15314" :source-reference "264-7" :unicode nil :raw-marker "てへん＋全"}]
            (:char_declarations result)))
     (is (= [:p [:g {:ref "#gaiji-264-7"} "糸"]
             [:g {:ref "#gaiji-264-7-at-15314"}] [:g {:ref "#gaiji-264-7-at-15314"}]]
            (get-in result [:body 1 1])))
-    (is (= [{:xml-id "gaiji-264-7" :unicode "糸" :raw-marker "糸＋率"}]
+    (is (= [{:xml-id "gaiji-264-7" :source-reference "264-7" :unicode "糸" :raw-marker "糸＋率"}]
            (:char_declarations (tei/render {"nodes" [known known]}))))))
 
 (deftest enclosing-indent-and-local-closing-alignment-remain-independent
@@ -153,6 +153,13 @@
     (is (= "page-horizontal-center line-count(2)" (:rend attrs)))
     (is (= [:p "前"] (get-in body [1 1])))
     (is (some #{[:p "後"]} (tree-seq vector? seq (get-in body [1 3]))))))
+
+(deftest a-first-line-indent-is-stated-on-the-block-apart-from-its-indent
+  (let [scope {"node_range" {"start" 1 "end" 5} "source_pointer" "blocks[1]"
+               "indent" 3 "first_line_indent" 2}
+        attrs (get-in (:body (tei/render (document [scope]))) [1 2 1])]
+    (is (= "padding-inline-start: 3em" (:style attrs)))
+    (is (= "block-first-line-indent(2)" (:rend attrs)))))
 
 (deftest supplied-frame-kind-and-typeface-share-a-scope
   (doseq [[border style] [["rule" "solid"] ["dashed-rule" "dashed"] ["unspecified" nil]]]

@@ -61,10 +61,10 @@
                      "primary_text_hash" (:primary-text-hash inspection)}
               ;; How many bytes follow the archive proper. The bundle reader
               ;; finds them by retrying at earlier end-of-central-directory
-              ;; records, so the member comes out whole; unzip trusts the
-              ;; decoy record among them and refuses the file. Recorded here
+              ;; records, so the member is read whole; unzip reads the decoy
+              ;; record among them and rejects the file. Recorded here
               ;; because the count is known only while the archive is being
-              ;; read, and the work page needs it to explain the refusal.
+              ;; read, and the work page uses it to explain the rejection.
               (:trailing-garbage-trimmed inspection)
               (assoc "trailing_bytes_after_archive"
                      (:trailing-garbage-trimmed inspection))))}))})
@@ -127,7 +127,7 @@
   "Work-local catalog rows and work id -> validated metadata and person records.
   Schema documents are captured once and are part of this stage's identity,
   and so is `text-reader`, a `catalog-text-reader`: the records it reads
-  hold what the reader made of the catalog's prose."
+  hold the reader's rendering of the catalog's prose."
   [clj-toolchain-id assets-root text-reader]
   (let [schemas {:metadata (schema/read-schema (str (fs/path assets-root "schemas/metadata-record.schema.json")))
                  :person (schema/read-schema (str (fs/path assets-root "schemas/person-record.schema.json")))}]
@@ -208,7 +208,7 @@
     (throw (ex-info "render stage requires the publication rights grant"
                     {:reason :missing-rights-grant})))
   {:stage-id "render"
-   :stage-version "51"
+   :stage-version "61"
    :toolchain-id (core-hash/sha256-canonical-json
                   {"clj" clj-toolchain-id "rights" rights})
    :f (fn [{:keys [blob]} inputs]
@@ -240,7 +240,7 @@
            "plaintext-projection" (json-bytes (projection/report :projection/plaintext reading))}))})
 
 (defn markdown-stage [clj-toolchain-id]
-  {:stage-id "markdown" :stage-version "8" :toolchain-id clj-toolchain-id
+  {:stage-id "markdown" :stage-version "9" :toolchain-id clj-toolchain-id
    :f (fn [{:keys [blob]} inputs]
         (let [reading (view/from-tei (String. ^bytes (blob (get inputs "tei")) "UTF-8"))]
           {"markdown" (utf8 (projection/markdown reading))

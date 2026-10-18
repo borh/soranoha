@@ -123,7 +123,7 @@
           (reset! responses (assoc baseline aozora/catalog-url (catalog-bytes dir "あり" "")))
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not-classified-expired"
                                 (aozora/prepare! root evidence slug opts))))
-        (testing "official catalog removal wins over retained Git presence"
+        (testing "official catalog removal takes precedence over retained Git presence"
           (let [p (fs/path dir "removed.zip")]
             (corpus/write-zip! p [["catalog.csv" "作品ID,作品著作権フラグ,人物著作権フラグ,図書カードURL,テキストファイルURL\n"]])
             (reset! responses (assoc baseline aozora/catalog-url (fs/read-all-bytes p)))
@@ -210,7 +210,7 @@
                     (second slugs) {:state :aozora/available :reason nil}}
                    (aozora/check! root evidence
                                   [(assoc (first records) "card_sha256" "invalid") (second records)] opts))))
-          (testing "corrupt shared retained catalog refuses all dependants before acquisition"
+          (testing "corrupt shared retained catalog rejects all dependants before acquisition"
             (reset! calls {})
             (spit (str (fs/path evidence (get (first records) "catalog_sha256"))) "corrupt")
             (is (every? #(= :aozora/evidence-digest-mismatch (:reason %))

@@ -4,8 +4,8 @@
   "The executable rule value whose canonical bytes inclusion_rule_hash binds.
   Changing any decision-bearing value changes the hash.
 
-  A candidate is decided on one of two tracks, and which one it is on is
-  settled by whether the snapshot carries an edition reliance for it. A
+  A candidate is decided on one of two tracks, and the track is determined by
+  whether the snapshot carries an edition reliance for it. A
   reliance candidate relies on Aozora Bunko's own rights determination, and it
   is admitted exactly when that reliance has admit_reliance_status; anything
   else about it quarantines with quarantine_reason. An independent candidate
@@ -15,14 +15,13 @@
 
   So exclude_when_any decides the independent track only. A candidate whose
   reliance was refused is quarantined even when a status in the snapshot reads
-  in-copyright, which is the case worth stating because it looks like a missed
-  exclusion. It is not: the release asked Aozora Bunko about that edition and
-  did not get an answer it could publish on, so the record says the question
-  was not carried through rather than answering it from the track that was not
-  taken. The refusal reason `restrictive-independent-assessment` is the
-  sharpest instance, and it is still a reliance outcome rather than an
-  independent decision. Neither bucket publishes, so nothing turns on this
-  beyond what the report says happened.
+  in-copyright. This is not a missed exclusion: the release requested Aozora
+  Bunko's determination for that edition and did not receive one it could
+  publish on, so the record states that the reliance track was not completed
+  rather than deciding from the independent track. The refusal reason
+  `restrictive-independent-assessment` is also a reliance outcome rather than
+  an independent decision. Neither bucket publishes, so the distinction
+  affects only the report.
 
   `docs/design/snh-protocol-v1.md` states the same two tracks and is the
   frozen text this implements."

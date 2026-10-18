@@ -21,7 +21,7 @@
     (is (string/includes? out "<br />\n後"))
     (is (not (string/includes? out "<script>")))))
 
-(deftest reports-follow-the-content-each-writer-actually-emits
+(deftest reports-follow-the-content-each-writer-emits
   (let [input (reading "<p><ruby><rb>字</rb><rt place='left'><g ref='#unknown'/></rt></ruby><hi rend='left-line'>本文</hi><choice><sic>誤</sic><corr>正</corr></choice></p>")
         markdown (projection/report :projection/markdown input)
         plain (projection/report :projection/plaintext input)

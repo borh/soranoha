@@ -10,9 +10,9 @@
            [java.nio.file Files Path]))
 
 (def ^:private ident-env
-  ;; real commit time: two racers producing byte-identical content in the
-  ;; same second may collide into one commit, and a push of that commit
-  ;; reports up-to-date (state convergence, not a failure).
+  ;; real commit time: two concurrent writers producing byte-identical
+  ;; content in the same second may collide into one commit, and a push of
+  ;; that commit reports up-to-date (state convergence, not a failure).
   {"GIT_AUTHOR_NAME" "snh" "GIT_AUTHOR_EMAIL" "snh@localhost"
    "GIT_COMMITTER_NAME" "snh" "GIT_COMMITTER_EMAIL" "snh@localhost"})
 
@@ -109,7 +109,7 @@
             (let [{:keys [err]} (git! dir {:extra-env env
                                            :in (.getBytes (.toString entries) "UTF-8")}
                                       "update-index" "-z" "--index-info")]
-              ;; Unlike --cacheinfo, --index-info silently skips invalid paths.
+              ;; Unlike --cacheinfo, --index-info skips invalid paths without an error.
               (when-not (str/blank? err)
                 (throw (ex-info "git update-index reported diagnostics" {:err err}))))))
         (let [tree (str/trim (:out (git! dir {:extra-env env} "write-tree")))

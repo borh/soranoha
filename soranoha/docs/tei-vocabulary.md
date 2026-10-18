@@ -2,22 +2,22 @@
 
 Namespace IRI: `https://w3id.org/soranoha/ns/tei`
 Conventional prefix: `snh:`
-Current vocabulary version: `1`
+Current vocabulary version: `3`
 
 Published TEI documents bind this namespace IRI on the root element.
 
 Soranoha publishes TEI P5. Where the source markup carries information TEI has
-no element for, that information is recorded as an attribute in this namespace
-rather than by inventing an element. Every published TEI root binds the
+no exact representation for, that information uses this namespace.
+Every published TEI root binds the
 namespace and declares the vocabulary version:
 
 ```xml
 <TEI xmlns="http://www.tei-c.org/ns/1.0"
      xmlns:snh="https://w3id.org/soranoha/ns/tei"
-     snh:vocab-version="1">
+     snh:vocab-version="3">
 ```
 
-These attributes are derived audit projections. They record what the parser
+These extensions are derived audit projections. They record what the parser
 established about the Aozora Bunko source; they do not replace the source records
 from which they were derived, and a consumer may ignore them without losing the
 transcription.
@@ -31,13 +31,18 @@ additive attribute may keep the same major version when compatibility is
 documented.
 
 The profile hashes recorded in a work's `tei-validation.json` (`odd_hash`,
-`rng_hash`, `schematron_hash`) answer a different question. They change on any
-profile edit, additive ones included, so they say which profile validated a
-document but cannot tell you whether an existing `snh:*` reader is still
+`rng_hash`, `schematron_hash`) serve a different purpose. They change on any
+profile edit, additive ones included, so they identify which profile validated
+a document but do not indicate whether an existing `snh:*` reader is still
 correct. That is what the vocabulary version is for.
 
 Version `1` contains attributes only. Custom elements in this namespace
-are not part of it.
+are not part of it. Version `2` adds `snh:gaiji-reference` within `tei:char`;
+each element represents one reference clause in source order, with its exact
+spelling in `original`. Version `3` adds `snh:formatting-instruction` within
+`tei:note`, retaining ordered operations, selectors, and effects. Its operand
+source references identify annotation bytes, not resolved body targets.
+The ODD defines the permitted semantic fields.
 
 ## Attributes
 
@@ -47,8 +52,8 @@ declared for projections that are specified but not yet produced.
 
 | Attribute | Value | Meaning |
 |---|---|---|
-| `snh:vocab-version` | `1` | Vocabulary major version. Required on the root of any document carrying `snh:*` attributes. |
-| `snh:layout-kind` | token, or space-separated tokens when scopes co-apply | Layout fact projected verbatim from the parser IR. Paragraph layouts are `burasage`, `chitsuki`, `jisage`, `jizume`, `line-jisage`; inline scopes are `baseline-position`, `chitsuki`, `emphasis`, `exponent`, `font-size`, `fraction`, `keigakomi`, `small-script`, `tcy`, `yokogumi`. |
+| `snh:vocab-version` | `1`, `2`, `3` | Vocabulary major version. Required on the root of any document carrying `snh:*` elements or attributes; `snh:gaiji-reference` requires `2` or `3`; `snh:formatting-instruction` requires `3`. |
+| `snh:layout-kind` | token, or space-separated tokens when scopes co-apply | Layout fact projected verbatim from the parser IR. Paragraph layouts are `burasage`, `chitsuki`, `jisage`, `jizume`, `line-jisage`; inline scopes are `baseline-position`, `chitsuki`, `emphasis`, `exponent`, `font-size`, `fraction`, `keigakomi`, `line-jisage`, `small-script`, `tcy`, `yokogumi`. |
 | `snh:layout-params` | `key=value` pairs joined by `;` | Parameters of the layout fact, for example `indent=2` or `align=right;offset-from-end=1`. |
 | `snh:preservation-record` | `r` followed by six digits | Record id in the publication-preservation sidecar. |
 | `snh:ir-pointer` | JSON Pointer | Location in the parser IR of the projected fact. |
@@ -66,7 +71,7 @@ The initial version is `1`.
 
 Most elements in a published body carry `@source`, pointing at a `note` of
 type `source-span` in the back matter. Those notes are the offset table: they
-say which run of the source text an element came from.
+state which run of the source text an element came from.
 
 A note is empty, because everything about the extent is in its reference:
 
@@ -76,8 +81,10 @@ A note is empty, because everything about the extent is in its reference:
 
 - `xml:id` has the form `source-START-END`. `START` and `END` are offsets in
   UTF-8 bytes into the decoded primary text, which `sourceDesc` identifies by
-  its `idno` of type `primary-text-hash`. Decode the source archive's text
-  member, encode it as UTF-8, and slice.
+  its `idno` of type `primary-text-hash`, after the emendations declared in
+  `editorialDecl/correction` are applied. Decode the source archive's text
+  member, apply each emendation by replacing its `sic` text with its `corr`
+  text at its own extent, encode the result as UTF-8, and slice.
 - `n` is the line the extent begins on. It is absent when the source did not
   record one, rather than carrying a placeholder.
 
@@ -85,6 +92,31 @@ The header declares this unit in a `refsDecl` pointing back at this document.
 
 Notes with `xml:id` prefixed by `parser-source` belong to parser diagnostics
 rather than body elements; they carry their byte extent as JSON in element content.
+
+## Emendations
+
+A work whose source contains a transcription defect that the parser corrects
+before parsing declares each correction in the header:
+
+```xml
+<editorialDecl>
+  <correction method="markup">
+    <p xml:id="emendation-pariyori-403-ruby-bar-after-base" source="#source-START-END">
+      <choice><sic>一番向｜《むか》うにある</sic><corr>一番｜向《むか》うにある</corr></choice>
+    </p>
+  </correction>
+</editorialDecl>
+```
+
+- `sic` is the transcribed source text; `corr` is the text the parser read.
+- `xml:id` is `emendation-` followed by the emendation identifier.
+- `@source` refers to the `source-span` note of the `corr` text's extent,
+  measured as described under [Source spans](#source-spans).
+- Declarations follow the order in which the parser applied them. A work with
+  no emendation has no `editorialDecl`.
+- An emendation records a correction that Aozora Bunko's own publication
+  establishes, in the published XHTML or in a later edition of the work. A
+  defect without such a witness is retained as transcribed.
 
 ## Schematron rule identifiers
 
@@ -105,11 +137,11 @@ reported with the constant `rule_id` `relax-ng` instead.
 | `snh-gaiji-reference` | error | Gaiji retains its original marker and either a resolved replacement or unresolved status. |
 | `snh-gaiji-chardecl-resolution` | error | A gaiji `@ref` fragment resolves to a `charDecl/char` in the same document. |
 | `snh-char-resolution-form` | error | A `charDecl/char` declares at least one of `mapping`, `unicodeProp`, `localProp`, `desc`. |
-| `snh-figure-accessibility` | warning | A figure carries a nonempty description or caption, so the image it names has alternative text. Most Aozora Bunko illustration markers supply a filename and pixel dimensions and no description, so this fires on the source's own form rather than on anything the conversion dropped. |
+| `snh-figure-accessibility` | warning | A figure carries a nonempty description or caption, so the image it refers to has alternative text. Most Aozora Bunko illustration markers supply a filename and pixel dimensions and no description, so this rule reports the source's own form rather than anything the conversion dropped. |
 | `snh-source-span-reference` | error | Elements claiming source spans point to valid span identifiers. |
 | `snh-source-span-target-exists` | error | Each fragment id in `@source` resolves to an `@xml:id` in the same document. |
 | `snh-transcription-vs-annotation` | warning | No element of TEI's analysis module appears inside `tei:text` unless the header declares it. Stand-off anchors and a `standOff` sibling are outside the rule, which is what the supported enrichment path writes. |
-| `snh-vocab-version-declared` | error | A root carrying `snh:*` attributes declares `snh:vocab-version`. |
+| `snh-vocab-version-declared` | error | A root carrying `snh:*` elements or attributes declares `snh:vocab-version`; `snh:gaiji-reference` requires `2` or `3`; `snh:formatting-instruction` requires `3`. |
 | `snh-preservation-record-shape` | error | `snh:preservation-record` values have the form `r000000`. |
 | `snh-layout-params-shape` | error | `snh:layout-params` uses the `key=value` grammar above. |
 

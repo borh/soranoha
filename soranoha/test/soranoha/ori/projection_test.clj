@@ -22,6 +22,23 @@
     (is (= "前<ruby><rb>犍</rb><rt>かん</rt></ruby>正<strong>強</strong>  \n後\n\n次"
            (projection/markdown reading)))))
 
+(deftest crossing-ruby-projection-names-each-target
+  (let [reading (view/from-tei
+                 (tei (str "<p><ruby><rb><anchor xml:id='a'/>甲<anchor xml:id='b'/>"
+                           "<hi rend='bold'>乙</hi><anchor xml:id='c'/>丙<anchor xml:id='d'/></rb>"
+                           "<rt from='#a' to='#c' place='right'>こうおつ</rt>"
+                           "<rt from='#b' to='#d' place='left'>おつへい</rt></ruby></p>")))]
+    (is (= "甲乙丙" (projection/plaintext reading)))
+    (is (= "甲<strong>乙</strong>丙〔甲乙（右）: こうおつ；乙丙（左）: おつへい〕"
+           (projection/markdown reading)))))
+
+(deftest crossing-ruby-rejects-unresolved-or-reversed-ranges
+  (doseq [[from to] [["#a" "#missing"] ["#b" "#a"] ["#a" "#a"] ["other.xml#a" "#b"]]]
+    (let [reading (view/from-tei (tei (str "<p><ruby><rb><anchor xml:id='a'/>甲<anchor xml:id='b'/></rb>"
+                                           "<rt from='" from "' to='" to "'>こう</rt></ruby></p>")))]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"ordered range"
+                            (projection/markdown reading))))))
+
 (deftest markdown-source-text-cannot-inject-markup
   (let [reading (view/from-tei (tei "<p>*本文* &lt;script&gt;<ruby><rb>字</rb><rt>&lt;b&gt;</rt></ruby></p>"))]
     (is (= "\\*本文\\* &lt;script&gt;<ruby><rb>字</rb><rt>&lt;b&gt;</rt></ruby>"
@@ -54,10 +71,10 @@
       (is (= "本文" (projection/plaintext reading)))
       (is (= "markdown/2" (get report "profile"))))))
 
-(deftest both-projections-stand-in-for-an-unencodable-glyph-the-same-way
-  ;; The source names the glyph and the TEI carries its description; what no
-  ;; artifact should say is that the bytes were damaged. Markdown said exactly
-  ;; that, in 521 works, while the plaintext of the same works did not.
+(deftest both-projections-replace-an-unencodable-glyph-the-same-way
+  ;; The source identifies the glyph and the TEI carries its description; no
+  ;; artifact may state that the bytes were damaged, and the Markdown and the
+  ;; plaintext of one work must replace the glyph with the same character.
   (let [reading (view/from-tei (tei "<p>前<g ref=\"#gaiji-1\"/>後</p>"))]
     (is (= (str "前" view/unresolved-glyph "後") (projection/plaintext reading)))
     (is (= (str "前" view/unresolved-glyph "後") (projection/markdown reading)))

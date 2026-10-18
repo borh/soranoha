@@ -1,17 +1,17 @@
 (ns soranoha.snh.chain-bench
   "Publication, no-op and full-chain verification wall time against chain length.
 
-  The publication rearchitecture ledger measured cost growing with releases
-  times works and made correcting it a precondition for unattended activation.
-  Batching has landed since. This measures whether the growth term is still
-  there, in isolation from the build: releases are synthetic, so no corpus is
-  needed and the repository path is what is being timed.
+  Unattended activation requires that publication cost not grow with releases
+  times works. This measures whether that growth term is present, in
+  isolation from the build: releases are synthetic, so no corpus is needed and
+  the repository path is what is being timed.
 
-  Two shapes bracket the real one. `--changed 0` moves no work between releases,
-  which is what the reuse grant is for and what an upstream commit touching a
-  handful of works approximates at corpus scale. `--changed all` moves every
-  work, which is what a toolchain change does. A real per-commit chain sits at
-  the first, because a commit changes a median of two works out of 17810.
+  Two shapes bracket the real one. `--changed 0` changes no work between
+  releases, which is what the reuse grant is for and what an upstream commit
+  touching a handful of works approximates at corpus scale. `--changed all`
+  changes every work, which is what a toolchain change does. A real
+  per-commit chain is close to the first, because a commit changes a median
+  of two works out of 17810.
 
   Run from soranoha/:
     clojure -Sdeps '{:paths [\"src\" \"test\" \"resources\"]}' -M \\
@@ -33,10 +33,10 @@
   run every 32 releases, which would step it down at each multiple and hide
   the slope. `--segments` measures the split instead.
 
-  `--carry` threads each publication's own proof of the head it just wrote
+  `--carry` passes each publication's own proof of the head it just wrote
   into the next, which is what a backfill publishing a run of releases in one
   process does. Without it every release re-verifies the whole chain, so a run
-  of N is quadratic; with it `publish_ms` should stop growing. Only
+  of N is quadratic; with it `publish_ms` should not grow. Only
   `publish_ms` changes: `noop_ms` and `verify_ms` are what a party holding no
   proof pays, which is the scheduled job and the third-party verifier.
 
@@ -45,16 +45,16 @@
   are directly comparable, and all of them are taken over one chain.
 
   `--repo-stats` reports what an origin holding the finished chain costs to
-  keep and to hand out: loose objects before maintenance, repack time, packed
+  keep and to serve: loose objects before maintenance, repack time, packed
   size, and the apparent against on-disk size of every manifest. That last
   pair answers whether consecutive manifests delta-compress, which decides
   whether an origin at one release per upstream commit is gigabytes or
   hundreds of them. It repacks the origin, so run it last.
 
-  `noop_ms` is the one the prerequisite is stated against. The ledger's bound is
-  on an invocation that publishes nothing, because a scheduled job that fires on
-  every upstream commit spends most of its runs discovering it has nothing to
-  do. It is measured by repeating the release with its projection unchanged,
+  `noop_ms` is the quantity the activation prerequisite bounds: an invocation
+  that publishes nothing, because a scheduled job that runs on every upstream
+  commit spends most of its runs finding it has nothing to do. It is measured
+  by repeating the release with its projection unchanged,
   which is what `decide-against-head` no-ops on, so it is the cost of resolving
   the head and deciding, without an assembly.
 
@@ -80,7 +80,7 @@
   (mapv #(format "%06d_%06d" % %) (range n)))
 
 (defn- variant-fn
-  "Which works differ at release `release`. `changed` works move; the rest keep
+  "Which works differ at release `release`. `changed` works change; the rest keep
   the genesis variant, so the verifier's reuse grant applies to them."
   [changed release all]
   (if (= :all changed)
@@ -97,8 +97,8 @@
 
 (defn- segment-counts
   "Run counts to measure the built chain at, from a comma-separated
-  `--segments`. Empty when the option is absent, so a run that only wants
-  the growth curve pays nothing for this."
+  `--segments`. Empty when the option is absent, so a run that only measures
+  the growth curve incurs no cost for this."
   [segments]
   (if (nil? segments)
     []
@@ -125,7 +125,7 @@
 
 (defn- manifest-blob-sizes
   "For every manifest in the chain, its size and the bytes it occupies in the
-  pack. `releases/` accumulates, so the head tree names all of them.
+  pack. `releases/` accumulates, so the head tree contains all of them.
 
   The ratio between the two columns is the question: consecutive manifests
   differ in a few work entries out of tens of thousands, and whether git's
@@ -150,7 +150,7 @@
             (remove str/blank? (str/split-lines out)))))
 
 (defn- repository-stats!
-  "What an origin holding this chain costs to keep and to hand out.
+  "What an origin holding this chain costs to keep and to serve.
 
   Four numbers decide whether one release per upstream commit is deployable.
   Loose objects are what accumulates between maintenance runs. `pack_bytes`
@@ -217,7 +217,7 @@
          (fn [{:keys [previous proof]} release]
            (let [opts {:admitted all
                        :variant (variant-fn changed release all)
-                       ;; the projection must move or an unchanged build is a
+                       ;; the projection must change or an unchanged build is a
                        ;; no-op and publishes nothing
                        :selection-params {"config" "bench" "round" (str release)}}
                  publish (millis #(fx/publish! clone opts proof))
@@ -227,8 +227,8 @@
                  ;; one walk, not the automatic run count: this column is
                  ;; the growth curve, and a policy that adds a run every 32
                  ;; releases would step it down at each multiple and make the
-                 ;; slope unreadable. What a verifier actually pays is the
-                 ;; `segmented` rows.
+                 ;; slope unreadable. The `segmented` rows give the cost a
+                 ;; verifier pays.
                  verify (:milliseconds (verify-once! clone {:segments 1}))
                  outcome (get-in noop [:result :outcome])]
              (when-not (= :already-published outcome)
@@ -255,9 +255,9 @@
         ;; split is compared against one walk over the same chain rather than
         ;; against a chain built separately. The newest commit of each run
         ;; re-reads and re-hashes every artifact of its manifest, because no
-        ;; younger verified commit grants it reuse, so a count that leaves the
-        ;; runs short gives back more than it wins. That is what these rows
-        ;; show against `segments 1`, which is one walk.
+        ;; younger verified commit grants it reuse, so a count that makes the
+        ;; runs short loses more than it gains. These rows show that against
+        ;; `segments 1`, which is one walk.
         (when repo-stats
           (emit! (repository-stats! origin fx/branch releases works)))
         (doseq [k (segment-counts segments)]

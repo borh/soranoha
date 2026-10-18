@@ -1414,6 +1414,8 @@ Sample values include: 1] all; 2] most; 3] range</a:documentation>
       <ref name="att.global.attribute.source-pointer"/>
       <ref name="att.global.attribute.source-marker"/>
       <ref name="att.global.attribute.accent-code"/>
+      <ref name="att.global.attribute.accent-name"/>
+      <ref name="att.global.attribute.decoration-source-locator"/>
       <ref name="att.global.attribute.style-source"/>
       <ref name="att.global.attribute.layout-kind"/>
       <ref name="att.global.attribute.layout-params"/>
@@ -1430,6 +1432,10 @@ Sample values include: 1] all; 2] most; 3] range</a:documentation>
             <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Soranoha TEI namespace vocabulary major version. This value list declares the permitted versions; add to it rather than replacing it.</a:documentation>
             <choice>
                <value>1</value>
+               <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"/>
+               <value>2</value>
+               <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"/>
+               <value>3</value>
                <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"/>
             </choice>
          </attribute>
@@ -1474,6 +1480,26 @@ Sample values include: 1] all; 2] most; 3] range</a:documentation>
          <attribute name="accent-code" ns="https://w3id.org/soranoha/ns/tei">
             <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Aozora accent notation code projected into TEI.</a:documentation>
             <data type="string"/>
+         </attribute>
+      </optional>
+   </define>
+   <define name="att.global.attribute.accent-name">
+      <optional>
+         <attribute name="accent-name" ns="https://w3id.org/soranoha/ns/tei">
+            <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Aozora accent character name retained from the source notation.</a:documentation>
+            <data type="string">
+               <param name="minLength">1</param>
+            </data>
+         </attribute>
+      </optional>
+   </define>
+   <define name="att.global.attribute.decoration-source-locator">
+      <optional>
+         <attribute name="decoration-source-locator" ns="https://w3id.org/soranoha/ns/tei">
+            <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source-edition locator supplied with a text decoration.</a:documentation>
+            <data type="string">
+               <param name="minLength">1</param>
+            </data>
          </attribute>
       </optional>
    </define>
@@ -3282,6 +3308,7 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
          <ref name="listObject"/>
          <ref name="listNym"/>
          <ref name="table"/>
+         <ref name="listWit"/>
       </choice>
    </define>
    <define name="model.listLike_alternation">
@@ -3295,6 +3322,7 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
          <ref name="listObject"/>
          <ref name="listNym"/>
          <ref name="table"/>
+         <ref name="listWit"/>
       </choice>
    </define>
    <define name="model.listLike_sequence">
@@ -3307,6 +3335,7 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       <ref name="listObject"/>
       <ref name="listNym"/>
       <ref name="table"/>
+      <ref name="listWit"/>
    </define>
    <define name="model.listLike_sequenceOptional">
       <optional>
@@ -3335,6 +3364,9 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       </optional>
       <optional>
          <ref name="table"/>
+      </optional>
+      <optional>
+         <ref name="listWit"/>
       </optional>
    </define>
    <define name="model.listLike_sequenceOptionalRepeatable">
@@ -3365,6 +3397,9 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       <zeroOrMore>
          <ref name="table"/>
       </zeroOrMore>
+      <zeroOrMore>
+         <ref name="listWit"/>
+      </zeroOrMore>
    </define>
    <define name="model.listLike_sequenceRepeatable">
       <oneOrMore>
@@ -3394,22 +3429,28 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       <oneOrMore>
          <ref name="table"/>
       </oneOrMore>
+      <oneOrMore>
+         <ref name="listWit"/>
+      </oneOrMore>
    </define>
    <define name="model.noteLike">
       <choice>
          <ref name="note"/>
          <ref name="noteGrp"/>
+         <ref name="formatting-instruction"/>
       </choice>
    </define>
    <define name="model.noteLike_alternation">
       <choice>
          <ref name="note"/>
          <ref name="noteGrp"/>
+         <ref name="formatting-instruction"/>
       </choice>
    </define>
    <define name="model.noteLike_sequence">
       <ref name="note"/>
       <ref name="noteGrp"/>
+      <ref name="formatting-instruction"/>
    </define>
    <define name="model.noteLike_sequenceOptional">
       <optional>
@@ -3417,6 +3458,9 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       </optional>
       <optional>
          <ref name="noteGrp"/>
+      </optional>
+      <optional>
+         <ref name="formatting-instruction"/>
       </optional>
    </define>
    <define name="model.noteLike_sequenceOptionalRepeatable">
@@ -3426,6 +3470,9 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       <zeroOrMore>
          <ref name="noteGrp"/>
       </zeroOrMore>
+      <zeroOrMore>
+         <ref name="formatting-instruction"/>
+      </zeroOrMore>
    </define>
    <define name="model.noteLike_sequenceRepeatable">
       <oneOrMore>
@@ -3433,6 +3480,9 @@ Sample values include: 1] rubbing; 2] mildew; 3] smoke</a:documentation>
       </oneOrMore>
       <oneOrMore>
          <ref name="noteGrp"/>
+      </oneOrMore>
+      <oneOrMore>
+         <ref name="formatting-instruction"/>
       </oneOrMore>
    </define>
    <define name="model.lLike">
@@ -11826,6 +11876,8 @@ Sample values include: 1] header; 2] footer; 3] pageNum (page number); 4] lineNu
          <ref name="att.global.attribute.source-pointer"/>
          <ref name="att.global.attribute.source-marker"/>
          <ref name="att.global.attribute.accent-code"/>
+         <ref name="att.global.attribute.accent-name"/>
+         <ref name="att.global.attribute.decoration-source-locator"/>
          <ref name="att.global.attribute.style-source"/>
          <ref name="att.global.attribute.layout-kind"/>
          <ref name="att.global.attribute.layout-params"/>
@@ -12467,6 +12519,7 @@ Sample values include: 1] Unicode (Unicode); 2] Bridwell (E. Nelson Bridwell); 3
                <ref name="model.graphicLike"/>
                <ref name="model.noteLike"/>
                <ref name="model.descLike"/>
+               <ref name="gaiji-reference"/>
             </choice>
          </zeroOrMore>
          <ref name="att.global.attributes"/>
@@ -13808,6 +13861,45 @@ Sample values include: 1] homeoteleuton; 2] homeoarchy; 3] paleographicConfusion
          <empty/>
       </element>
    </define>
+   <define name="listWit">
+      <element name="listWit">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">(witness list) lists definitions for all the witnesses referred to by a critical apparatus, optionally grouped hierarchically. [13.1. The Apparatus Entry, Readings, and Witnesses]</a:documentation>
+         <group>
+            <optional>
+               <ref name="model.headLike"/>
+            </optional>
+            <zeroOrMore>
+               <ref name="desc"/>
+            </zeroOrMore>
+            <oneOrMore>
+               <choice>
+                  <ref name="witness"/>
+                  <ref name="listWit"/>
+               </choice>
+            </oneOrMore>
+         </group>
+         <ref name="att.global.attributes"/>
+         <ref name="att.sortable.attributes"/>
+         <empty/>
+      </element>
+   </define>
+   <define name="witness">
+      <element name="witness">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">(witness) contains either a description of a single witness referred to within the critical apparatus, or a list of witnesses which is to be referred to by a single sigil. [13.1. The Apparatus Entry, Readings, and Witnesses]</a:documentation>
+         <zeroOrMore>
+            <choice>
+               <text/>
+               <ref name="model.limitedPhrase"/>
+               <ref name="model.inter"/>
+               <ref name="note"/>
+               <ref name="object"/>
+            </choice>
+         </zeroOrMore>
+         <ref name="att.global.attributes"/>
+         <ref name="att.sortable.attributes"/>
+         <empty/>
+      </element>
+   </define>
    <define name="att.global.linking.attributes">
       <ref name="att.global.linking.attribute.corresp"/>
       <ref name="att.global.linking.attribute.synch"/>
@@ -13947,6 +14039,724 @@ Sample values include: 1] homeoteleuton; 2] homeoarchy; 3] paleographicConfusion
          <ref name="att.declaring.attributes"/>
          <ref name="att.typed.attributes"/>
          <empty/>
+      </element>
+   </define>
+   <define name="gaiji-reference">
+      <element name="gaiji-reference" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">One gaiji reference clause in source order; original retains its exact source spelling.</a:documentation>
+         <group>
+            <attribute name="original">
+               <text/>
+            </attribute>
+            <choice>
+               <group>
+                  <attribute name="kind">
+                     <value>jis-code</value>
+                  </attribute>
+                  <attribute name="plane">
+                     <data type="integer">
+                        <param name="minInclusive">1</param>
+                        <param name="maxInclusive">2</param>
+                     </data>
+                  </attribute>
+                  <attribute name="row">
+                     <data type="integer">
+                        <param name="minInclusive">1</param>
+                        <param name="maxInclusive">94</param>
+                     </data>
+                  </attribute>
+                  <attribute name="cell">
+                     <data type="integer">
+                        <param name="minInclusive">1</param>
+                        <param name="maxInclusive">94</param>
+                     </data>
+                  </attribute>
+               </group>
+               <group>
+                  <attribute name="kind">
+                     <value>unicode-code</value>
+                  </attribute>
+                  <attribute name="codepoint">
+                     <choice>
+                        <data type="integer">
+                           <param name="minInclusive">0</param>
+                           <param name="maxInclusive">55295</param>
+                        </data>
+                        <data type="integer">
+                           <param name="minInclusive">57344</param>
+                           <param name="maxInclusive">1114111</param>
+                        </data>
+                     </choice>
+                  </attribute>
+               </group>
+               <group>
+                  <attribute name="kind">
+                     <value>source-location</value>
+                  </attribute>
+                  <attribute name="page">
+                     <data type="string">
+                        <param name="pattern">[0-9]+</param>
+                     </data>
+                  </attribute>
+                  <optional>
+                     <attribute name="volume">
+                        <data type="string">
+                           <param name="minLength">1</param>
+                        </data>
+                     </attribute>
+                  </optional>
+                  <optional>
+                     <attribute name="column">
+                        <data type="string">
+                           <param name="minLength">1</param>
+                        </data>
+                     </attribute>
+                  </optional>
+                  <choice>
+                     <group>
+                        <attribute name="line">
+                           <data type="string">
+                              <param name="minLength">1</param>
+                           </data>
+                        </attribute>
+                        <optional>
+                           <attribute name="part">
+                              <data type="string">
+                                 <param name="minLength">1</param>
+                              </data>
+                           </attribute>
+                        </optional>
+                     </group>
+                     <attribute name="part">
+                        <data type="string">
+                           <param name="minLength">1</param>
+                        </data>
+                     </attribute>
+                  </choice>
+               </group>
+               <group>
+                  <attribute name="kind">
+                     <value>reading</value>
+                  </attribute>
+                  <attribute name="text">
+                     <data type="string">
+                        <param name="minLength">1</param>
+                     </data>
+                  </attribute>
+               </group>
+               <attribute name="kind">
+                  <value>uninterpreted</value>
+               </attribute>
+            </choice>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-instruction">
+      <element name="formatting-instruction" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Operations retain source order independently of target resolution.</a:documentation>
+         <group>
+            <attribute name="original">
+               <data type="string">
+                  <param name="minLength">1</param>
+               </data>
+            </attribute>
+            <oneOrMore>
+               <ref name="formatting-operation"/>
+            </oneOrMore>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-operation">
+      <element name="formatting-operation" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">An inherited selector can refer to annotation bytes preceding this clause.</a:documentation>
+         <group>
+            <attribute name="source">
+               <data type="string">
+                  <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+               </data>
+            </attribute>
+            <ref name="formatting-selector"/>
+            <choice>
+               <ref name="formatting-effect"/>
+               <ref name="rule-presentation"/>
+            </choice>
+            <optional>
+               <ref name="formatting-selection"/>
+            </optional>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-selector">
+      <element name="formatting-selector" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Quoted operands retain supplied spelling even when it names a template or repeats an earlier operand.</a:documentation>
+         <choice>
+            <group>
+               <attribute name="kind">
+                  <choice>
+                     <value>quoted</value>
+                     <value>parenthesized</value>
+                     <value>named</value>
+                     <value>all-quoted</value>
+                     <value>quoted-whole</value>
+                  </choice>
+               </attribute>
+               <ref name="formatting-operand"/>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>subtarget</value>
+               </attribute>
+               <ref name="formatting-operand"/>
+               <ref name="formatting-operand"/>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>each-quoted</value>
+               </attribute>
+               <oneOrMore>
+                  <ref name="formatting-operand"/>
+               </oneOrMore>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <choice>
+                     <value>occurrence</value>
+                     <value>character-position</value>
+                  </choice>
+               </attribute>
+               <attribute name="ordinal">
+                  <data type="integer">
+                     <param name="minInclusive">1</param>
+                     <param name="maxInclusive">4294967295</param>
+                  </data>
+               </attribute>
+               <ref name="formatting-operand"/>
+            </group>
+            <attribute name="kind">
+               <choice>
+                  <value>unresolved</value>
+                  <value>preceding-text</value>
+                  <value>digits</value>
+                  <value>each-line</value>
+                  <value>following-text</value>
+               </choice>
+            </attribute>
+            <group>
+               <attribute name="kind">
+                  <value>following-lines</value>
+               </attribute>
+               <attribute name="lines">
+                  <data type="positiveInteger"/>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>arabic-digits-after</value>
+               </attribute>
+               <choice>
+                  <attribute name="predecessor">
+                     <value>alphabetic</value>
+                  </attribute>
+                  <group>
+                     <attribute name="predecessor">
+                        <value>named-characters</value>
+                     </attribute>
+                     <oneOrMore>
+                        <ref name="formatting-operand"/>
+                     </oneOrMore>
+                  </group>
+               </choice>
+            </group>
+         </choice>
+      </element>
+   </define>
+   <define name="formatting-operand">
+      <element name="formatting-operand" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source identifies annotation bytes, not a resolved body target.</a:documentation>
+         <group>
+            <attribute name="source">
+               <data type="string">
+                  <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+               </data>
+            </attribute>
+            <optional>
+               <attribute name="role">
+                  <choice>
+                     <value>enclosing</value>
+                     <value>selected</value>
+                     <value>anchor</value>
+                     <value>preceding</value>
+                     <value>following</value>
+                     <value>marks</value>
+                     <value>mark</value>
+                     <value>range-start</value>
+                     <value>range-end</value>
+                     <value>members</value>
+                     <value>component</value>
+                  </choice>
+               </attribute>
+            </optional>
+            <data type="string">
+               <param name="minLength">1</param>
+            </data>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-effect">
+      <element name="formatting-effect" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source-supplied formatting semantics and their values.</a:documentation>
+         <choice>
+            <interleave>
+               <attribute name="kind">
+                  <value>attribute</value>
+               </attribute>
+               <attribute name="source-kind">
+                  <choice>
+                     <value>aat-inline</value>
+                     <value>aat-block</value>
+                     <value>source-derived</value>
+                     <value>heuristic</value>
+                  </choice>
+               </attribute>
+               <choice>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>chitsuki</value>
+                     </attribute>
+                     <attribute name="align">
+                        <value>right</value>
+                     </attribute>
+                     <attribute name="offset-from-end">
+                        <data type="integer">
+                           <param name="minInclusive">0</param>
+                        </data>
+                     </attribute>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>baseline-position</value>
+                     </attribute>
+                     <attribute name="position">
+                        <value>lowered</value>
+                     </attribute>
+                  </interleave>
+                  <attribute name="layout-kind">
+                     <choice>
+                        <value>exponent</value>
+                        <value>fraction</value>
+                     </choice>
+                  </attribute>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>emphasis</value>
+                     </attribute>
+                     <attribute name="style">
+                        <choice>
+                           <value>bold</value>
+                           <value>italic</value>
+                           <value>gothic</value>
+                           <value>textbook</value>
+                           <value>handwritten</value>
+                           <value>bouten</value>
+                           <value>bosen</value>
+                           <value>superscript</value>
+                           <value>subscript</value>
+                        </choice>
+                     </attribute>
+                     <optional>
+                        <interleave>
+                           <attribute name="decoration-kind">
+                              <text/>
+                           </attribute>
+                           <attribute name="decoration-position">
+                              <choice>
+                                 <value>right</value>
+                                 <value>left</value>
+                                 <value>both</value>
+                                 <value>above</value>
+                                 <value>below</value>
+                                 <value>unknown</value>
+                              </choice>
+                           </attribute>
+                        </interleave>
+                     </optional>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>font-size</value>
+                     </attribute>
+                     <optional>
+                        <attribute name="marker">
+                           <text/>
+                        </attribute>
+                     </optional>
+                     <choice>
+                        <interleave>
+                           <attribute name="size-type">
+                              <choice>
+                                 <value>large</value>
+                                 <value>small</value>
+                              </choice>
+                           </attribute>
+                           <attribute name="level">
+                              <data type="integer">
+                                 <param name="minInclusive">1</param>
+                              </data>
+                           </attribute>
+                        </interleave>
+                        <interleave>
+                           <attribute name="size-type">
+                              <value>absolute</value>
+                           </attribute>
+                           <attribute name="size">
+                              <choice>
+                                 <value>extra-large</value>
+                                 <value>large</value>
+                                 <value>medium</value>
+                                 <value>small</value>
+                              </choice>
+                           </attribute>
+                        </interleave>
+                        <interleave>
+                           <attribute name="size-type">
+                              <value>qualitative</value>
+                           </attribute>
+                           <attribute name="direction">
+                              <choice>
+                                 <value>larger</value>
+                                 <value>smaller</value>
+                              </choice>
+                           </attribute>
+                           <optional>
+                              <attribute name="qualifier">
+                                 <choice>
+                                    <value>やや</value>
+                                    <value>ひとまわり</value>
+                                 </choice>
+                              </attribute>
+                           </optional>
+                        </interleave>
+                     </choice>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>small-script</value>
+                     </attribute>
+                     <attribute name="position">
+                        <choice>
+                           <value>right</value>
+                           <value>left</value>
+                        </choice>
+                     </attribute>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>tcy</value>
+                     </attribute>
+                     <optional>
+                        <attribute name="marker">
+                           <text/>
+                        </attribute>
+                     </optional>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>keigakomi</value>
+                     </attribute>
+                     <optional>
+                        <attribute name="border">
+                           <text/>
+                        </attribute>
+                     </optional>
+                     <optional>
+                        <attribute name="marker">
+                           <text/>
+                        </attribute>
+                     </optional>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>yokogumi</value>
+                     </attribute>
+                     <attribute name="direction">
+                        <value>horizontal</value>
+                     </attribute>
+                     <optional>
+                        <attribute name="marker">
+                           <text/>
+                        </attribute>
+                     </optional>
+                  </interleave>
+                  <interleave>
+                     <attribute name="layout-kind">
+                        <value>tategumi</value>
+                     </attribute>
+                     <attribute name="direction">
+                        <value>vertical</value>
+                     </attribute>
+                  </interleave>
+               </choice>
+            </interleave>
+            <group>
+               <attribute name="kind">
+                  <value>upper-relative</value>
+               </attribute>
+               <ref name="formatting-operand"/>
+               <optional>
+                  <ref name="formatting-base"/>
+               </optional>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>reduced-point-lines</value>
+               </attribute>
+               <attribute name="placement">
+                  <choice>
+                     <value>below</value>
+                     <value>between</value>
+                  </choice>
+               </attribute>
+               <attribute name="lines">
+                  <data type="integer">
+                     <param name="minInclusive">1</param>
+                  </data>
+               </attribute>
+               <optional>
+                  <attribute name="parentheses-lines">
+                     <data type="integer">
+                        <param name="minInclusive">1</param>
+                     </data>
+                  </attribute>
+               </optional>
+               <choice>
+                  <ref name="formatting-operand"/>
+                  <group>
+                     <ref name="formatting-operand"/>
+                     <ref name="formatting-operand"/>
+                  </group>
+               </choice>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>horizontal-center</value>
+               </attribute>
+               <attribute name="lines">
+                  <data type="integer">
+                     <param name="minInclusive">1</param>
+                  </data>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>line-setting</value>
+               </attribute>
+               <attribute name="lines">
+                  <data type="integer">
+                     <param name="minInclusive">1</param>
+                  </data>
+               </attribute>
+               <optional>
+                  <attribute name="parentheses-lines">
+                     <data type="integer">
+                        <param name="minInclusive">1</param>
+                     </data>
+                  </attribute>
+               </optional>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>relative-placement</value>
+               </attribute>
+               <attribute name="relation">
+                  <value>below</value>
+               </attribute>
+               <attribute name="anchor-kind">
+                  <value>day-range</value>
+               </attribute>
+               <ref name="formatting-operand"/>
+               <optional>
+                  <ref name="formatting-anchor"/>
+               </optional>
+               <ref name="formatting-operand"/>
+               <optional>
+                  <ref name="formatting-anchor"/>
+               </optional>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>rotation</value>
+               </attribute>
+               <attribute name="degrees">
+                  <data type="positiveInteger"/>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>ligature</value>
+               </attribute>
+               <ref name="formatting-operand"/>
+               <oneOrMore>
+                  <ref name="formatting-operand"/>
+               </oneOrMore>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>layout-policy</value>
+               </attribute>
+               <attribute name="indent">
+                  <data type="nonNegativeInteger"/>
+               </attribute>
+               <attribute name="horizontal">
+                  <data type="boolean"/>
+               </attribute>
+               <attribute name="align-end">
+                  <data type="boolean"/>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>letter-spacing</value>
+               </attribute>
+               <attribute name="amount">
+                  <data type="positiveInteger"/>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>line-start-alignment</value>
+               </attribute>
+               <choice>
+                  <group>
+                     <attribute name="relation-kind">
+                        <value>relative-line</value>
+                     </attribute>
+                     <attribute name="lines-before">
+                        <data type="positiveInteger"/>
+                     </attribute>
+                     <optional>
+                        <attribute name="reference-source">
+                           <data type="string">
+                              <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+                           </data>
+                        </attribute>
+                     </optional>
+                  </group>
+                  <group>
+                     <attribute name="relation-kind">
+                        <value>collective</value>
+                     </attribute>
+                     <ref name="formatting-operand"/>
+                  </group>
+               </choice>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>heading-typography</value>
+               </attribute>
+               <attribute name="variant">
+                  <data type="string">
+                     <param name="pattern">heading|small-heading</param>
+                  </data>
+               </attribute>
+            </group>
+            <group>
+               <attribute name="kind">
+                  <value>kunten-policy</value>
+               </attribute>
+               <attribute name="scope">
+                  <choice>
+                     <value>quoted-region</value>
+                     <value>following-text</value>
+                     <value>insertion-site</value>
+                     <value>following-block</value>
+                     <value>preceding-block</value>
+                  </choice>
+               </attribute>
+               <attribute name="repeat-following">
+                  <data type="boolean"/>
+               </attribute>
+               <attribute name="vertical-rule-right">
+                  <data type="boolean"/>
+               </attribute>
+               <ref name="formatting-operand"/>
+               <zeroOrMore>
+                  <ref name="kunten-exclusion"/>
+               </zeroOrMore>
+            </group>
+         </choice>
+      </element>
+   </define>
+   <define name="rule-presentation">
+      <element name="rule-presentation" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source-supplied presentation of rule glyphs in the selected lines.</a:documentation>
+         <attribute name="variant">
+            <value>wavy</value>
+         </attribute>
+      </element>
+   </define>
+   <define name="kunten-exclusion">
+      <element name="kunten-exclusion" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">A source phrase in which a marker-shaped character remains principal text.</a:documentation>
+         <group>
+            <ref name="formatting-operand"/>
+            <ref name="formatting-operand"/>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-selection">
+      <element name="formatting-selection" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source identifies the enclosing body scope within which the selector was resolved.</a:documentation>
+         <group>
+            <attribute name="source">
+               <data type="string">
+                  <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+               </data>
+            </attribute>
+            <oneOrMore>
+               <ref name="formatting-target"/>
+            </oneOrMore>
+         </group>
+      </element>
+   </define>
+   <define name="formatting-target">
+      <element name="formatting-target" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source identifies selected body text independently of its annotation operand.</a:documentation>
+         <attribute name="source">
+            <data type="string">
+               <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+            </data>
+         </attribute>
+      </element>
+   </define>
+   <define name="formatting-base">
+      <element name="formatting-base" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">Source identifies the body occurrence of a named relative-placement base.</a:documentation>
+         <attribute name="source">
+            <data type="string">
+               <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+            </data>
+         </attribute>
+      </element>
+   </define>
+   <define name="formatting-anchor">
+      <element name="formatting-anchor" ns="https://w3id.org/soranoha/ns/tei">
+         <a:documentation xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">A resolved body occurrence that anchors one endpoint of a source-stated day range.</a:documentation>
+         <group>
+            <attribute name="source">
+               <data type="string">
+                  <param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</param>
+               </data>
+            </attribute>
+            <attribute name="role">
+               <choice>
+                  <value>range-start</value>
+                  <value>range-end</value>
+               </choice>
+            </attribute>
+            <attribute name="day">
+               <data type="positiveInteger"/>
+            </attribute>
+         </group>
       </element>
    </define>
    <start>
@@ -14172,9 +14982,15 @@ Sample values include: 1] homeoteleuton; 2] homeoarchy; 3] paleographicConfusion
                 xmlns:rng="http://relaxng.org/ns/structure/1.0"
                 xmlns:sch="http://purl.oclc.org/dsdl/schematron"
                 xmlns:snh="https://w3id.org/soranoha/ns/tei"
-                context="tei:TEI[@snh:* or .//@snh:*]">
+                context="tei:TEI[@snh:* or .//@snh:* or .//snh:*]">
          <sch:assert test="@snh:vocab-version">
-                TEI roots using Soranoha extension attributes must declare snh:vocab-version.
+                TEI roots using Soranoha extension elements or attributes must declare snh:vocab-version.
+              </sch:assert>
+         <sch:assert test="not(.//snh:gaiji-reference) or @snh:vocab-version = ('2', '3')">
+                Soranoha gaiji reference elements require vocabulary version 2 or 3.
+              </sch:assert>
+         <sch:assert test="not(.//snh:formatting-instruction) or @snh:vocab-version = '3'">
+                Soranoha formatting instructions require vocabulary version 3.
               </sch:assert>
       </sch:rule>
    </pattern>

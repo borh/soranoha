@@ -200,7 +200,7 @@
                                    "withdrawn" [] "governance_event" nil)
                    wrong (fx/validation-blob-bytes (apply str (repeat 64 "e")) false)
                    wrong-hex (hash/sha256-bytes wrong)
-                   ;; swap slug-a's validation artifact for one naming ghost
+                   ;; swap slug-a's validation artifact for one identifying ghost
                    ;; TEI bytes, keeping manifest and blobs consistent
                    manifest (update-in manifest ["works" 0 "artifacts" 3]
                                        assoc "id" (str "snh:1:tei-validation:" wrong-hex)
@@ -414,7 +414,7 @@
                                    "governance_event" (:id gov)
                                    "works" []
                                    ;; slug-b reverts to the superseded event,
-                                   ;; which still names it, so closure passes
+                                   ;; which still lists it, so closure passes
                                    "withdrawn" [{"slug" slug-a "event" (:id gov)}
                                                 {"slug" slug-b
                                                  "event" original-event}]
@@ -543,8 +543,8 @@
   ;; Splitting the chain into runs verified concurrently and joining them at
   ;; the seams must prove what one walk proves, so the two are compared over
   ;; the whole mutation table rather than over a chosen few: a rule that
-  ;; held only because one walk happened to check it where a seam does not
-  ;; turns this red without anyone having to think of it. The fixture chain
+  ;; one walk checks and a seam does not makes this test fail without a
+  ;; dedicated case. The fixture chain
   ;; is three publication commits, so at three runs every transition in it
   ;; is a seam.
   (let [ctx (build-ctx)
@@ -581,8 +581,8 @@
   ;; verified moments earlier rather than walking the chain again. That is
   ;; only sound if it rejects everything the full walk rejects, so the two
   ;; are compared over the whole mutation table rather than over a chosen
-  ;; few: a rule the increment stops enforcing turns this red without
-  ;; anyone having to think of it.
+  ;; few: a rule the increment does not enforce makes this test fail
+  ;; without a dedicated case.
   (let [ctx (build-ctx)
         {:keys [clone head-commit]} ctx]
     (testing "a valid successor passes both"
@@ -600,7 +600,7 @@
 
 (deftest a-proof-of-some-other-commit-is-refused
   ;; the shortcut carries a proof forward rather than computing one, so a
-  ;; proof of anything but this commit's actual parent has to fail loudly
+  ;; proof of anything but this commit's actual parent must fail with an error
   (let [{:keys [clone head-commit] :as ctx} (build-ctx)
         v (view/git-view clone)
         commit (:commit (fx/craft-release!
@@ -742,7 +742,7 @@
         (is (= :nonzero-head-at-root (reason-at clone commit)))))))
 
 (deftest replacement-refs-do-not-alter-view-reads
-  ;; git replace would silently substitute objects under plain plumbing; the
+  ;; git replace would substitute objects under plain plumbing; the
   ;; hardened view must keep reporting the invalid commit's own state
   (let [{:keys [clone head-commit]} (build-ctx)
         bad (repo/write-commit!
@@ -861,8 +861,8 @@
 (deftest the-covered-upstream-range-tiles-the-chain
   ;; covers_from is what a detached manifest states its range from, so it is
   ;; checked against the predecessor the verifier already reads rather than
-  ;; believed. The fixture publishes at one upstream revision by default; this
-  ;; advances it, which is the only case where the range moves.
+  ;; accepted as stated. The fixture publishes at one upstream revision by
+  ;; default; this advances it, which is the only case where the range changes.
   (let [{:keys [clone init-commit]} (fx/make-repos!)
         genesis-core (:core (assembled {} nil))
         genesis-blobs (:blobs (assembled {} nil))

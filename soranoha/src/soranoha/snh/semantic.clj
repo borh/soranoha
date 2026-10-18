@@ -77,7 +77,7 @@
       (fail! :invalid-slugs-outside-works
              {:strays (vec (remove (set works) invalid_slugs))})))
   ;; a layer list is ordered and unique for the same reason `works` is: the
-  ;; canonical bytes of a set have to be one thing, and two entries naming
+  ;; canonical bytes of a set have to be one thing, and two entries for
   ;; the same layer would let a manifest claim a layer twice
   (doseq [{:strs [slug layers]} (get manifest "works")]
     (sorted-unique! :layers-not-sorted-unique
@@ -132,8 +132,8 @@
     ;; pair is what has to be unique and what fixes the order. One person can
     ;; hold two relations to one work: Ueda Bin is both 著者 and 翻訳者 of
     ;; 海潮音, and fifteen works in the corpus record something of that shape.
-    ;; Keying on the person alone refused all of them, and refused them for
-    ;; being what Aozora Bunko's catalog says they are.
+    ;; Keying on the person alone would reject all of them, although each
+    ;; matches what Aozora Bunko's catalog records.
     (sorted-unique! :contributors-not-sorted-unique
                     (mapv (juxt #(get % "person_id") #(get % "relation_to_work"))
                           contributors)

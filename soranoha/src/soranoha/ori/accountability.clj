@@ -38,7 +38,9 @@
                 {"source-accountability" (java.nio.file.Files/readAllBytes (fs/path output))})))))})
 
 (def ^:private compatible-families
-  {"kunten" {:markers #{"CommandFullwidth" "CommandAscii"}
+  {"accent" {:markers #{"AccentNotation" "BracketNote"}
+             :families #{"accent.diacritic"} :aspects #{"content"}}
+   "kunten" {:markers #{"CommandFullwidth" "CommandAscii"}
              :families #{"kunten.kaeriten" "kunten.okurigana"} :aspects #{"content" "structure" "layout"}}
    "iteration-mark" {:markers #{"IterationNotation"}
                      :families #{"iteration.kunoji"} :aspects #{"content"}}
@@ -46,12 +48,17 @@
                          :families #{"accent.dotted_letter" "glyph.variant_note"}
                          :aspects #{"content"}}
    "heading" {:markers #{"CommandFullwidth" "CommandAscii"}
-              :families #{"heading.basic" "heading.dogyo" "heading.mado"} :aspects #{"structure" "layout"}}
-   "ruby" {:markers #{"RubyExplicit" "RubyImplicit"}
-           :families #{"ruby.basic"} :aspects #{"content" "structure"}}
+              :families #{"heading.basic" "heading.dogyo" "heading.mado"}
+              :aspects #{"structure" "layout"}}
+   "ruby" {:markers #{"RubyExplicit" "RubyImplicit" "CommandFullwidth" "CommandAscii"}
+           :families #{"ruby.basic" "ruby.double" "ruby.nested_forbidden"
+                       "ruby.placement_directional"}
+           :aspects #{"content" "structure"}}
+   ;; A quoted reference that resolves to no character asserts its structure
+   ;; alone; a resolved one asserts the character it carries.
    "gaiji" {:markers #{"GaijiFullwidth" "GaijiAscii"}
             :families #{"gaiji.marker" "gaiji.jis_code" "gaiji.unicode_codepoint" "glyph.variant_note"}
-            :aspects #{"content"}}
+            :aspects #{"content" "structure"}}
    "gaiji-ruby" {:markers #{"GaijiFullwidth" "GaijiAscii" "RubyExplicit"}
                  :families #{"gaiji_ruby.inline_base"} :aspects #{"content" "structure"}}
    "baseline-position" {:markers #{"CommandFullwidth" "CommandAscii"}
@@ -83,13 +90,14 @@
    "external-table-reference" {:markers #{"CommandFullwidth" "CommandAscii"}
                                :families #{"structure.table"} :aspects #{"structure"}}
    "editorial-note" {:markers #{"CommandFullwidth" "CommandAscii"}
-                     :families #{"annotation.chuuki" "source.note_label" "figure.insertion_declaration"}
+                     :families #{"annotation.chuuki" "source.note_label" "figure.insertion_declaration" "annotation.layout_note"}
                      :aspects #{"content" "structure"}}
    "layout" {:markers #{"CommandFullwidth" "CommandAscii"}
              :families #{"decoration.keigakomi" "layout.yokogumi" "glyph.variant_note"} :aspects #{"layout"}}
    "line-layout" {:markers #{"CommandFullwidth" "CommandAscii"}
                   :families #{"indentation.basic" "indentation.jisage_block" "indentation.jisage_oneline"
-                              "indentation.chitsuki" "indentation.jizume" "indentation.burasage" "layout.center_page" "layout.multicolumn"}
+                              "indentation.chitsuki" "indentation.jizume" "indentation.burasage"
+                              "layout.center_page" "layout.cross_line_head_alignment" "layout.multicolumn"}
                   :aspects #{"layout"}}
    "formula" {:markers #{"CommandFullwidth" "CommandAscii"}
               :families #{"structure.formula"} :aspects #{"structure"}}
@@ -110,10 +118,10 @@
 (def claimable-families
   "Every family some fact kind can claim, on any marker kind it admits.
 
-  Public because it is one half of a pair that has to agree: the coverage
-  matrix names the families the scanner assigns, this table names the families
-  a claim can carry, and nothing compared them until the two had drifted far
-  enough that most reported coverage gaps were families no claim could reach."
+  Public because it is one half of a pair that must agree: the coverage
+  matrix lists the families the scanner assigns, and this table lists the
+  families a claim can carry. A matrix family absent here is a reported
+  coverage gap that no claim can close."
   (into (sorted-set) (mapcat :families) (vals compatible-families)))
 
 (def ^:private reachable-families
@@ -123,7 +131,7 @@
   A claim counts against an occurrence only when the fact kind's marker set
   admits the occurrence's own kind, so a family outside this set is unreachable
   however the interpreter behaved. Calling such a family unaccounted would read
-  as a coverage gap and be none: the scanner and the fact table name marker kinds
+  as a coverage gap and be none: the scanner and the fact table use marker kinds
   from two vocabularies, and the scanner emits kinds no fact kind mentions. The
   set is derived from the fact table rather than restated, so a fact kind that
   gains a marker widens it in step."
@@ -237,7 +245,9 @@
                                                                     (get occurrence "families")))
                                 "unreachable_families" (if apparatus? []
                                                            (filterv #(not (reachable %)) (get occurrence "families")))
-                                "unclassified" (and (not apparatus?) (empty? (get occurrence "families")))))))
+                                "unclassified" (and (not apparatus?)
+                                                    (or (empty? (get occurrence "families"))
+                                                        (boolean (some #(empty? (get % "families")) components))))))))
                 (sort-by #(get-in % ["source_span" "start"]) occurrences))
           families
           (reduce (fn [counts occurrence]
@@ -261,27 +271,6 @@
        "interpretation_problems" problems})))
 
 (defn reported-coverage
-  "The coverage report in the form the stage writes it: the family counts, the
-  interpretation problems, and the occurrences that were not fully accounted
-  for.
-
-  An occurrence the interpreter claimed is already visible from the other
-  direction, as the `source` attribute on the element the claim produced, so
-  listing every one of them here said the same thing twice. It was not a small
-  duplication: measured over a full review export, this report was 38% of the
-  bytes written and larger than the TEI it accounts for, while 99.7% of its
-  occurrences were cleanly claimed and said nothing a reader could act on.
-
-  What is not recoverable from anything else the build writes is which
-  occurrences went unaccounted, so those are kept whole, and the total they
-  were drawn from is stated so their number can be read as a proportion.
-
-  An occurrence whose families are all outside the claim vocabulary is not one
-  of them. It is counted in `families` under `outside_claim_vocabulary` and left
-  off the list, because what explains it is its marker kind rather than anything
-  about the occurrence, and one count per family says that as completely as
-  thousands of records would. Measured over the full corpus, those were 69% of
-  the entries this list used to carry."
   [report]
   (let [occurrences (get report "occurrences")]
     (-> report
@@ -296,7 +285,7 @@
 (defn coverage-stage
   "Independent lexical oracle + parser IR -> explicit claim accounting."
   [clj-toolchain-id]
-  {:stage-id "interpretation-coverage" :stage-version "22" :toolchain-id clj-toolchain-id
+  {:stage-id "interpretation-coverage" :stage-version "24" :toolchain-id clj-toolchain-id
    :f (fn [{:keys [blob]} inputs]
         (let [input-bytes (into {} (map (fn [name] [name (blob (get inputs name))]))
                                 ["source-accountability" "parser-ir"])

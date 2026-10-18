@@ -106,6 +106,26 @@
     (is (= ["［＃］"] (mapv #(get % "raw") (get reported "unaccounted_occurrences")))
         "a marker with no families is an exception even though it has none to be unaccounted")))
 
+(deftest reported-coverage-retains-unclassified-components-alongside-valid-claims
+  (doseq [region ["body" "front-matter" "back-matter"]]
+    (let [component {"source_span" (span 3 12) "kind" "MalformedGaiji"
+                     "raw" "※［＃" "families" []}
+          components [component (assoc component "source_span" (span 15 24))]
+          occurrence {"source_span" (span 0 30) "kind" "RubyExplicit" "region" region
+                      "families" ["ruby.basic"] "components" components}
+          ruby {"kind" "ruby" "outcome" "established" "aspects" ["content" "structure"]
+                "source_span" (span 0 30)}
+          reported (accountability/reported-coverage
+                    (accountability/coverage-report (oracle [occurrence]) (interpretation [ruby])))
+          retained (get reported "unaccounted_occurrences")]
+      (is (= 1 (get reported "occurrence_count")))
+      (is (= (if (= region "body") 1 0) (get reported "unclassified_occurrence_count")))
+      (if (= region "body")
+        (do (is (= 1 (count retained)))
+            (is (= components (mapv #(dissoc % "claims") (get-in retained [0 "components"]))))
+            (is (= 1 (get-in reported ["families" "ruby.basic" "interpreter_claimed"]))))
+        (is (empty? retained))))))
+
 (deftest a-family-no-fact-admits-on-this-marker-is-not-a-coverage-gap
   (testing "the scanner puts 〔…〕 under annotation.chuuki, and no fact kind that
   claims that family admits the marker, so the occurrence could never be claimed"
@@ -176,17 +196,17 @@
                        (String. ^bytes (cas/get-bytes (:cas-dir store) (get-in result [:outputs name])) "UTF-8")))]
     (try
       (doseq [[body unknown expected-claimed expected-component-claims unreachable]
-              [["［＃斜体］字［＃「字」に白四角傍点］［＃斜体終わり］" "［＃「字」に白四角傍点］" 2]
-               ["［＃斜体］字［＃「字」の部分はイタリック体］［＃斜体終わり］" "［＃「字」の部分はイタリック体］" 2]
+              [["［＃斜体］字［＃「字」に黒四角傍点］［＃斜体終わり］" "［＃「字」に黒四角傍点］" 2]
+               ;; the quoted イタリック体 instruction inside a paired italic scope
+               ;; is a style marker that its own emphasis fact claims
+               ["［＃斜体］字［＃「字」の部分はイタリック体］［＃斜体終わり］" nil 3]
                ["［＃太字］字［＃「字」は斜体］［＃太字終わり］" nil 3]
                ["｜漢字《かんじ》、漢字《かんじ》。" nil 2]
                ["※［＃「需＋頁」、第3水準1-94-6］《じゅ》" nil 2]
                ["｜前※［＃「需＋頁」、第3水準1-94-6］《ぜんじゅ》" nil 1]
-               ;; the scanner reads a page reference in the gaiji's own body and
-               ;; adds reference.frontref, which only a command fact claims
                ["※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］"
                 "※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］" 0 nil
-                "※［＃「鬟」の「口」の下の部分に代えて「小」、33-17］"]
+                nil]
                ["※［＃ローマ数字1、1-13-21］" nil 1]
                ["※［＃「藹」の「言」に代えて「月」、第3水準1-91-26］" nil 1]
                ["２）［＃「２）」は縦中横、行右小書き］" nil 1]
@@ -220,24 +240,22 @@
                 "［＃「甲［＃「甲」はママ］」は底本では「乙」］" 1]
                ["〔Hu:lshoff［＃「Hu:lshoff」は底本では「Hu:lshoffs」］〕" nil 1]
                ["〔schla:gt［＃「〔schla:gt〕」は底本では「〔scha:gt〕」］〕" nil 1]
-               ;; the correction stands outside the accent notation, so the
-               ;; notation has no command component and the family the scanner
-               ;; gives it is one no fact kind can claim on a bracket
                ["〔Der Mu:s&iggang wird〕［＃「〔Mu:s&iggang〕」は底本では「〔Mu:s&igang〕」］"
-                nil 1 nil "〔Der Mu:s&iggang wird〕"]
+                nil 2]
                ["萬一《まんいち》［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］"
                 "［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］" 1 1]
                ["萬二《まんに》［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］"
                 "［＃「萬一《まんいち》」は底本では「萬　《まん　　》」］" 1 0]
                ["零《こぼ》す［＃ルビの「こぼ（す）」は底本では「にぼ（す）」］" nil 2]
                ["「露西亞車」［＃「露西亞車」は底本では「靈西亞車」］" nil 1]
-               ["〔Ha:tte.“〕［＃「Ha:tte.“」は底本では「Ha:tte“.」］" nil 1 nil "〔Ha:tte.“〕"]
+               ["〔Ha:tte.“〕［＃「Ha:tte.“」は底本では「Ha:tte“.」］" nil 2]
                ["字［＃底本では傍点］" nil 1]
                ["キタ［＃お手伝いさん］" nil 1]
                ["ワフタンゴフ［＃劇場名］" nil 1]
+               ;; the gloss is an editorial note that claims source.note_label;
                ;; source.reviewed_residual_command is claimed by no fact kind on
                ;; any marker, so it is unreachable wherever the scanner puts it
-               ["字［＃海野家のお手伝いさん］" "［＃海野家のお手伝いさん］" 0 nil "［＃海野家のお手伝いさん］"]
+               ["字［＃海野家のお手伝いさん］" nil 1 nil "［＃海野家のお手伝いさん］"]
                ["字［＃父、太字］" "［＃父、太字］" 0]
                ["字［＃「字」に「ママ」注記］" nil 1]
                ["字［＃「字」に「注」の注記］" nil 1]
@@ -383,7 +401,7 @@
                   [id (second (re-find #"(?m)^status = \"([^\"]+)\"" block))])))
         (rest (str/split (slurp matrix-path :encoding "UTF-8") #"\[\[syntax\]\]"))))
 
-(deftest the-claim-table-and-the-coverage-matrix-name-the-same-families
+(deftest the-claim-table-and-the-coverage-matrix-list-the-same-families
   (let [rows (matrix-rows (:matrix (accountability/resolve-tool)))]
     (is (< 50 (count rows)) "the matrix parsed")
     (testing "a claim cannot carry a family the matrix does not declare"
@@ -393,11 +411,10 @@
                        (remove (set (keys rows)))
                        accountability/claimable-families))))
     (testing "a family the matrix calls modelled is a family some claim can reach"
-      ;; This is the drift that made the published coverage number unreadable:
-      ;; the scanner assigned a family, no fact kind could claim it, and every
-      ;; occurrence was reported as a coverage gap it was not. A row saying the
-      ;; feature is covered or partly covered while no claim can reach it says
-      ;; two incompatible things about the same feature.
+      ;; Without this check the scanner can assign a family no fact kind can
+      ;; claim, and every occurrence is then reported as a coverage gap it is not.
+      ;; A row stating the feature is covered or partly covered while no claim can
+      ;; reach it states two incompatible things about the same feature.
       (is (= #{} (into (sorted-set)
                        (comp (filter (fn [[_ status]]
                                        (contains? #{"covered" "partial"} status)))

@@ -21,14 +21,14 @@
 (def ragged-key
   "Marker key assoc'd (true) onto a parsed row whose cell count differed
   from the header row's. A namespaced keyword, so it can never collide
-  with a string header column and is invisible to (get row \"…\") users."
+  with a string header column and is not returned by (get row \"…\")."
   ::ragged?)
 
 (defn- read-rows*
   "Internal: takes a charred result (vector of vectors, first row is
   header) and returns a seq of maps keyed by header column. Strips
   the UTF-8 BOM from the first header cell. Ragged rows (cell count ≠
-  header count) are marked with ragged-key; surviving cells still parse."
+  header count) are marked with ragged-key; the cells present are parsed."
   [rows]
   (when (seq rows)
     (let [header (mapv (fn [c] (strip-bom (or c ""))) (first rows))
@@ -89,13 +89,13 @@
   at century precision under ISO 8601-2 / XSD 1.1 astronomical year
   numbering: 紀元前N世紀 covers astronomical interval
   `[-(100N - 1), -((N - 1) · 100)]`, which matches the EDTF lexical
-  `-{N-1:02d}XX`. Two-digit zero-padding holds for N ≤ 100; deeper
-  history is not exercised by the corpus."
+  `-{N-1:02d}XX`. Two-digit zero-padding holds for N ≤ 100; the corpus has
+  no earlier century."
   [^String n-str]
   (format "-%02dXX" (dec (Integer/parseInt n-str))))
 
 (defn calendar-valid?
-  "False for a YYYY-MM-DD or YYYY-MM string naming a day or month that
+  "False for a YYYY-MM-DD or YYYY-MM string stating a day or month that
   does not exist (2020-02-31, -0426-02-31); true for every other value,
   including nil and YYYY-only forms, which have no day to check. The
   schema regex bounds month and day separately, so this is the check
@@ -189,13 +189,13 @@
   "Aozora Bunko's 初出 column, with its line breaks written as line breaks
   and each statement read by `read-text`.
 
-  A collection is one work in that catalog, and its 初出 names where each
+  A collection is one work in that catalog, and its 初出 states where each
   constituent piece first appeared. The catalog separates those statements
   with a literal `<br>`, which is markup from the card pages the CSV is built
   alongside rather than text from a work: 166 rows carry it, one of them 414
-  statements long. No 初出 value contains a newline of its own, so reading
-  the tag as the break it stands for loses nothing and leaves nothing
-  downstream having to know the tag exists."
+  statements long. No 初出 value contains a newline of its own, so replacing
+  the tag with a line break loses no information, and no downstream reader
+  handles the tag."
   [value read-text]
   (some-> (nullable value)
           (string/replace #"<br\s*/?>" "\n")
@@ -311,7 +311,7 @@
   de-duplicated. Throws if a single person_id appears with divergent
   body fields. `:corrections-by-pid` maps person_id → vector of
   {field, raw, corrected, rule} audit entries (deduplicated). `read-text` is
-  handed to `parse-work-fields-from-row`."
+  passed to `parse-work-fields-from-row`."
   [rows read-text]
   (assert (seq rows) "build-record-fragment-from-rows requires at least one row")
   (let [works (mapv #(parse-work-fields-from-row % read-text) rows)

@@ -5,7 +5,7 @@
   bytes the release manifest already hashes as `admission.policy_hash`.  Both places the grant is published (the manifest's `rights` field and
   each work's TEI `publicationStmt/availability`) read that one document
   through this namespace, so the terms signed off, the terms in the release
-  record and the terms travelling inside a detached TEI file cannot disagree.
+  record and the terms carried in a detached TEI file cannot disagree.
 
   The policy stores identifiers, not sentences. Rendering an identifier into
   prose is code, and belongs here rather than in the stored value: a rendered
@@ -26,7 +26,7 @@
 
 (defn- read-one-edn
   "Read exactly one EDN value spanning the whole of `text`: an empty
-  document, a second form, or trailing garbage after the value all fail;
+  document, a second form, or trailing content after the value all fail;
   a reader that stops at the first value would hash bytes it never
   evaluated."
   [^String text]
@@ -76,9 +76,9 @@
   [^bytes policy-bytes]
   (grant (read-policy policy-bytes)))
 
-;; Closed vocabularies. A grant naming a licence or a standing this build
-;; cannot render is a policy change that has outrun the code, so it stops the
-;; build rather than publishing artifacts whose stated terms are guesswork.
+;; Closed vocabularies. A grant stating a licence or a standing this build
+;; cannot render is a policy change the code does not support, so it stops the
+;; build rather than publishing artifacts with unsupported terms.
 
 (def ^:private licence-uris
   {"CC0-1.0" "https://creativecommons.org/publicdomain/zero/1.0/"})
@@ -86,14 +86,14 @@
 (def ^:private works-standing
   "Every standing an underlying work may be published under. Written out per
   standing rather than derived from the identifier, because these are the
-  words a detached TEI file states its terms in and they should be readable
-  here as themselves.
+  words a detached TEI file states its terms in, and they are readable here
+  verbatim.
 
   The CC BY entries are for works whose copyright subsists and whose
   rightsholder put them on Aozora Bunko under that licence. Attribution is a
-  condition for them, which is the opposite of what Soranoha asks for its own
-  encoding, so each statement says so rather than leaving a reader to assume
-  the site-wide request covers it."
+  condition for them, which is the opposite of what Soranoha requests for its
+  own encoding, so each statement states the condition rather than leaving the
+  site-wide request to apply."
   {"public-domain"
    {:uri "https://creativecommons.org/publicdomain/mark/1.0/"
     :statement (str "The underlying work is in the public domain; Soranoha "
@@ -123,7 +123,7 @@
   "The rights statement one TEI file publishes: Soranoha's release-wide grant
   over its own encoding, and the standing of the underlying work in hand.
 
-  A header states both together, so they travel as one value from here on. The
+  A header states both together, so they are one value from here on. The
   manifest keeps them apart because one is per release and the other per work,
   and this is the single place the two are joined."
   [grant standing]

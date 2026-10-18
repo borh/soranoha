@@ -1,11 +1,11 @@
 (ns soranoha.assessment.evaluate
   "Stage a resolved assessment graph into the content-addressed store.
 
-  soranoha.assessment.graph decides what every fact is; this records those
-  decisions as engine runs, so a release can name the run that produced each
-  one, and evaluates the owner's reliance declarations against the facts the
-  graph resolved. The split is what lets the evaluation be read and tested
-  without a store: everything here needs one, and nothing there does."
+  soranoha.assessment.graph resolves every fact; this namespace records each
+  resolution as an engine run, so a release can identify the run that
+  produced it, and evaluates the owner's reliance declarations against the
+  facts the graph resolved. Every function here requires a store and none in
+  the graph namespace does, so the evaluation is testable without a store."
   (:require [charred.api :as json]
             [soranoha.kura.cas :as cas]
             [soranoha.assessment.graph :as graph]
@@ -38,8 +38,8 @@
   "The graph's `:rule`, run through the engine so the derived term value is
   content-addressed and its run is on the record.
 
-  The value handed back is read from the store rather than returned from
-  `compute`, which is what graph/pure-rule reproduces without one."
+  The returned value is read from the store rather than taken from
+  `compute`; graph/pure-rule reproduces that round trip without a store."
   [store toolchain-id stages]
   (fn [key inputs compute]
     (let [run (engine/run-stage!

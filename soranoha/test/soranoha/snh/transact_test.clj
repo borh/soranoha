@@ -77,7 +77,7 @@
                 (testing "replaying the same amendment converges"
                   (is (= :already-applied
                          (:outcome (fx/publish-event! clone amendment)))))
-                (testing "a fresh amendment naming the superseded event is stale"
+                (testing "a fresh amendment referring to the superseded event is stale"
                   (let [stale (fx/event-value
                                "event-amendment"
                                [{"slug" (second slugs-a)
@@ -127,8 +127,8 @@
         first-run (fx/publish! clone base)
         second-run (fx/publish! clone base)]
     (is (= :published (:outcome first-run)))
-    ;; the whole result, so a no-op cannot quietly start reporting more:
-    ;; the carried proof is of the commit the first run wrote, unmoved
+    ;; the whole result, so a no-op that reports more fails: the carried
+    ;; proof is of the commit the first run wrote, unchanged
     (is (= {:outcome :already-published
             :manifest-id (:manifest-id first-run)
             :verified-head {:commit (:commit first-run)
@@ -211,7 +211,7 @@
         _ (fx/publish! clone base)
         _ (repo/fetch! clone fx/branch)
         interpose-push (fn [dir branch commit expected]
-                         ;; the intervening publications land first
+                         ;; the intervening publications are published first
                          (doseq [opts winner-optss]
                            (assert (= :published (:outcome (fx/publish! clone2 opts)))))
                          (repo/push! dir branch commit expected))]
@@ -227,7 +227,7 @@
     (is (= :requeue (:outcome r)))))
 
 (deftest rejected-push-converges-when-desired-state-already-published
-  ;; the winner lands the identical state between the loser's pre-push check
+  ;; the winner publishes the identical state between the loser's pre-push check
   ;; and its push; depending on whether the two byte-identical commits share
   ;; a timestamp the loser sees an up-to-date push (:published, the same
   ;; commit) or a rejection reconciled to :already-published; both are the
@@ -290,7 +290,7 @@
 
 (deftest carrying-the-head-proof-forward-publishes-the-same-chain
   ;; A caller publishing a run of releases holds a proof of the head it just
-  ;; wrote. Threading it costs one walk for the whole run instead of one per
+  ;; wrote. Passing it forward costs one walk for the whole run instead of one per
   ;; release, and must reach the same chain the walking publisher reaches.
   (let [releases (fn [clone carry?]
                    (reduce (fn [proof n]
@@ -307,14 +307,14 @@
     (let [final (releases carried true)]
       (testing "the carried run produces the same chain as the walking run"
         (is (= (:chain (verified-chain walked)) (:chain (verified-chain carried)))))
-      (testing "the proof handed back is of the commit that was just published"
+      (testing "the proof returned is of the commit that was just published"
         (is (= (:head (:result final)) (first (:chain (verified-chain carried))))))
       (testing "the chain still verifies from the pinned keys alone"
         (is (= 4 (:chain-length (verified-chain carried))))))))
 
 (deftest a-carried-proof-of-the-wrong-commit-is-ignored-not-trusted
-  ;; The proof is an optimisation, never an authority: one that does not name
-  ;; the commit the fetch resolved to sends the publisher back to the walk.
+  ;; The proof is an optimisation, never an authority: one that does not
+  ;; identify the commit the fetch resolved to makes the publisher walk the chain.
   (let [{:keys [clone]} (fx/make-repos!)
         first-run (fx/publish! clone (assoc base :selection-params {"config" "a"}))
         stale (:verified-head first-run)

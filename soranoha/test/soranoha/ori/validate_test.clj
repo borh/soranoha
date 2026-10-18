@@ -105,10 +105,10 @@
     (try
       (testing "every analysis-module element the profile admits into the body is covered"
         ;; The profile takes the analysis module whole, so a body wrapper the
-        ;; rule does not name validates in silence. `s` and `phr` are the ones
-        ;; sentence segmentation would introduce, and every element here was
-        ;; confirmed to pass Relax NG inside a `p` before being listed: each is
-        ;; a real inline-annotation route rather than a name added for symmetry.
+        ;; rule does not list validates without a warning. `s` and `phr` are the
+        ;; ones sentence segmentation would introduce, and every element here
+        ;; passes Relax NG inside a `p`: each is a real inline-annotation route
+        ;; rather than a name added for symmetry.
         (doseq [[element markup]
                 {"c" "<c>本</c>"
                  "cl" "<cl>本文</cl>"
@@ -124,7 +124,7 @@
           (let [reported (findings (annotation-document markup nil))]
             (is (contains? reported rule)
                 (str "an undeclared " element " in the transcription body is reported")))))
-      (testing "declaring the element in the header discharges the warning"
+      (testing "declaring the element in the header removes the warning"
         (is (not (contains? (findings (annotation-document "<s>本文</s>" ["s"])) rule))))
       (testing "a plain transcription reports nothing"
         (is (not (contains? (findings (annotation-document "本文" nil)) rule))))

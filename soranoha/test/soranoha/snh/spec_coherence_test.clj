@@ -1,18 +1,17 @@
 (ns soranoha.snh.spec-coherence-test
   "The protocol spec restates the shape of the payloads the schemas enforce,
-  and the schemas are what a release is validated against. Nothing compared
-  the two, so two of the spec's field lists fell behind the schemas without
-  any build noticing: the manifest's rights object was listed with a member
-  the schema does not define, and a work was listed without two the schema
-  requires.
+  and the schemas are what a release is validated against. This compares the
+  two, because a spec field list can disagree with the schemas without any
+  other check failing: a rights object listed with a member the schema does
+  not define, or a work listed without two members the schema requires.
 
   What is compared is the restatement, not the prose around it. A field list
-  the spec writes as `{a, b, c}`, in a table cell or a fenced block, must name
+  the spec writes as `{a, b, c}`, in a table cell or a fenced block, must list
   exactly the members some object requires: the objects are read from the
   schemas, plus the projection whose membership `soranoha.snh.verify` defines
   rather than a schema. A member an object allows without requiring has to be
-  named somewhere in the spec, so a field cannot be added quietly by making it
-  optional. A braced span whose parts are not field names describes something
+  mentioned somewhere in the spec, so a field cannot be added unnoticed by
+  making it optional. A braced span whose parts are not field names describes something
   else and is left alone, as is a payload the spec discusses without listing."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -96,13 +95,13 @@
       (set (map second parsed)))))
 
 (defn- nearest
-  "The defined set closest to `claimed`, so a failure says which way the two
-  moved apart rather than only that they did."
+  "The defined set closest to `claimed`, so a failure states how the two
+  differ rather than only that they differ."
   [claimed]
   (first (sort-by #(+ (count (remove % claimed)) (count (remove claimed %)))
                   (keys @restatable-sets))))
 
-(deftest every-field-list-in-the-spec-names-an-object-that-is-defined
+(deftest every-field-list-in-the-spec-matches-a-defined-object
   (let [spec (docs/read-text spec-path)]
     (doseq [[line inside] (brace-spans spec)
             :let [claimed (restated-set inside)]
@@ -113,20 +112,20 @@
               (str "the spec lists " (pr-str (sort claimed))
                    " but nothing defines that object. The nearest is "
                    (pr-str (sort close)) " (" (get @restatable-sets close)
-                   "), so the spec names " (pr-str (sort (remove close claimed)))
+                   "), so the spec lists " (pr-str (sort (remove close claimed)))
                    " that it does not have, and omits "
                    (pr-str (sort (remove claimed close))))))))))
 
-(deftest a-member-an-object-allows-without-requiring-is-named-in-the-spec
+(deftest a-member-an-object-allows-without-requiring-is-mentioned-in-the-spec
   ;; Otherwise a field enters a published payload by being optional, and the
-  ;; check above stays quiet because the list of required members did not move.
+  ;; check above passes because the list of required members is unchanged.
   (let [spec (docs/read-text spec-path)
         named? #(str/includes? spec (str "`" % "`"))]
     (doseq [{:keys [required properties]} (payload-objects)
             :let [unnamed (sort (remove named? (remove required properties)))]]
       (is (empty? unnamed)
           (str "these may appear in a published payload and the spec never "
-               "names them: " (pr-str unnamed))))))
+               "mentions them: " (pr-str unnamed))))))
 
 (deftest every-vocabulary-the-spec-restates-is-one-a-schema-defines
   (let [spec (docs/read-text spec-path)
@@ -140,8 +139,8 @@
 
 (deftest every-value-a-schema-will-accept-is-written-in-the-spec
   ;; Written as itself, in a code span or in quotes, rather than merely used in
-  ;; a sentence: a value that reads as an ordinary word would otherwise count
-  ;; itself present in prose that is not about it.
+  ;; a sentence: a value that reads as an ordinary word would otherwise be
+  ;; counted as present in prose that is not about it.
   (let [spec (docs/read-text spec-path)
         written? #(or (str/includes? spec (str "`" % "`"))
                       (str/includes? spec (str "\"" % "\"")))]
@@ -160,14 +159,14 @@
     [per-work release-level]))
 
 (defn- plain-code-spans
-  "The code spans naming a bare type, so `snh-manifest/3` and `works[].artifacts`
+  "The code spans containing a bare type, so `snh-manifest/3` and `works[].artifacts`
   are read as the things they are rather than as registry entries."
   [text]
   (set (map second (re-seq #"`([a-z][a-z-]*)`" text))))
 
 (deftest the-closed-registry-lists-the-types-this-build-registers
   ;; Section 2 is the only list the spec calls closed, and a consumer written
-  ;; against it is entitled to meet no other member.
+  ;; against it may assume no other member.
   (let [[per-work release-level] (registry-parts (docs/read-text spec-path))]
     (is (= (set naming/artifact-kinds) (plain-code-spans per-work))
         "the per-work types the registry permits are not the ones a work carries")

@@ -44,7 +44,7 @@ The catalog repeats work values across contributor rows.
 Nationality, jurisdiction, flag-assessment date, assessor and assessment basis
 are absent. A flag's observation date therefore cannot stand for the source's
 assessment date or a legal status's effective date. Catalog rows also omit some
-input and proofreading contributors named in source texts; a catalog role does
+input and proofreading contributors listed in source texts; a catalog role does
 not by itself establish that its holder owns copyright.
 
 The pinned catalog contains 19,470 rows, 17,810 works and 1,334 persons. Its
@@ -54,12 +54,12 @@ the CSV SHA-256 is
 `c0ace54c7ac037e5aebd045922c7879b9f7dc01f85b8f7483c8d4ecc29569ef4`.
 These counts describe catalog records, not an admitted publication population.
 
-Moving this pin is what re-derives the figures. `scripts/catalog-figures-check.py`
+The figures are re-derived when this pin changes. `scripts/catalog-figures-check.py`
 recomputes every count this project quotes from the catalog in a checkout, and
-fails with both numbers when one has drifted. It cannot be gated automatically,
+fails with both numbers when one has changed. It cannot be gated automatically,
 because it is bound to the pin above rather than to a schedule: a publisher's
 checkout is at live upstream, so the digest check fails on it by construction.
-Its answer can only change, and be correct, when the pin moves. Run it then,
+Its result can change, and be correct, only when the pin changes. Run it then,
 against a checkout at the new snapshot:
 
 ```sh
@@ -70,4 +70,4 @@ and correct each failing figure where it is quoted before committing the new
 pin. `--stems` adds the four figures that need a pass over every work archive;
 without it they are skipped. The agreement half runs on its own in the bundled
 gates, so a figure that stops being quoted is caught without a checkout; only
-re-derivation waits for this.
+re-derivation depends on this step.

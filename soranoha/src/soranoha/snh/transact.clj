@@ -2,7 +2,7 @@
   "The publication transaction. Authority is the protected publication branch
   of the origin; the fast-forward-only push is the compare-and-swap. On
   rejection (or an unknown push result whose manifest is absent from the
-  accepted chain) the loser consults only the current accepted head: a build
+  accepted chain) the rejected publisher reads only the current accepted head: a build
   either requeues (projection changed), converges (desired state already
   published, whoever published it), or halts as a determinism defect (same
   projection, different derived content); a governance event is appended
@@ -98,13 +98,13 @@
 
   `verified-head` is an optional {:commit <commit id> :result <what
   `verify/verify-repository-at` returned for it>} that this caller computed
-  ITSELF, in this process, from this view and these pinned keys. When it
-  names the commit the fetch resolved to, the head is taken as proved and
-  the chain is not walked again; when it names anything else, or is absent,
-  the chain is walked. The result carries the successor proof back under
-  the same key, so a caller publishing a run of releases threads its own
-  proof forward instead of re-verifying the whole chain once per release,
-  which is the difference between linear and quadratic over a backfill.
+  itself, in this process, from this view and these pinned keys. When it
+  identifies the commit the fetch resolved to, the head is taken as proved
+  and the chain is not walked again; when it identifies any other commit, or
+  is absent, the chain is walked. The result carries the successor proof
+  back under the same key, so a caller publishing a run of releases passes
+  its own proof forward instead of re-verifying the whole chain once per
+  release, and a backfill costs linear rather than quadratic verification.
 
   This is the §9 step 2 counterpart of `verify/verify-increment-at` and
   carries the same restriction, for the same reason: it is sound only
@@ -134,10 +134,10 @@
      ;; the scheduled no-op / determinism decision runs before any commit is
      ;; created: an uncontended duplicate publishes nothing, and an uncontended
      ;; same-projection divergence halts.
-     ;; neither outcome here moved the head, so the proof this process holds
-     ;; is still a proof of it and the caller can thread it on. The
-     ;; reconciliation paths below deliberately carry nothing: there the head
-     ;; moved under us and this proof is of a commit that no longer is one.
+     ;; neither outcome here changed the head, so the proof this process holds
+     ;; is still a proof of it and the caller can pass it on. The
+     ;; reconciliation paths below carry no proof: there another publisher
+     ;; advanced the head, and this proof is of a commit that is not the head.
      (some-> (decide-against-head manifest head)
              (assoc :verified-head {:commit c :result head-proof}))
      (let [{:keys [hex bytes]} (decode/encode "release-manifest" manifest)

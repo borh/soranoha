@@ -98,7 +98,7 @@
 (deftest
   source-text-newline-runs-are-publication-normalized-test
   (testing
-   "source/control-line separator whitespace does not leak as empty publication lines"
+   "source/control-line separator whitespace does not appear as empty publication lines"
     (is
      (=
       "序\n本文"

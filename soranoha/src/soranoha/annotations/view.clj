@@ -31,18 +31,18 @@
     (mapv #(.item nodes %) (range (.getLength nodes)))))
 
 (def unresolved-glyph
-  "What stands in for a glyph the source names and Unicode cannot encode.
+  "The character that replaces a glyph the source identifies and Unicode
+  cannot encode.
 
   U+FFFC OBJECT REPLACEMENT CHARACTER rather than U+FFFD REPLACEMENT
-  CHARACTER, which is what a decoder writes when bytes were malformed. Nothing
-  here is malformed: the source named the character, the TEI carries it as a
-  `g` pointing at a `char` that holds the source's own description of it, and
-  the byte range it was read from is recorded beside it. A reader of a work
-  that has one should not be told the file is damaged.
+  CHARACTER, which a decoder writes for malformed bytes. Such a glyph is not
+  malformed: the source identifies the character, the TEI carries it as a `g`
+  pointing at a `char` that holds the source's description of it, and the byte
+  range it was read from is recorded beside it. U+FFFD would mark the file as
+  damaged.
 
-  Every projection reads it from here, because two of them chose separately
-  once and the plaintext and the markdown of one work disagreed about the same
-  glyph for 521 works."
+  Every projection reads it from here, so the plaintext and the markdown of one
+  work replace a glyph with the same character."
   "\uFFFC")
 
 (defn local-name [^Node node]
@@ -135,6 +135,29 @@
 
 (defn visible-text [node]
   (apply str (map :view/text (reading-segments node))))
+
+(defn ranged-ruby-readings [node]
+  (let [bases (filter #(= "rb" (local-name %)) (children node))
+        walk (fn walk [[text anchors] ^Node child]
+               (if (= "anchor" (local-name child))
+                 (let [id (.getAttributeNS ^org.w3c.dom.Element child xml-namespace "id")]
+                   (when (or (empty? id) (contains? anchors id))
+                     (throw (ex-info "Ruby anchor requires a unique identifier" {:id id})))
+                   [text (assoc anchors id (count text))])
+                 (if (or (= Node/TEXT_NODE (.getNodeType child))
+                         (#{"g" "lb" "pb" "cb"} (local-name child)))
+                   [(str text (visible-text child)) anchors]
+                   (reduce walk [text anchors] (selected-children child)))))
+        [text anchors] (reduce walk ["" {}] bases)]
+    (mapv (fn [^org.w3c.dom.Element reading]
+            (let [from (.getAttribute reading "from")
+                  to (.getAttribute reading "to")
+                  start (when (str/starts-with? from "#") (get anchors (subs from 1)))
+                  end (when (str/starts-with? to "#") (get anchors (subs to 1)))]
+              (when-not (and (some? start) (some? end) (< start end))
+                (throw (ex-info "Ruby reading requires an ordered range within its base" {:from from :to to})))
+              {:target (subs text start end) :reading reading :place (.getAttribute reading "place")}))
+          (filter #(= "rt" (local-name %)) (children node)))))
 
 (defn- interpretation-problems [^Document document]
   (let [notes (.getElementsByTagNameNS document tei-namespace "note")]

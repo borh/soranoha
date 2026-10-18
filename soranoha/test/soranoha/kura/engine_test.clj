@@ -28,7 +28,7 @@
       (is (false? (:cached? run1)))
       (is (true? (:cached? run2)))
       (is (= (:outputs run1) (:outputs run2))))
-    (testing "output bytes landed in the CAS before the trace committed"
+    (testing "output bytes were written to the CAS before the trace committed"
       (is (= "HELLO"
              (String. (cas/get-bytes (:cas-dir store)
                                      (get (:outputs run1) "out")) "UTF-8"))))

@@ -1,6 +1,6 @@
 (ns soranoha.snh.admission-test
   "The partition itself, at its own boundary. The reliance tests pin what a
-  reliance payload must contain; this pins which bucket a candidate lands in,
+  reliance payload must contain; this pins which bucket a candidate is assigned to,
   which is what the admission report publishes and what a verifier reproduces."
   (:require [clojure.test :refer [deftest is testing]]
             [soranoha.snh.admission :as admission]))
@@ -30,10 +30,10 @@
   (is (= [:admitted] (decide (candidate "d" ["undetermined"] "relied-upon")))
       "the reliance is the decision, so the statuses beneath it do not have to be")
   (testing "a refused reliance quarantines even where a status reads in-copyright"
-    ;; This is the shape that looks like a missed exclusion. The candidate is
-    ;; on the reliance track, the release could not obtain the determination it
-    ;; asked for, and the report says so rather than answering from the track
-    ;; that was not taken. `exclude_when_any` decides the independent track.
+    ;; This case resembles a missed exclusion. The candidate is on the
+    ;; reliance track, the release could not obtain the determination it
+    ;; requested, and the report states that rather than deciding from the
+    ;; independent track. `exclude_when_any` decides the independent track.
     (is (= [:quarantined "not-fully-evaluated"]
            (decide (candidate "e" ["in-copyright"] "unavailable"))))
     (is (= [:excluded "in-copyright"]

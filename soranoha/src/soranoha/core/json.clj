@@ -36,7 +36,7 @@
   8785 and escapes neither, and the source-accountability scanner writes raw
   UTF-8 too.
 
-  Note: this is deterministic sorted-key JSON, not RFC 8785/JCS canonical JSON
+  This is deterministic sorted-key JSON, not RFC 8785/JCS canonical JSON
   (see soranoha.core.jcs for that)."
   [value]
   (string/replace

@@ -7,7 +7,7 @@
   carry the licence they chose.
 
   A work whose notice does not resolve to a licence this build can state its
-  terms in is refused. There is no default, because the fallback would be to
+  terms in is refused. There is no default licence, because a default would
   publish terms nobody granted."
   (:require [clojure.string :as string]
             [soranoha.core.rights :as rights]))
@@ -25,7 +25,7 @@
   here may be used commercially and adapted. SA is incompatible with the CC0
   dedication over Soranoha's encoding: ShareAlike extends to adaptations, and
   a TEI file carrying editorial decisions about an SA work is one, so it would
-  owe BY-SA."
+  require BY-SA."
   #{"NC" "ND" "SA"})
 
 (defn- identifier [{:keys [elements version port]}]
@@ -45,7 +45,7 @@
      :version version
      :port (some-> port string/upper-case)}))
 
-;; Some notices give no URL. 058806_001955 and 058807_001955 say
+;; Some notices give no URL. 058806_001955 and 058807_001955 state
 ;; 「この作品は、クリエイティブ・コモンズ「表示 2.1 日本」でライセンスされています。」
 ;; and nothing else. Spacing, interpuncts and hyphens vary between notices, so
 ;; match the clause and look for elements inside it.
@@ -68,7 +68,7 @@
 
 (defn- parse-notice
   "The licence a colophon states, as `{:elements :version :port}`, or nil.
-  Prefers the URL, which is unambiguous, and falls back to the prose form."
+  Reads the URL, which is unambiguous, and the prose form when there is no URL."
   [text]
   (when text
     (when-let [parsed (or (from-url text) (from-prose text))]
@@ -85,8 +85,8 @@
   returning the work's primary text. Returns `{:standing s}` if the work may
   be published, otherwise `{:refused reason}` with whatever the notice stated.
 
-  The thunk exists so that the expired works, which are almost all of them,
-  are settled by the flag alone and never open an archive."
+  The text is a thunk because the flag alone decides an expired work, which is
+  almost every work, and no archive is opened for it."
   [rows text-fn]
   (let [flags (copyright-flags rows)]
     (cond

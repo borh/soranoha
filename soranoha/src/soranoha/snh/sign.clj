@@ -53,8 +53,7 @@
   "A fresh Ed25519 key factory per decode. `java.security.KeyFactory` states
   no thread-safety guarantee, and a segmented chain walk verifies
   signatures on several threads at once; a provider lookup costs
-  microseconds against the milliseconds a signature check costs, so the
-  guarantee is worth more than the object."
+  microseconds against the milliseconds a signature check costs."
   ^KeyFactory []
   (KeyFactory/getInstance "Ed25519"))
 
@@ -113,7 +112,7 @@
 (defn validate-pinned-keys!
   "Validate a pinned-keys configuration {:release pub-hex :governance pub-hex}.
   v1 pins exactly one key per role; scalar values make any other
-  cardinality unrepresentable: a set-shaped configuration would silently
+  cardinality unrepresentable: a set-shaped configuration would
   permit unsupported in-chain key addition. The two roles must be
   present, each a single 64-hex public key, and distinct: an overlapping or
   un-roled configuration is invalid (an accidental flat configuration could

@@ -40,7 +40,7 @@
           document))))
 
 (deftest unrenderable-terms-stop-the-build-test
-  (testing "terms this build cannot render are a policy change that outran the code"
+  (testing "terms this build cannot render are a policy change the code does not support"
     (is (= :unknown-encoding-licence
            (:reason (ex-data (try (rights/licence-uri "CC-BY-4.0")
                                   (catch clojure.lang.ExceptionInfo e e))))))
@@ -49,7 +49,7 @@
                                   (catch clojure.lang.ExceptionInfo e e))))))))
 
 (deftest header-carries-both-rights-layers-test
-  (testing "a detached TEI file states the terms it travels under"
+  (testing "a detached TEI file states the terms it is distributed under"
     (let [grant (rights/work-terms (rights/grant-from-bytes (policy-bytes))
                                    "public-domain")
           xml (header-xml grant)]
@@ -91,7 +91,7 @@
         (is (every? #(string/includes?
                       % (str "<licence target=\"" (rights/licence-uri (get grant "encoding")) "\">"))
                     [pd by])))
-      (testing "the encoding statement claims only what CC0 can reach for that work"
+      (testing "the encoding statement claims only what CC0 can cover for that work"
         (is (string/includes? pd "Attribution is requested, not required."))
         (is (not (string/includes? by "Attribution is requested, not required."))
             "under a CC BY licence element, that sentence would contradict the condition above it")
@@ -110,7 +110,7 @@
 (defn- schema-standings
   "The standings each protocol schema will accept for a work, by schema. Read
   out of the schemas rather than listed here, so a schema that starts carrying
-  the vocabulary is compared without this test being told about it."
+  the vocabulary is compared without an edit to this test."
   []
   (into {}
         (keep (fn [type]
@@ -121,11 +121,11 @@
 
 (deftest every-statement-of-the-standings-a-work-may-carry-is-the-same-one
   ;; The set is written out three times: the map this build renders from, and
-  ;; a closed enum in each of the two payloads that name a work's standing.
+  ;; a closed enum in each of the two payloads that carry a work's standing.
   ;; Adding a licence to the code alone would render terms the manifest
   ;; rejects; adding it to one schema alone would admit a catalog entry whose
-  ;; work the manifest refuses. Neither is visible until a release is
-  ;; assembled, which is where the artifact-set version of this went wrong.
+  ;; work the manifest rejects. Neither is visible until a release is
+  ;; assembled.
   (let [by-schema (schema-standings)]
     (is (= #{"release-manifest" "catalog"} (set (keys by-schema)))
         "these are the payloads that carry a work's standing")

@@ -51,7 +51,7 @@
 (defn row-person-id [row] (get row "人物ID"))
 
 (defn catalog-index
-  "Index rows by text-file URL basename; later rows win."
+  "Index rows by text-file URL basename; a later row replaces an earlier one."
   [rows]
   (reduce (fn [idx row]
             (if-let [basename (text-url-basename row)]

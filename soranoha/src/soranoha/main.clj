@@ -46,8 +46,9 @@
     (catch java.io.IOException _ nil)))
 
 (defn source-provenance!
-  "Fail-closed source trust gate, before any store write: the checkout must
-  answer rev-parse and be clean under cards/ and index_pages/."
+  "Fail-closed source trust gate, before any store write: rev-parse must
+  succeed in the checkout, and the checkout must be clean under cards/ and
+  index_pages/."
   [aozora-root]
   (let [commit (git! aozora-root "rev-parse" "HEAD")
         status (git! aozora-root "status" "--porcelain" "--" "cards" "index_pages")]
@@ -90,7 +91,7 @@
   "The stages that measure how much of each source the parser accounted
   for, held as constructors rather than stages so a release never builds
   one: `source-stage` resolves an external scanner binary that a release
-  has no reason to require.
+  does not require.
 
   Nothing they produce is an artifact kind a manifest carries, so a
   release must not run them. `build` adds exactly these names and
@@ -102,7 +103,7 @@
 
 (defn- build-stages
   "The publication stages plus the research stages. This is the set
-  `build` runs, and it is where the parser is measured today."
+  `build` runs, and the set in which the parser is measured."
   [opts]
   (into (publication-stages opts)
         (map (fn [[stage make]] [stage (make opts)]))
@@ -141,13 +142,13 @@
                                                     "persons")
                                      ;; a scalar, so the identifier a work was
                                      ;; rendered under is part of its derivation
-                                     ;; key rather than invisible to the cache
+                                     ;; key and the cache distinguishes it
                                      "slug" slug
                                      ;; a scalar for the same reason: the TEI
                                      ;; states this work's terms, so a work
-                                     ;; whose standing changes has to be
-                                     ;; re-rendered and not served from cache
-                                     ;; under the terms it used to carry
+                                     ;; whose standing changes is re-rendered
+                                     ;; and not served from cache under the
+                                     ;; terms of its earlier standing
                                      "works-standing" rights})
         plaintext-r (engine/run-stage! store plaintext
                                        {"tei" (get (:outputs render-r) "tei")})
@@ -261,7 +262,7 @@
                                 {:reason :build/work-failures :failures failures})))
             results (mapv :work outcomes)
             relpath-of (into {} (map (juxt :slug :relpath)) candidates)
-            ;; selection decided this and the manifest publishes it; carrying
+            ;; selection determined this and the manifest publishes it; carrying
             ;; it through the report keeps the terms a work is published under
             ;; the same ones it was admitted under
             rights-of (into {} (map (juxt :slug :rights)) candidates)
@@ -273,12 +274,11 @@
                     "catalog_csv_hash" catalog-csv-hash
                     "selected_slugs" (vec (sort (map :slug candidates)))
                     "rejected_count" (count rejected)
-                    ;; and the rejections themselves. A count alone says how
-                    ;; many candidates the build declined and nothing about
-                    ;; which, so a work excluded on its rights left no trace an
-                    ;; operator could read. Each entry carries the path, the
-                    ;; reason, and for a rights refusal the licence that was
-                    ;; declined.
+                    ;; and the rejections themselves. A count alone states how
+                    ;; many candidates the build declined but not which, so an
+                    ;; operator could not read why a work was excluded on its
+                    ;; rights. Each entry carries the path, the reason, and for a
+                    ;; rights refusal the licence that was declined.
                     "rejected" (vec rejected)
                     "executed_stage_count" (count (filter false?
                                                           (mapcat (comp vals :cached)
@@ -365,8 +365,8 @@
 
 (defn- read-signing-seed
   "Parse a signing-seed file (64 lowercase hex + optional surrounding
-  whitespace) into 32 bytes. The file content is a secret: rejection
-  names only the file, never the content: hex->bytes would otherwise
+  whitespace) into 32 bytes. The file content is a secret: the rejection
+  states only the file, never the content, because hex->bytes would
   carry the rejected text into exception data, which the CLI prints."
   ^bytes [path]
   (let [text (string/trim (slurp (str path)))]
@@ -563,7 +563,7 @@
       (snapshot-drift (:value expected) supplied))))
 
 (defn- assessment-drift!
-  "Compare the committed snapshot with one regenerated now, and say how they
+  "Compare the committed snapshot with one regenerated now, and report how they
   differ. This is the check the release runs before it builds, exposed so an
   operator can run it after changing selection or assessment code and before
   dispatching a release. Prints the drift report, or a null drift when the
@@ -703,7 +703,8 @@
   "What `rows` contribute to a work's published bytes: the work fields, the
   person fields and the contributor relation of each row, as the record
   builder reads them. A column the record does not read can change without
-  a published byte changing, and this is how the predicate knows."
+  a published byte changing, and the predicate compares these fields to
+  detect that case."
   [rows]
   (set (map (juxt csv/parse-work-fields-from-row
                   (comp :fields csv/parse-person-fields-from-row)
@@ -725,7 +726,7 @@
 (defn- published-works-with-changed-rows
   "How many works selected in the checkout have different published catalog
   fields at `head-rev` than at `current`, or nil when either catalog cannot
-  be read. Selection is taken from the checkout: no work archive moved, so
+  be read. Selection is taken from the checkout: no work archive changed, so
   the set of works is the same at both revisions, and a row that changed a
   work's standing is a changed row."
   [aozora-root head-rev current]
@@ -745,35 +746,35 @@
                        selected))))))
 
 (defn release-needed!
-  "Whether an upstream revision is worth a release, decided before anything
+  "Whether an upstream revision requires a release, decided before anything
   is assembled or built.
 
   A release is minted when a published byte would change, not on every
   upstream commit: 796 of aozorabunko's 5,476 first-parent commits touch no
   work archive, and a release for one of those would carry a 9.1 MB manifest
-  and a 14.45 MB catalog to record a 40-hex string. `corpus.covers_from` is
-  what lets a reader map those revisions to the release that covers them.
+  and a 14.45 MB catalog to record a 40-hex string. `corpus.covers_from`
+  allows a reader to map those revisions to the release that covers them.
 
-  Two things decide it. A work archive that moved is a changed text. When
-  none moved, the catalog rows of the selected works are compared as the
+  Two conditions decide it. A changed work archive is a changed text. When
+  none changed, the catalog rows of the selected works are compared as the
   record builder reads them: a corrected title or a changed date reaches the
   catalog artifact, the TEI header and every citation, so it is a release,
   while a column no record reads is not. Of the catalog-only commits about
   one in ten changes a published work's row, roughly five releases a year.
 
-  Decided here rather than inside the transaction because the transaction has
-  no way to say `no release`: `corpus.upstream_rev` is a projection key
+  Decided here rather than inside the transaction because the transaction
+  cannot return `no release`: `corpus.upstream_rev` is a projection key
   precisely so that a corpus change is a projection change and not a
   determinism halt, and the expensive part being skipped is the corpus build,
   not the chain walk.
 
   The head is fully verified before its revision is read, so a forged origin
-  cannot talk this into skipping. Fail-open on every uncertainty: an
-  unreachable predecessor revision, a diff that errors, an empty chain, all
-  report `needed`. Refusing to release is the outcome that loses work, so it
-  is taken only when the comparison actually succeeded.
+  cannot cause a skip. Fail-open on every uncertainty: an unreachable
+  predecessor revision, a diff that errors, an empty chain, all report
+  `needed`. Skipping a release is the outcome that can lose work, so it is
+  taken only when the comparison succeeded.
 
-  Exits 0 when a release is wanted and 10 when it is not, so a runner reads
+  Exits 0 when a release is needed and 10 when it is not, so a runner reads
   an exit code rather than parsing the report."
   [{:keys [chain-clone branch aozora-root release-pub governance-pub]}]
   (require-flags! "release-needed"
@@ -790,12 +791,12 @@
         head-rev (when (and head (not (:empty head)))
                    (get-in (:head-manifest head) ["corpus" "upstream_rev"]))
         ;; The archive diff first, because it is a path match and needs no
-        ;; parse; the catalog comparison only when no archive moved. Watching
-        ;; the CSV as a path would skip nothing: every commit that touches a
+        ;; parse; the catalog comparison only when no archive changed. A path
+        ;; match on the CSV would skip nothing: every commit that touches a
         ;; work archive touches the CSV in the same commit, all 4,673 of
-        ;; them, so the path would fire on 5,469 of 5,476 revisions. Reading
-        ;; the rows is what separates a correction to a published work from
-        ;; a card-page edit the records never see.
+        ;; them, so the path would match on 5,469 of 5,476 revisions. Reading
+        ;; the rows separates a correction to a published work from a
+        ;; card-page edit the records do not read.
         changed (when (and head-rev (not= head-rev current))
                   (git! aozora-root "diff" "--name-only" (str head-rev ".." current)
                         "--" "cards/*/files/*.zip"))
@@ -833,12 +834,11 @@
 (defn release-delta!
   "What changed between two published releases, as deterministic JSON.
 
-  Derived from the two manifests and nothing else, which is what makes the
-  answer checkable rather than announced: anyone holding a clone runs this
-  and gets the same bytes, with no corpus checkout and no rebuild. The chain
-  is verified against the pinned keys before either manifest is read, so the
-  comparison is over bytes the keys establish and not over whatever the
-  origin happened to serve.
+  Derived from the two manifests and nothing else, so the answer is
+  checkable: anyone holding a clone runs this and gets the same bytes, with
+  no corpus checkout and no rebuild. The chain is verified against the pinned
+  keys before either manifest is read, so the comparison is over bytes the
+  keys establish and not over unverified bytes from the origin.
 
   `--to` defaults to the head and `--from` to the release before it, so the
   usual question, what the newest release changed, needs neither flag.
@@ -846,7 +846,7 @@
   A source change and a toolchain change are reported apart and never merged,
   and the catalog and rights the release declared are reported beside them
   because a document depends on those too; see `soranoha.snh.release-delta`
-  for why the distinction is load-bearing and what `unexplained` means."
+  for the reason the two are kept apart and the meaning of `unexplained`."
   [{:keys [chain-clone branch release-pub governance-pub from to]}]
   (require-flags! "release-delta"
                   {"--chain-clone" chain-clone
@@ -887,7 +887,7 @@
   published, as deterministic JSON.
 
   `release-delta` answers this between two releases from published bytes
-  alone. This answers it for a revision no release was ever cut at, which the
+  alone. This answers it for a revision no release was built at, which the
   chain cannot reach: the archives at that revision are not in it. So the
   reader supplies them, from their own checkout, rather than asking a server to
   rebuild history on demand. The chain is still verified against the pinned
@@ -896,8 +896,8 @@
   No parser runs. `source_content_hash` is produced before parsing, so the
   cost is reading the corpus rather than converting it. The answer is
   therefore about sources: under one toolchain that is the whole question,
-  since nothing else can move a document, and across a toolchain change it is
-  not. See `soranoha.snh.corpus-delta`.
+  since nothing else can change a document, and across a toolchain change it
+  is not. See `soranoha.snh.corpus-delta`.
 
   `--to` defaults to the head, so comparing a checkout against the newest
   release needs no flag."
@@ -908,8 +908,8 @@
                    "--release-pub" release-pub
                    "--governance-pub" governance-pub
                    "--aozora-root" aozora-root})
-  (let [;; before the scan, so a checkout that cannot name its own revision
-        ;; costs nothing rather than a full corpus read
+  (let [;; before the scan, so a checkout whose revision cannot be read
+        ;; fails before a full corpus read
         checkout-rev (source-provenance! aozora-root)
         v (view/git-view (str chain-clone))
         commit (or (repo/fetch! (str chain-clone) branch)
@@ -937,7 +937,7 @@
   governance key will sign, and print their sha256.
 
   This is the online half of the ceremony in docs/key-ceremony.md. It needs
-  no chain clone and no key material, so it is safe to run anywhere, and its
+  no chain clone and no key material, so it can run on any machine, and its
   output is the one file the ceremony carries offline.
 
   The candidate need not already be canonical: key order and surrounding
@@ -948,9 +948,9 @@
   violation, and entries that are not sorted by slug or repeat one.
 
   Two conditions are not checked, because both need the chain: whether each
-  slug names a work the current release admits, and whether an amendment's
-  `amends` names an event the chain carries. The `governance` subcommand
-  checks those when it appends the signed event.
+  slug identifies a work the current release admits, and whether an
+  amendment's `amends` refers to an event the chain carries. The `governance`
+  subcommand checks those when it appends the signed event.
 
   `input_was_canonical` reports whether the candidate file was already the
   bytes to sign. When it is false the candidate's own sha256 is not the one
@@ -1010,10 +1010,9 @@
   every citation of the release. Optional: there is none until the release
   has been deposited, and the first release is exported before it has been.
 
-  Checked rather than trusted because a malformed DOI is not a partial
-  failure. It is rendered into the citation record of every work, and a
-  reader who follows it lands nowhere; refusing at activation costs one
-  corrected flag, and the alternative costs a release."
+  Checked because a malformed DOI is rendered into the citation record of
+  every work and resolves to nothing; rejecting it at activation requires one
+  corrected flag, and publishing it would require a new release."
   [value]
   (when-let [doi (some-> value string/trim not-empty)]
     (when-not (re-matches #"10\.\d{4,9}/[^\s]+" doi)
@@ -1144,8 +1143,8 @@
           "release" (let [{:keys [outcome]} (release! opts)]
                       (when-not (#{:published :already-published} outcome)
                         (System/exit (if (= :requeue outcome) 3 1))))
-          ;; scheduled-runner exit contract: 0 asks for a release, 10 says
-          ;; the corpus did not move. An exit code rather than parsed output,
+          ;; scheduled-runner exit contract: 0 requests a release, 10 means
+          ;; the corpus did not change. An exit code rather than parsed output,
           ;; so the runner needs no JSON tool on its path; the report still
           ;; prints, and carries the reason.
           "release-needed" (when-not (get (release-needed! opts) "needed")

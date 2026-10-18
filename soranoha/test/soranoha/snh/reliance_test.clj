@@ -159,7 +159,7 @@
                                                                   (:commit crafted) (fx/pinned-keys))))))))
       (finally (fs/delete-tree dir)))))
 
-(deftest explicit-v2-schema-survives-an-independent-only-selection
+(deftest explicit-v2-schema-is-retained-for-an-independent-only-selection
   (let [dir (fs/create-temp-dir)
         value (update (snapshot) "candidates" #(subvec % 0 1))]
     (try

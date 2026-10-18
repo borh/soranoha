@@ -1,5 +1,5 @@
-;; The generic build engine: constructive traces with early cutoff. It knows
-;; nothing about any specific stage. A stage is {:stage-id :stage-version
+;; The generic build engine: constructive traces with early cutoff. It does
+;; not depend on any specific stage. A stage is {:stage-id :stage-version
 ;; :toolchain-id :f}; `f` receives {:blob (fn [hex] bytes)} plus the input
 ;; map and returns {output-name -> ^bytes}. The engine hashes inputs into the
 ;; derivation key, returns cached output hashes on a hit (skipping `f`

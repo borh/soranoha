@@ -88,8 +88,10 @@
       </rule>
    </pattern>
    <pattern id="snh-vocab-version-declared">
-      <rule context="tei:TEI[@snh:* or .//@snh:*]">
-         <assert test="@snh:vocab-version"> TEI roots using Soranoha extension attributes must declare snh:vocab-version.</assert>
+      <rule context="tei:TEI[@snh:* or .//@snh:* or .//snh:*]">
+         <assert test="@snh:vocab-version"> TEI roots using Soranoha extension elements or attributes must declare snh:vocab-version.</assert>
+         <assert test="not(.//snh:gaiji-reference) or @snh:vocab-version = ('2', '3')"> Soranoha gaiji reference elements require vocabulary version 2 or 3.</assert>
+         <assert test="not(.//snh:formatting-instruction) or @snh:vocab-version = '3'"> Soranoha formatting instructions require vocabulary version 3.</assert>
       </rule>
    </pattern>
    <pattern id="snh-preservation-record-shape">

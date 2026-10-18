@@ -40,6 +40,7 @@
    "白丸傍点" "open circle"
    "白三角傍点" "open triangle"
    "黒三角傍点" "filled triangle"
+   "白四角傍点" "'□'"
    "二重丸傍点" "'◎'"
    "蛇の目傍点" "'◉'"
    "ばつ傍点" "'×'"})
@@ -75,12 +76,19 @@
       (markdown-text (.getNodeValue node))
 
       (= "ruby" tag)
-      (str "<ruby>"
-           (apply str (for [child (view/children node)
-                            :let [name (view/local-name child)]
-                            :when (#{"rb" "rt"} name)]
-                        (str "<" name ">" (inline-children child true) "</" name ">")))
-           "</ruby>")
+      (if (some #(and (= "rt" (view/local-name %)) (.hasAttribute ^Element % "from")) (view/children node))
+        (str (content) "〔"
+             (string/join "；"
+                          (for [{:keys [target reading place]} (view/ranged-ruby-readings node)]
+                            (str (markdown-text target) "（" ({"left" "左" "right" "右"} place place) "）: "
+                                 (inline-children reading true))))
+             "〕")
+        (str "<ruby>"
+             (apply str (for [child (view/children node)
+                              :let [name (view/local-name child)]
+                              :when (#{"rb" "rt"} name)]
+                          (str "<" name ">" (inline-children child true) "</" name ">")))
+             "</ruby>"))
 
       (#{"lb" "pb" "cb"} tag) (if html? "<br>" "  \n")
       (= "g" tag) (if (empty? (.getTextContent node)) view/unresolved-glyph (content))

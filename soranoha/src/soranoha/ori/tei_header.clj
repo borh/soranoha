@@ -27,13 +27,16 @@
         [:classDecl [:taxonomy {:xml/id \"...\"} [:bibl ...]]+]
         [:charDecl [:char {:xml/id \"...\"} ...]?]
         [:editorialDecl
-          [:normalization {:method \"markup\"} ...]]?]
+          [:correction {:method \"markup\"}
+            [:p {:xml/id \"emendation-...\" :source \"#source-START-END\"}
+              [:choice [:sic \"...\"] [:corr \"...\"]]]+]]?]
       [:profileDesc
         [:langUsage [:language {:ident \"ja\"} \"...\"]]
         [:textClass [:classCode {:scheme \"#...\"} \"...\"]+]]]
 
   Tag keywords with no namespace are TEI elements. :xml/lang and
-  :xml/id route to the XML namespace. Strings are text content."
+  :xml/id route to the XML namespace; :snh/* names use the Soranoha
+  namespace. Strings are text content."
   (:require [clojure.data.xml :as xml]
             [clojure.string :as string]
             [soranoha.core.rights :as rights]))
@@ -47,8 +50,8 @@
   A six-digit id is Aozora Bunko's 人物ID, taken from the catalog's 人物ID column.
   Anything else is minted locally, and the record schemas permit one such
   form. Publishing a locally minted id as `aozora-person-id` would claim a
-  provenance Aozora Bunko did not grant, which is the one thing an idno type
-  exists to state."
+  provenance Aozora Bunko did not grant, and provenance is what an idno type
+  states."
   [person-id]
   (if (re-matches #"[0-9]{6}" (str person-id))
     "aozora-person-id"
@@ -89,8 +92,8 @@
   "Build <titleStmt>. `contributors` is a vector of
   {:relation-to-work <role-string> :person <person-body-map>}.
 
-  Four title forms where the catalog carries them. The subtitle matters for
-  identification, not decoration: author and title alone leave 2357 works in
+  Four title forms where the catalog carries them. The subtitle is needed for
+  identification: author and title alone leave 2357 works in
   the Aozora Bunko catalog ambiguous, and adding 副題 cuts that to 882. The original
   title of a translated work carries no language attribute because the catalog
   records no source language, and guessing one from the string would be an
@@ -121,7 +124,7 @@
   separately because they differ: the underlying work's standing, which
   Soranoha inherits and does not create, and the licence over Soranoha's own
   encoding. A TEI file is normally read detached from the site it came from,
-  so the terms have to travel inside it."
+  so the terms are carried inside it."
   [{:strs [works encoding statement_url]}]
   ;; Two <licence> elements rather than <licence> plus <p>: a <p> here would
   ;; be a paragraph of the document, and the reading view and its projections
@@ -137,21 +140,21 @@
 (defn- publication-stmt
   "Who published these bytes, under what identifier, and on what terms.
 
-  Three identifiers, and the type names say who issued which. Soranoha issues
+  Three identifiers, and the type values state who issued each. Soranoha issues
   the publication identifier, the `<work-id>_<card-directory>` form the site
   serves works under, so it is not labelled `aozora-*`: Aozora Bunko issues the
-  work id and the card, not the pair. Without it a downloaded file cannot say
-  what to cite it as, which is the property the citation projections rest on.
+  work id and the card, not the pair. Without it a downloaded file cannot state
+  what it is cited as, and the citation projections depend on that statement.
 
-  The card URL moves here from the source description. It identifies Aozora Bunko's
+  The card URL is here rather than in the source description. It identifies Aozora Bunko's
   record for the work, which is what the other two identifiers beside it do;
   the source description is about the printed edition transcribed, which is a
   different thing and is often not the one the card links.
 
   The publisher is `Soranoha`, the entity, not `Soranoha Aozora Bunko TEI Corpus`,
   which is the corpus title and is already carried by `titleStmt`. `abc`
-  survives in the w3id schema namespaces and the source-bundle construction
-  id, where it identifies a schema rather than naming a publisher.
+  remains in the w3id schema namespaces and the source-bundle construction
+  id, where it identifies a schema rather than a publisher.
 
   `@ref` rather than a `pubPlace`: a downloaded file should resolve to its
   publisher without a lookup, and a corpus published only on the web has no
@@ -182,14 +185,23 @@
     (conj [:note {:type "proof-edition"} (get edition "proof_edition")])))
 
 (defn- fallback-source-bibl
-  "What can be said about the source when the catalog records no edition. The
-  Aozora Bunko card URL is no longer part of this: it is published unconditionally
-  in the publication statement, so a work with no edition metadata keeps the
-  link back to Aozora Bunko instead of being the only kind of work that has one."
+  "What can be stated about the source when the catalog records no edition.
+  The Aozora Bunko card URL is not part of this: it is published
+  unconditionally in the publication statement, so every work links back to
+  Aozora Bunko whether or not it has edition metadata."
   [work]
   (if-let [title (get work "title")]
     [:bibl [:title title]]
     [:bibl [:note "Aozora Bunko source edition metadata is not available."]]))
+
+(defn- witness-list [declarations]
+  (when (seq declarations)
+    (into [:listWit]
+          (map (fn [{:keys [xml-id label source]}]
+                 [:witness (cond-> {:xml/id xml-id}
+                             source (assoc :source source))
+                  label]))
+          declarations)))
 
 (defn- source-desc
   "The editions this text was transcribed from, plus where it first appeared.
@@ -200,25 +212,28 @@
   `bibl` is for. It is distinguished from the transcribed editions by its
   type: it describes where the text was first printed, not what was keyed.
   A work that carries several such statements gets several `bibl`s."
-  [work source-content-hash primary-text-hash]
+  [work source-content-hash primary-text-hash witness-declarations]
   (let [editions (get work "source_editions")]
     (cond-> (if (seq editions)
               (into [:sourceDesc] (mapv bibl-edition editions))
               [:sourceDesc (fallback-source-bibl work)])
-      ;; One `bibl` per line. A collection's 初出 names where each
+      ;; One `bibl` per line. A collection's 初出 states where each
       ;; constituent piece first appeared, and holding all of those in a
-      ;; single element would say they are one reference to one appearance.
+      ;; single element would state that they are one reference to one
+      ;; appearance.
       (get work "first_published")
       (into (map (fn [statement] [:bibl {:type "first-publication"} statement]))
             (string/split-lines (get work "first_published")))
       source-content-hash (conj [:bibl [:idno {:type "source-content-hash"} source-content-hash]])
-      primary-text-hash (conj [:bibl [:idno {:type "primary-text-hash"} primary-text-hash]]))))
+      primary-text-hash (conj [:bibl [:idno {:type "primary-text-hash"} primary-text-hash]])
+      (seq witness-declarations) (conj (witness-list witness-declarations)))))
 
-(defn- file-desc [work contributors slug source-content-hash primary-text-hash rights-grant]
+(defn- file-desc [work contributors slug source-content-hash primary-text-hash rights-grant
+                  witness-declarations]
   [:fileDesc
    (title-stmt work contributors)
    (publication-stmt work slug rights-grant)
-   (source-desc work source-content-hash primary-text-hash)])
+   (source-desc work source-content-hash primary-text-hash witness-declarations)])
 
 (defn- declaration->char [declaration]
   (cond-> [:char {:xml/id (:xml-id declaration)}]
@@ -228,6 +243,21 @@
     (:raw-marker declaration)
     (conj [:localProp {:name "rawMarker"
                        :value (:raw-marker declaration)}])
+
+    (:source-reference declaration)
+    (conj [:localProp {:name "sourceReference"
+                       :value (:source-reference declaration)}])
+
+    (:unresolved-reason declaration)
+    (conj [:localProp {:name "unresolvedReason"
+                       :value (:unresolved-reason declaration)}])
+
+    (seq (:reference-parts declaration))
+    (into (map (fn [part]
+                 [:snh/gaiji-reference (-> part
+                                           (dissoc "source")
+                                           (assoc "original" (get part "source")))])
+               (:reference-parts declaration)))
 
     (:name declaration)
     (conj [:localProp {:name "charName"
@@ -243,13 +273,13 @@
 
 (def ^:private class-decl
   "The taxonomies the text classification points at, declared rather than
-  named by a bare string, so a reader can tell who classified the work.
+  given as a bare string, so a reader can tell who classified the work.
 
   Aozora Bunko assigns both the NDC code and the orthographic style. Declaring the
   taxonomies is what carries that provenance to a reader, and it matters most
   for 文字遣い種別, which is populated for every work and partitions the corpus
   into 新字新仮名, 新字旧仮名, 旧字旧仮名, 旧字新仮名 and その他. A
-  historical-kana study that silently mixes those is invalid, and the value
+  historical-kana study that mixes those without distinction is invalid, and the value
   varies within one series: 銭形平次捕物控 001 to 004 are 旧字旧仮名 while 005
   is 新字新仮名."
   [:classDecl
@@ -266,19 +296,36 @@
 
   That is the one fact a reader cannot recover from the document itself: the
   extent is in the note's own id, the line is in its `n`, and the text is the
-  one `sourceDesc` already names. What remains is the unit, and a pointer to
+  one `sourceDesc` already identifies. What remains is the unit, and a pointer to
   the vocabulary for anything further. The convention is documented at the
   namespace IRI rather than restated in each of tens of thousands of files;
   a published file is the text and its evidence, not a manual."
   [:refsDecl {:xml/id "source-spans"}
    [:p "A note of type source-span has an xml:id of the form source-START-END, "
     "giving the extent in UTF-8 bytes of the decoded primary text identified in "
-    "sourceDesc. "
+    "sourceDesc, after the emendations declared in editorialDecl/correction are "
+    "applied; each emendation replaces its sic text by its corr text at its own "
+    "extent. "
     [:ptr {:target "https://w3id.org/soranoha/ns/tei"}]]])
 
-(defn- encoding-desc [declarations]
+(defn- editorial-decl
+  "One `p` per parser-IR emendation, in parser-IR order. `sic` quotes the
+  transcribed source text and `corr` the text the parser read; `@source`
+  refers to the `source-span` note of the emended extent."
+  [emendations]
+  (when (seq emendations)
+    [:editorialDecl
+     (into [:correction {:method "markup"}]
+           (map (fn [{:strs [id transcribed emended source_span]}]
+                  [:p {:xml/id (str "emendation-" id)
+                       :source (str "#source-" (get source_span "start") "-" (get source_span "end"))}
+                   [:choice [:sic transcribed] [:corr emended]]]))
+           emendations)]))
+
+(defn- encoding-desc [declarations emendations]
   (cond-> [:encodingDesc [:styleDefDecl {:scheme "css"}] class-decl source-refs-decl]
-    (seq declarations) (conj (char-decl declarations))))
+    (seq declarations) (conj (char-decl declarations))
+    (seq emendations) (conj (editorial-decl emendations))))
 
 (defn- text-class
   "NDC class and orthographic style, each pointing at its declared taxonomy."
@@ -286,7 +333,7 @@
   ;; `ndc` is already nil unless it matched the catalog's documented form.
   ;; `orthographic_style` is not run through the same nullable guard upstream,
   ;; so a row that carries the column empty would otherwise publish an empty
-  ;; classification, which claims less than nothing.
+  ;; classification, which asserts a classification and supplies none.
   (let [ndc (get work "ndc")
         orthography (not-empty (some-> (get work "orthographic_style") string/trim))]
     (when (or ndc orthography)
@@ -309,7 +356,8 @@
     {:work         <work map, string keys>
      :contributors [{:relation-to-work \"...\" :person <person map, string keys>} ...]
      :slug          <the publication identifier, when the caller has one>
-     :rights        <the release rights grant, manifest key spelling>}
+     :rights        <the release rights grant, manifest key spelling>
+     :emendations   <the parser-IR `emendations` array, when present>}
 
   Role and person are kept separate at every level inside this builder;
   the relation_to_work value never enters the person body.
@@ -318,15 +366,19 @@
   policy in hand; the render stage supplies it for every published work and
   the profile's snh-publication-licence rule rejects a published file without
   it."
-  [{:keys [work contributors slug char-declarations source-content-hash
-           primary-text-hash rights]}]
+  [{:keys [work contributors slug char-declarations witness-declarations source-content-hash
+           primary-text-hash rights emendations]}]
   [:teiHeader
-   (file-desc work contributors slug source-content-hash primary-text-hash rights)
-   (encoding-desc char-declarations)
+   (file-desc work contributors slug source-content-hash primary-text-hash rights
+              witness-declarations)
+   (encoding-desc char-declarations emendations)
    (profile-desc work)])
 
 (defn- tei-qname [tag]
-  (xml/qname tei-ns (name tag)))
+  (xml/qname (if (= "snh" (namespace tag))
+               "https://w3id.org/soranoha/ns/tei"
+               tei-ns)
+             (name tag)))
 
 (defn- attr-key [k]
   (cond
@@ -334,19 +386,26 @@
     (xml/qname xml-ns (name k))
 
     (and (keyword? k) (= "snh" (namespace k)))
-    (str "snh:" (name k))
+    (xml/qname "https://w3id.org/soranoha/ns/tei" (name k))
 
     (and (keyword? k) (= "xmlns" (namespace k)))
-    (str "xmlns:" (name k))
+    (xml/qname "http://www.w3.org/2000/xmlns/" (name k))
 
     (keyword? k) (keyword (name k))
 
     :else k))
 
+(defn- xml-text
+  "Drop the characters XML 1.0 section 2.2 excludes from Char: the C0
+  controls other than tab, line feed and carriage return, and U+FFFE and
+  U+FFFF."
+  [^String text]
+  (string/replace text #"[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]" ""))
+
 (defn- attrs->xml [attrs]
   (into {}
         (for [[k v] attrs]
-          [(attr-key k) (str v)])))
+          [(attr-key k) (xml-text (str v))])))
 
 (defn- ->xml-element
   "Convert hiccup vector to a clojure.data.xml element. Tags are TEI
@@ -365,12 +424,12 @@
              (keep ->xml-element children)))
 
     (nil? v) nil
-    :else (str v)))
+    :else (xml-text (str v))))
 
 (defn- with-default-tei-ns
   "Declare the TEI namespace as the document default on the root element.
 
-  Without a declaration clojure.data.xml invents a prefix for the namespace
+  Without a declaration clojure.data.xml generates a prefix for the namespace
   and emits `<a:TEI xmlns:a=\"...\">`. That is namespace-correct and every
   namespace-aware processor reads it, but it is not the shape TEI corpora are
   published in, and researcher-written XPath (copied from teaching material,
@@ -380,16 +439,24 @@
   [element]
   (update element :attrs assoc :xmlns tei-ns))
 
+(defn- emit-xml-string [element]
+  (-> (xml/emit-str element)
+      (string/replace "\r" "&#13;")
+      (string/replace #"<(?:[^<>\"]++|\"[^\"]*+\")*+>"
+                      (fn [tag]
+                        (string/replace tag #"\"[^\"]*\""
+                                        #(string/escape % {\newline "&#10;" \tab "&#9;"}))))))
+
 (defn hiccup->xml-string
   "Serialise TEI hiccup to an XML string. The TEI namespace is the
   default; xml: prefix is bound to the XML namespace."
   [hiccup]
-  (xml/emit-str (with-default-tei-ns (->xml-element hiccup))))
+  (emit-xml-string (with-default-tei-ns (->xml-element hiccup))))
 
 (def ^:private element-only-containers
   #{"TEI" "teiHeader" "fileDesc" "titleStmt" "publicationStmt" "availability" "sourceDesc"
     "encodingDesc" "profileDesc" "langUsage" "textClass" "keywords" "revisionDesc"
-    "charDecl" "char" "biblStruct" "analytic" "monogr" "imprint"
+    "charDecl" "char" "editorialDecl" "correction" "biblStruct" "analytic" "monogr" "imprint"
     "text" "front" "body" "back" "div"})
 
 (defn- indent-structural-elements [element depth]
@@ -412,4 +479,4 @@
   "Indent structural TEI containers while leaving mixed content and preserved
   whitespace unchanged. Unknown content models remain unformatted."
   [hiccup]
-  (xml/emit-str (indent-structural-elements (with-default-tei-ns (->xml-element hiccup)) 0)))
+  (emit-xml-string (indent-structural-elements (with-default-tei-ns (->xml-element hiccup)) 0)))

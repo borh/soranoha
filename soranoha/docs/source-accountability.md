@@ -40,20 +40,14 @@ problem has been resolved.
 The report states the counts and lists the exceptions. `families` and
 `interpretation_problems` cover every occurrence; `occurrence_count` and
 `unclassified_occurrence_count` give the totals; `unaccounted_occurrences` holds,
-whole, each occurrence with an unaccounted family or no recognized family at all.
-A claimed occurrence is not listed, because the correspondence is already
-recorded from the other direction: the TEI element the claim produced carries
-that occurrence's span in its `source` attribute. Nothing else the build writes
-records which occurrences went unaccounted, so those are kept in full.
+whole, each occurrence with an unaccounted family or unclassified syntax in the
+outer marker or a nested component. Valid partial claims remain in the report;
+they do not remove unclassified components from that list. Each containing occurrence is counted
+once, regardless of how many components are unclassified.
 
-A family can only be claimed on a marker kind some interpretation fact admits.
-The scanner recognizes kinds no fact kind mentions, among them the two forms of
-`〔…〕` and the terminal provenance line, and a family the scanner assigns to one
-of those is unreachable rather than missed. Those are counted under
-`outside_claim_vocabulary` and are not listed as exceptions, because what
-explains them is the marker kind and not the individual occurrence. Reading
-`unaccounted` as a proportion of `occurrence_count` therefore measures
-interpretation coverage and not the distance between two vocabularies.
+Families incompatible with every interpretation fact for their marker kind are
+counted under `outside_claim_vocabulary`, rather than `unaccounted`. They do not
+by themselves cause an occurrence to be listed; unclassified components still do.
 
 ## Review exports
 
@@ -75,127 +69,59 @@ Each work directory contains `tei.xml`, `plain.txt`, `text.md`,
 outputs in the computation store. Building exports does not publish them or accept
 an assessment.
 
-TEI retains ruby, gaiji declarations, headings, layout and source apparatus.
-Supplied kunten uses `note type="kunten"`: `subtype="return-mark"` carries
-subscript rendition and `subtype="okurigana"` carries superscript rendition.
-Annotation text omits syntax parentheses; source spans retain exact notation.
-These notes preserve their insertion position and enclosing context without
-inferring a host character or spoken reading. The principal-body text view
-excludes notes, including kunten, while TEI retains their supplied text.
-Resolved gaiji contain Unicode text directly in `g`, including inside ruby bases;
-`ref` and `charDecl` retain source mappings. Plaintext contains visible body text.
-Paragraph-leading indentation is encoded as CSS `text-indent`; heading and
-source-note continuation indentation uses `padding-inline-start`. Structural XML
-is indented for inspection while mixed content retains its lexical whitespace.
+## Exported representations
 
-Complete iteration notation `／＼` and `／″＼` retains its source spelling in
-`choice/orig`; `choice/reg` contains the whole Unicode mark `〱` or `〲`.
-The body view, plaintext and Markdown select that realization without expanding
-the repeated reading. A mark inside ruby reading remains part of the ruby
-annotation. Malformed notation and literal Unicode upper/lower halves remain
-literal text; iteration marks are distinct from gaiji.
+TEI retains ruby, gaiji declarations, headings, layout and source apparatus;
+plaintext and the principal-body view retain visible body text only. Structural
+XML is indented for inspection while mixed content preserves lexical whitespace.
 
-Supplied diacritic annotations apply to native-resolved target text. Their
-`choice/orig` retains the source spelling and `choice/reg` contains the composed
-Unicode text selected by the body view, plaintext and Markdown. An annotation
-addressing an interior letter retains its original marker separately as source
-apparatus. This is transcription of supplied marks, not an editorial correction
-or an inferred transliteration. Unresolved selectors retain explicit uncertainty.
-
-An emphasis selector may name the range to mark or the range to leave out.
-`［＃「自律・自由・人格・性格」の「・」を除く部分に傍点］` marks every part of
-the target the named run does not cover, once for every occurrence of that run
-rather than the first alone, and the cut-out characters remain unmarked body
-text in their source position. The claim covers the marker, not the ranges the
-marker points at. A run the target does not contain, or one that covers the
-whole target, leaves the marker unread rather than marking a range the source
-did not select.
-
-A marker with two operands can also state a position rather than a range.
-`［＃「自」と「然」の間に白三角傍点］` places a mark at the junction of two
-adjacent characters and marks neither of them, so it publishes a supplied mark
-anchored between them rather than emphasis over a span. The mark's side and its
-anchor stay separate: every such mark sits on the right, and `の間に` says where
-along the line rather than which side of it. The note carries the source's own
-word for the mark, with the extent that word occupies in the marker. Operands
-the source names with anything between them, or in an order the text does not
-have, locate no junction and leave the marker unread.
-
-Supplied block geometry retains indentation, continuation indentation, line width,
-and distance from the line end independently. Hanging indentation uses the
-continuation padding and the difference between first and continuation indents.
-TEI retains supplied line counts as `rend="line-count(N)"` and placement between
-the physical left and right page edges as `rend="page-horizontal-center"`.
-Page placement and text alignment remain independent.
-Consecutive indentation instructions replace the preceding indentation scope.
-An indentation close that restates its measure, as `［＃１字下げここまで］` and
-`［＃１字下げ終わり］` do, ends the scope that measure opened. A restated
-measure that disagrees with the open leaves the pair unmatched rather than
-closing at a boundary the source did not name. A close that names scopes no
-block opened, such as `［＃字下げ、地付きここまで］` following line-scoped
-`次行は…で` instructions, stays retained source rather than ending scopes that
-do not exist.
-Page placement ends before the next supplied page break, which remains in TEI.
-Frame styles and co-applied typography share the same formatting vocabulary on
-TEI `div` and `hi` scopes. Supplied solid and dashed rules retain their border
-style; framing alone does not establish an independent embedded text.
-A supplied table role is retained on the scope the source supplies it for, both
-on its own marker and as a clause of a compound indentation marker, alongside
-that marker's independent indentation, direction and frame. TEI records it as
-`div type="table"`, and `図表` as `type="figure-table"`, because that spelling
-names an exhibit without choosing between a diagram and a table. The enclosed
-lines keep their own spelling and spacing; no cell, row or column structure is
-derived from them. A supplied `罫無し` is retained as `rend="table-rules(none)"`,
-an explicit absence of table rules distinct from a marker that says nothing
-about them, and independent of any frame drawn around the scope. A base-edition
-table description remains source apparatus and is not executed as current
-formatting. A standalone table opener carries the axes it names beside the role
-in the same way: `ここから表罫囲み` an enclosure and `ここから横組みの表` a
-writing direction, with no indentation invented for either. `罫仕切り` is not
-read as a table: it states a reading convention over the lines that follow,
-rather than delimiting the partitions it names, and the rules that bound them
-are literal text in the source.
-A supplied quotation or letter role is read the same way when the source writes
-it ahead of the measure that scopes it, as `［＃ここから引用文、３字下げ］` and
-`［＃これより手紙文、１字下げ］` do. The role and the indentation are both
-retained on that one scope, and TEI records the role as `div type="quotation"`
-or `div type="letter"`. The two stay apart because the source spells them apart:
-a letter is a document the text reproduces, not a passage it quotes. Nothing
-about the quoted passage's own source, or a letter's correspondents, is derived
-from the marker. A quotation's close is matched only against a scope carrying
-that role, so a closer never ends a plain indentation scope and thereby report
-its lines as quoted matter. Clauses the role reading does not cover stay retained
-source: a supplied vertical gap such as `３行アキ`, and a line-subset exception
-such as `はじめの「一」のみ２字下げ`.
-A line-scoped foot measure can carry a qualitative type size beside it, as
-`［＃この行、下揃え、下から５字上げ、相対的に字が小さい］` and
-`［＃この行はポイントを下げて、地より２字上げ］` do. The measure and the size are
-retained on the same line, and no magnitude is derived for the size: the source
-states a direction and no degree. A marker that names a target for the measure,
-or that has lost its target and leaves a bare `は`, stays retained source, and so
-does one that changes treatment at its own position inside the line rather than
-stating the whole line's.
-Qualitative font comparisons preserve direction and any supplied `やや` or
-`ひとまわり` qualifier, without a numbered size level. TEI records these as
-`font-size qualitative(smaller)` or `font-size qualitative(larger)` and an
-optional `qualifier(...)`; explicit bold weight and gothic typeface remain
-separate attributes.
-Bare `下付き` preserves lowered placement without small type, while `指数`
-preserves the exponent role without identifying a mathematical base. TEI marks
-the original target glyphs with `baseline-lowered` or `exponent`; plaintext and
-Markdown retain those glyphs unchanged. Markdown uses inline HTML with inherited
-font size for the placement; explicit `下付き小文字` remains distinct.
-Presentation supplied on an indentation opener can end before the indentation.
-Alignment supplied within a horizontal-writing clause ends with that clause;
-an unclosed indentation remains explicit uncertainty.
-Relative placement keeps its source anchor and supplied character offset separately
-from absolute indentation. TEI links the placed scope to the anchor's source-span
-record with `corresp`, records `placement-below`, `anchor-kind(text)` or
-`anchor-kind(horizontal-block)`, and any `anchor-offset-chars(N)`
-in `rend`, and preserves supplied writing direction and alignment. A missing or
-multiply matching literal anchor remains unresolved. A vertical label below an
-established horizontal block ends that horizontal presentation without ending
-independent surrounding indentation.
+- **Gaiji and iteration marks**: Resolved gaiji place Unicode text directly in
+  `g` (including inside ruby bases) and keep source mappings in `ref` and
+  `charDecl`. Complete iteration notation (`／＼`, `／″＼`) keeps its source
+  spelling in `choice/orig` and realizes `〱` or `〲` in `choice/reg` without
+  expanding the repeated reading. Iteration marks inside a ruby reading stay part
+  of the ruby annotation; malformed notation and literal half-marks stay literal
+  text.
+- **Kunten and supplied diacritics**: Supplied kunten uses `note type="kunten"`
+  (`subtype="return-mark"` subscript, `subtype="okurigana"` superscript, with
+  nested `hi` when okurigana carries 傍点 or 傍線) and is excluded from
+  plaintext. Supplied diacritic annotations keep source spelling in `choice/orig`
+  and composed Unicode in `choice/reg`; interior-letter selectors retain the
+  original marker as source apparatus, and unresolved selectors retain explicit
+  uncertainty.
+- **Emphasis and between-operand marks**: Exclusion selectors such as
+  `［＃「自律・自由・人格・性格」の「・」を除く部分に傍点］` mark every non-excluded
+  span while leaving excluded runs as unmarked body text; unmappable exclusions
+  remain unread. Junction markers such as `［＃「自」と「然」の間に白三角傍点］`
+  emit a supplied mark anchored between adjacent operands rather than emphasis
+  over a span.
+- **Block geometry and alignment**: Indentation, continuation indentation, line
+  width (`jizume`), and foot offset (`chitsuki`) are retained independently.
+  Paragraph-leading indentation uses CSS `text-indent`; heading and source-note
+  continuation indentation uses `padding-inline-start`. Supplied line counts use
+  `rend="line-count(N)"`, and page centering follows
+  [Aozora's page-centering convention](https://www.aozora.gr.jp/annotation/layout_3.html)
+  until the next page break. Consecutive indentation instructions replace the
+  preceding indentation scope; a closing marker that restates a measure closes
+  only a matching opener, and unmatched closers stay retained source. Relative
+  placement links to its anchor's source span via `corresp` and records
+  `placement-below`, `anchor-kind(...)`, and `anchor-offset-chars(N)` in `rend`.
+- **Frames, tables, quotations and letters**: Frame styles (`solid`, `dashed`,
+  `double`) and co-applied typography share the `@rend` vocabulary on `div` and
+  `hi`. Supplied table scopes map to `div type="table"` (`図表` to
+  `type="figure-table"`), keeping enclosed lines verbatim without inferring row
+  or cell structure; `罫無し` maps to `rend="table-rules(none)"`, and `罫仕切り`
+  remains an explanation note with literal `----` divider lines. Quotation and
+  letter openers (`引用文`, `手紙文`) map to `div type="quotation"` or
+  `div type="letter"` alongside their indentation and close only on a matching
+  role closer; unmodeled clauses (`３行アキ`, `はじめの「一」のみ２字下げ`) stay
+  retained source.
+- **Font size and baseline placement**: Qualitative size comparisons (`字が小さい`,
+  `ポイントを下げて`, with optional `やや` or `ひとまわり`) map to
+  `font-size qualitative(smaller|larger)` and `qualifier(...)`, including when
+  combined with a line-scoped foot offset. Bare `下付き` maps to
+  `baseline-lowered` (distinct from `下付き小文字`) and `指数` maps to `exponent`
+  while keeping the target glyphs unchanged in plaintext and Markdown.
 
 Validation provenance binds the ODD, RNG and Schematron hashes through
 `schemas/tei-profile-generation.json`. See [TEI validation](tei-validation.md).

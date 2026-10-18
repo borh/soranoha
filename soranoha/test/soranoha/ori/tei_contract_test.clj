@@ -35,6 +35,26 @@
       (is (= {"text" 2 "line-break" 1} (:node_counts result)))
       (is (empty? (:omitted result))))))
 
+(deftest qualified-break-semantics-remain-on-tei-milestones
+  (let [result (parser-ir-tei/render
+                {"nodes" [{"type" "page-break"
+                           "span" {"start" 0 "end" 0}
+                           "marker" "kaimihiraki"
+                           "destination_side" "right"}
+                          {"type" "column-break"
+                           "span" {"start" 0 "end" 0}
+                           "marker" "column"
+                           "following_placement" "left"
+                           "following_indent" 2}]})
+        page (some #(when (= :pb (first %)) %) (hiccup-nodes (:body result)))
+        column (some #(when (= :cb (first %)) %) (hiccup-nodes (:body result)))]
+    (is (= {:rend "kaimihiraki"
+            :snh/layout-params "destination-side=right"}
+           (second page)))
+    (is (= {:snh/layout-params "following-placement=left;following-indent=2"}
+           (second column)))
+    (is (empty? (:omitted result)))))
+
 (deftest source-text-newline-runs-render-as-structural-lb-test
   (testing "source/control-line separator whitespace does not enter TEI as literal body text"
     (let [result (parser-ir-tei/render
@@ -84,9 +104,9 @@
     ;; The converter's inline child projection maps the `heading` kind and
     ;; copies the style through, so a `normal` heading inside emphasis
     ;; children is a shape the corpus can produce. Rendering it as a division
-    ;; heading would close the paragraph from inside the emphasis, which put
-    ;; the text before the emphasis after the heading and cost the emphasis
-    ;; the run in front of it.
+    ;; heading would close the paragraph from inside the emphasis, which would
+    ;; move the text before the emphasis after the heading and separate the
+    ;; emphasis from the run before it.
     (let [result (parser-ir-tei/render
                   {"nodes" [{"type" "text"
                              "span" {"start" 0 "end" 2 "coordinate_system" "parser_text_utf8"}
@@ -118,10 +138,9 @@
       (is (empty? (:omitted result))))))
 
 (deftest nested-front-source-note-stays-in-the-phrase-test
-  (testing "a front-placed source note inside inline content renders where it stands"
+  (testing "a front-placed source note inside inline content renders at its position"
     ;; Only hand-written or third-party parser IR reaches this: the converter
-    ;; emits source notes as blocks. It used to throw, because the wrapper
-    ;; recovered its fragment by index from a paragraph the note had closed.
+    ;; emits source notes as blocks.
     (let [result (parser-ir-tei/render
                   {"nodes" [{"type" "text"
                              "span" {"start" 0 "end" 2 "coordinate_system" "parser_text_utf8"}
@@ -338,7 +357,7 @@
              (:omitted result))))))
 
 (deftest ruby-base-carried-only-by-children-is-not-dropped-test
-  (testing "a ruby whose base lives in its children renders that base"
+  (testing "a ruby whose base is in its children renders that base"
     ;; The converter derives `ruby.base` as the plain visible text of the AAT
     ;; node's base content, and the kinds `raw`, `kunten`, `editorial_note`,
     ;; `layout_break` and `figure` contribute none. A base made only of those
@@ -394,17 +413,63 @@
                                         "resolved" false}}]}
           result (parser-ir-tei/render parser-ir)]
       (is (= [{:xml-id "gaiji-1-2-22"
+               :source-reference "1-2-22"
                :raw-marker "※［＃二の字点、1-2-22］"}]
              (:char_declarations result)))
       (is (some #(= [:g {:ref "#gaiji-1-2-22"}] %)
                 (hiccup-nodes (:body result)))))))
 
+(deftest retrospective-gaiji-retains-target-and-marker-correspondence-test
+  (let [result (parser-ir-tei/render
+                {"nodes" [{"type" "gaiji"
+                           "span" {"start" 0 "end" 3 "coordinate_system" "parser_text_utf8"}
+                           "source_span" {"start" 12 "end" 13 "coordinate_system" "decoded_utf8"}
+                           "interpretation_marker_spans"
+                           [{"start" 13 "end" 57 "coordinate_system" "decoded_utf8"}]
+                           "gaiji" {"raw_marker" "「1」はローマ数字"
+                                    "reference" "1-13-21"
+                                    "unicode" "Ⅰ"
+                                    "resolved" true}}]})]
+    (is (some #(= [:g {:ref "#gaiji-1-13-21"
+                       :source "#source-12-13"
+                       :corresp "#source-13-57"}
+                   "Ⅰ"] %)
+              (hiccup-nodes (:body result))))))
+
+(deftest persistent-gaiji-declaration-can-govern-later-targets-test
+  (let [marker {"start" 18 "end" 109 "coordinate_system" "decoded_utf8"}
+        gaiji {"raw_marker" "この二重括弧は一文字、以下同様に使用"
+               "reference" "1-2-54"
+               "unicode" "｟"
+               "resolved" true}
+        result (parser-ir-tei/render
+                {"nodes" [{"type" "gaiji"
+                           "span" {"start" 0 "end" 3}
+                           "source_span" {"start" 12 "end" 18 "coordinate_system" "decoded_utf8"}
+                           "interpretation_marker_spans" [marker]
+                           "gaiji" gaiji}
+                          {"type" "gaiji"
+                           "span" {"start" 3 "end" 6}
+                           "source_span" {"start" 216 "end" 222 "coordinate_system" "decoded_utf8"}
+                           "interpretation_marker_spans" [marker]
+                           "gaiji" gaiji}]})
+        glyphs (filter #(= :g (first %)) (hiccup-nodes (:body result)))]
+    (is (= [[:g {:ref "#gaiji-1-2-54"
+                 :source "#source-12-18"
+                 :corresp "#source-18-109"}
+             "｟"]
+            [:g {:ref "#gaiji-1-2-54"
+                 :source "#source-216-222"
+                 :corresp "#source-18-109"}
+             "｟"]]
+           glyphs))))
+
 (deftest gaiji-reference-cannot-take-a-source-span-note-id-test
   (testing "a reference shaped like a span note id still mints under the gaiji prefix"
     ;; Character declarations and source-span notes write into the one xml:id
-    ;; space from two schemes that never consult each other, so `gaiji-` is
-    ;; reserved for this one. Without that, a reference of `source-0-6` landed
-    ;; on the note for extent 0 to 6 and g/@ref resolved to both.
+    ;; space from two independent schemes, so `gaiji-` is reserved for this
+    ;; one. Without that, a reference of `source-0-6` would take the id of the
+    ;; note for extent 0 to 6 and g/@ref would resolve to both.
     (let [result (parser-ir-tei/render
                   {"nodes" [{"type" "text"
                              "source_span" {"start" 0 "end" 6 "coordinate_system" "decoded_utf8"}
@@ -434,6 +499,16 @@
       (is (some #(= [:g {:ref "#gaiji-12-34"}] %)
                 (hiccup-nodes (:body result)))))))
 
+(deftest unresolved-gaiji-retains-visible-source-fallback-test
+  (let [parser-ir {"nodes" [{"type" "gaiji"
+                             "span" {"start" 12 "end" 15}
+                             "gaiji" {"raw_marker" "「!!!」は一文字"
+                                      "image_or_glyph_fallback" "!!!"
+                                      "resolved" false}}]}
+        result (parser-ir-tei/render parser-ir)]
+    (is (some #(= [:g {:ref "#gaiji-12-15"} "!!!"] %)
+              (hiccup-nodes (:body result))))))
+
 (deftest ruby-reading-gaiji-retains-declaration-and-source-identity-test
   (doseq [unicode ["ヹ" nil]]
     (let [gaiji {"type" "gaiji"
@@ -449,9 +524,56 @@
                  [:rt [:g (second (second rt))]]) rt))
       (is (= "#gaiji-1-7-84" (get-in rt [1 1 :ref])))
       (is (string/starts-with? (get-in rt [1 1 :source]) "#source-"))
-      (is (= [{:xml-id "gaiji-1-7-84" :unicode unicode :raw-marker "濁点付き片仮名ヱ"}]
+      (is (= [{:xml-id "gaiji-1-7-84" :source-reference "1-7-84"
+               :unicode unicode :raw-marker "濁点付き片仮名ヱ"}]
              (:char_declarations result)))
       (is (empty? (:omitted result))))))
+
+(deftest detached-gaiji-composes-with-ruby-base-and-emphasis-test
+  (let [gaiji (fn [unicode reference start marker-start]
+                {"type" "gaiji"
+                 "span" {"start" start "end" (+ start 3)}
+                 "source_span" {"start" start "end" (+ start 3)
+                                "coordinate_system" "decoded_utf8"}
+                 "interpretation_marker_spans"
+                 [{"start" marker-start "end" (+ marker-start 30)
+                   "coordinate_system" "decoded_utf8"}]
+                 "gaiji" {"reference" reference "unicode" unicode
+                          "raw_marker" reference "resolved" true}})
+        ruby-gaiji (gaiji "洎" "1-86-66" 9 18)
+        bouten-gaiji (gaiji "曷" "232-1" 80 113)
+        result (parser-ir-tei/render
+                {"nodes" [{"type" "ruby"
+                           "span" {"start" 9 "end" 18}
+                           "ruby" {"base" "洎芙藍" "reading" "さふらん"
+                                   "scope" "explicit" "direction" "right"}
+                           "inline_children" [ruby-gaiji
+                                              {"type" "text" "text" "芙藍"
+                                               "span" {"start" 12 "end" 18}}]}
+                          {"type" "emphasis"
+                           "span" {"start" 77 "end" 83}
+                           "style" "bouten" "text" "大曷"
+                           "inline_children" [{"type" "text" "text" "大"
+                                               "span" {"start" 77 "end" 80}}
+                                              bouten-gaiji]}]})
+        ruby (some #(when (= :ruby (first %)) %) (hiccup-nodes (:body result)))
+        emphasis (some #(when (and (= :hi (first %))
+                                   (= "bouten" (get-in % [1 :rend]))) %)
+                       (hiccup-nodes (:body result)))]
+    (is (= [:rb [:g {:ref "#gaiji-1-86-66"
+                     :source "#source-9-12"
+                     :corresp "#source-18-48"}
+                 "洎"]
+            "芙藍"]
+           (nth ruby 2)))
+    (is (= [:hi {:rend "bouten"}
+            "大"
+            [:g {:ref "#gaiji-232-1"
+                 :source "#source-80-83"
+                 :corresp "#source-113-143"}
+             "曷"]]
+           emphasis))
+    (is (empty? (:omitted result)))))
 
 (deftest font-size-and-script-layout-retain-distinct-source-axes
   (doseq [[layout rend params]
@@ -475,8 +597,8 @@
   (testing "a quote marker is one delimiter character, so it is text"
     ;; The parser IR emits one `quote` node per delimiter, carrying
     ;; `marker_type` and the single character. Rendering that as TEI `<quote>`
-    ;; said the delimiter was the quoted passage and the speech beside it was
-    ;; not, which inverts what the source means.
+    ;; would state that the delimiter is the quoted passage and the speech
+    ;; beside it is not, which inverts the source's meaning.
     (let [result (parser-ir-tei/render
                   {"nodes" [{"type" "quote"
                              "span" {"start" 0 "end" 3
@@ -502,7 +624,7 @@
           "every character of the source reaches the reader"))))
 
 (deftest body-end-boundary-is-not-published-as-a-note-test
-  (testing "the marker saying the body ended is not a note about the source edition"
+  (testing "the marker stating that the body ended is not a note about the source edition"
     (let [result (parser-ir-tei/render
                   {"nodes" [{"type" "text"
                              "span" {"start" 0 "end" 3}

@@ -42,6 +42,30 @@
     (is (= (:view/id plain) (:view/id image)))
     (is (= :view/body-v1 (:view/policy image)))))
 
+(deftest located-figure-note-keeps-base-page-semantics
+  (let [result (render/render-work
+                {:rights @fixture/grant
+                 :parser-ir {"nodes" [{"type" "text" "text" "前"}
+                                      {"type" "editor-note" "note_kind" "figure-insertion"
+                                       "text" "底本１４２頁右上に、持久戦争と決戦戦争の移り変わりを示した図あり"
+                                       "source_locator" "１４２" "page_position" "top-right"
+                                       "figure_kind" "figure"
+                                       "figure_description" "持久戦争と決戦戦争の移り変わりを示した"}
+                                      {"type" "text" "text" "後"}]}
+                 :metadata-record {"work" {"title" "試験" "work_id" "1" "aozora_modified" "2026-09-07"} "contributors" []}
+                 :persons-by-id {}})
+        reading (view/from-tei (:tei result))
+        ^Document doc (:view/document reading)
+        ^Element note (.item (.getElementsByTagNameNS doc view/tei-namespace "note") 0)
+        ^Element description (.item (.getElementsByTagNameNS note view/tei-namespace "seg") 0)]
+    (is (= "前後" (:view/text reading) (projection/plaintext reading)))
+    (is (= "figure-insertion" (.getAttribute note "type")))
+    (is (= "figure" (.getAttribute note "subtype")))
+    (is (= "１４２" (.getAttribute note "n")))
+    (is (= "top-right" (.getAttribute note "place")))
+    (is (= "figure-description" (.getAttribute description "type")))
+    (is (= "持久戦争と決戦戦争の移り変わりを示した" (.getTextContent description)))))
+
 (deftest bare-image-retains-the-accessibility-warning
   (let [tei (:tei (render/render-work
                    {:rights @fixture/grant
@@ -87,7 +111,7 @@
   ;; Four markers across three works write a stem with no extension separator
   ;; where the filename belongs. The parser reports the text as `src_source`
   ;; with a null `src`, and the figure must not turn that into a url: the
-  ;; source named no file, and a `graphic` would claim one.
+  ;; source identified no file, and a `graphic` would claim one.
   (let [result (render/render-work
                 {:rights @fixture/grant
                  :parser-ir {"nodes" [{"type" "image" "src" nil
@@ -112,7 +136,7 @@
           (is (= "passed" (get validated "status")) (pr-str (get validated "findings"))))
         (finally (fs/delete-tree dir))))))
 
-(deftest an-unresolvable-asset-name-does-not-cost-the-work-its-analysis-eligibility
+(deftest an-unresolvable-asset-name-keeps-the-work-eligible-for-analysis
   ;; The uncertainty is about the figure's own metadata, which `body-v1` omits.
   ;; Reporting it as a content aspect would empty the eligible spans for the
   ;; whole work over a fact that is not in the transcribed text at all.

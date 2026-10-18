@@ -29,7 +29,7 @@
                   (str "本文\n※本作品は「クリエイティブ・コモンズ 表示 4.0 国際 "
                        "ライセンス」（https://creativecommons.org/licenses/by/4.0/）"
                        "の下に提供されています。")]])
-    ;; The same, under terms the release cannot honour.
+    ;; The same, under terms the release cannot publish under.
     (write-zip! (fs/path root "cards" "000004" "files" "500_ruby_600.zip")
                 [["500_ruby_600.txt"
                   "本文\nhttps://creativecommons.org/licenses/by-nc-nd/4.0/"]])
@@ -70,7 +70,7 @@
               "cards/000005/files/700_ruby_800.zip" "rights-unstated-licence"}
              (into {} (map (juxt #(get % "path") #(get % "reason")))
                    rejected))))
-    (testing "a refusal names the terms it declined"
+    (testing "a refusal states the terms it declined"
       (is (= "CC-BY-NC-ND-4.0"
              (some #(when (= "cards/000004/files/500_ruby_600.zip" (get % "path"))
                       (get % "licence"))

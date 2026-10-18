@@ -42,7 +42,7 @@
 (defn- card-directory
   "The contributor card directory a work ZIP lives under. The only element
   distinguishing one work_id filed under several contributor cards; fails
-  closed on a relpath that names none."
+  closed on a relpath that contains none."
   [relpath]
   (or (second (re-matches #"^cards/([0-9]{6})/files/[^/]+\.zip$" relpath))
       (throw (ex-info "work ZIP relpath names no card directory"
@@ -53,7 +53,7 @@
   "The catalog work id in the six-digit form Aozora Bunko files works under. Fails
   closed rather than padding a short value: this is half of a permanent public
   identifier, so a row that does not carry the documented shape must stop the
-  build instead of having a shape guessed for it."
+  build rather than be padded to an assumed shape."
   [work-id]
   (or (re-matches #"[0-9]{6}" (str work-id))
       (throw (ex-info "catalog work id is not the six-digit form"
@@ -62,14 +62,14 @@
 
 (defn slug
   "The name of the work one source publishes under: a function of that
-  source's own coordinates alone, so unrelated corpus changes can never move
-  it. It names the work and never its bytes, which is why it survives a
-  re-proofread or a repackaged archive unchanged.
+  source's own coordinates alone, so unrelated corpus changes can never
+  change it. It identifies the work and never its bytes, so a re-proofread or
+  a repackaged archive leaves it unchanged.
 
   `<work-id>_<card-directory>`, six digits each. Both components identify the
   work; neither describes how the build reached it. The archive filename stem
   and format variants are omitted because they record fetch details rather than
-  text identity: changing edition handling would otherwise move the identifier
+  text identity: changing edition handling would otherwise change the identifier
   of an unchanged text or freeze a stale one. Exact edition identity is carried
   per work by `source_content_hash` in the manifest.
 
@@ -120,7 +120,7 @@
 
   Unmappable bytes are replaced rather than raised, so one bad byte does not
   stop a 17,000-work build. A file that is not the encoding it declares loses
-  its notice and is refused admission, which is the correct outcome."
+  its notice and is refused admission."
   [file row]
   (let [charset (Charset/forName
                  (get source-charsets
@@ -147,7 +147,7 @@
   {:candidates [{:file :relpath :row :slug :rights}] :rejected [{path reason}]}.
 
   Each admitted candidate carries the standing it is published under, so no
-  later stage derives the terms again and reaches a different answer."
+  later stage derives the terms again with a different result."
   [aozora-root rows]
   (let [rows-by-basename (catalog/catalog-index rows)
         candidates (work-zip-files aozora-root)
@@ -184,7 +184,7 @@
                                            (assoc "copyright_flags" (:flags rights))))))
                                vec)
         ;; Admitted and rights-refused works are both accounted for here, so
-        ;; neither reaches the cond below and gets reported as not-selected.
+        ;; neither reaches the cond below and is reported as not-selected.
         accounted (into (set (map :relpath selected))
                         (map #(get % "path"))
                         refused-on-rights)

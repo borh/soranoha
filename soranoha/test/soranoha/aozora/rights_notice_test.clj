@@ -27,10 +27,10 @@
                                                "（" url "）の下に提供されています。"))))
           url))))
 
-(deftest a-deed-link-does-not-mint-a-jurisdiction
+(deftest a-deed-link-is-not-read-as-a-jurisdiction
   ;; `licenses/by/3.0/deed.ja` ends in two letters that look like a port.
   ;; Reading them as one would publish CC-BY-3.0-DE, a licence that does not
-  ;; exist, and would do it silently.
+  ;; exist, without an error.
   (is (= {:standing "CC-BY-3.0"}
          (notice/standing (rows "あり")
                           (constantly "https://creativecommons.org/licenses/by/3.0/deed.ja")))))
@@ -45,9 +45,9 @@
   (is (= {:standing "CC-BY-4.0"}
          (notice/standing (rows "あり")
                           (constantly "クリエイティブ・コモンズ 表示 4.0 国際 ライセンス")))
-      "国際 names an unported deed, which carries no jurisdiction"))
+      "国際 refers to an unported deed, which carries no jurisdiction"))
 
-(deftest terms-the-release-cannot-honour-are-refused
+(deftest terms-the-release-cannot-publish-under-are-refused
   (doseq [[url licence]
           [["https://creativecommons.org/licenses/by-nc/4.0/" "CC-BY-NC-4.0"]
            ["http://creativecommons.org/licenses/by-nd/2.1/jp/" "CC-BY-ND-2.1-JP"]
@@ -57,7 +57,7 @@
            (notice/standing (rows "あり") (constantly url)))
         (str url " names terms the site's own grant contradicts"))))
 
-(deftest the-prose-form-refuses-restricted-terms-too
+(deftest restricted-terms-in-the-prose-form-are-refused
   (is (= {:refused :restricted-licence :licence "CC-BY-NC-ND-2.1-JP"}
          (notice/standing (rows "あり")
                           (constantly "クリエイティブ・コモンズ「表示-非営利-改変禁止 2.1 日本」")))
@@ -71,7 +71,7 @@
          (notice/standing (rows "あり") (constantly "")))))
 
 (deftest a-licence-that-does-not-grant-attribution-terms-is-not-read-as-one
-  ;; CC0 is not a licence a work is published under here; a colophon naming
+  ;; CC0 is not a licence a work is published under here; a colophon referring to
   ;; some other creativecommons.org path must not be read as a BY grant.
   (is (= {:refused :unstated-licence}
          (notice/standing (rows "あり")
@@ -87,9 +87,9 @@
          (notice/standing (rows "不明") never-read))))
 
 (deftest a-licence-this-build-cannot-state-refuses-the-work-and-nothing-else
-  ;; Every standing the corpus carries today is one of the four this build has
-  ;; words for. A version or a port that has not appeared before arrives with
-  ;; an upstream bump, and until someone writes its terms the work is refused
+  ;; Every standing the corpus carries is one of the four this build has
+  ;; statements for. A version or a port not seen before appears with an
+  ;; upstream update, and until someone writes its terms the work is refused
   ;; here, where one work is refused, rather than reaching the stage that
   ;; renders the terms and stopping the release of every other work.
   (doseq [[url licence]

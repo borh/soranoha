@@ -19,10 +19,10 @@
             ZipFile]))
 
 ;; Frozen construction identity, not a name: it is hashed into every bundle
-;; identity and so into each work's published `source_content_hash`. The
-;; extension vocabulary moved from `abc` to `snh` in the pre-genesis IRI
-;; migration; this string did not, because changing it would mint a second
-;; construction claiming the same v1 and rewrite every work's source hash.
+;; identity and so into each work's published `source_content_hash`. It keeps
+;; the `abc` prefix while the extension vocabulary uses `snh`, because a
+;; changed string would define a second construction claiming the same v1 and
+;; change every work's source hash.
 (def ^:private construction "abc-source-bundle-v1")
 (def ^:private default-limits {:max-members 1024
                                :max-member-bytes 16777216
@@ -406,9 +406,9 @@
   "Retry an unreadable archive at earlier end-of-central-directory
   candidates: some shipped archives (e.g. Aozora Bunko's 58100_txt_60357.zip)
   carry trailing bytes with a decoy EOCD after the intact archive, which
-  the zip reader trusts and then rejects. A successful retry records the
-  trimmed byte count; the archive identity stays the hash of the file as
-  shipped, garbage included."
+  the zip reader reads and then rejects. A successful retry records the
+  trimmed byte count; the archive identity is the hash of the file as
+  shipped, trailing bytes included."
   [zip-file staged limits original-error]
   (let [data ^bytes (fs/read-all-bytes staged)
         n (alength data)

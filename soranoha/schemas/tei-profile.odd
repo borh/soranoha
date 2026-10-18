@@ -34,7 +34,7 @@
         <moduleRef key="figures"/>
         <moduleRef key="gaiji"/>
         <moduleRef key="analysis"/>
-        <moduleRef key="textcrit" include="app lem rdg"/>
+        <moduleRef key="textcrit" include="app lem rdg listWit witness"/>
         <moduleRef key="linking" include="seg anchor standOff"/>
 
         <elementSpec ident="figDesc" mode="change" module="figures">
@@ -83,8 +83,7 @@
             Soranoha profile extensions use the namespace
             `https://w3id.org/soranoha/ns/tei` and require
             `snh:vocab-version` on generated TEI roots that carry Soranoha
-            extension attributes; the current vocabulary is `1`. The v1
-            extension is attributes-only. It
+            extension elements or attributes; the current vocabulary is `3`. It
             permits derived audit projections such as `snh:preservation-record`,
             `snh:accent-code`, `snh:style-source`, `snh:layout-kind`,
             `snh:layout-params`, and `snh:figure-class` on ordinary TEI
@@ -136,7 +135,7 @@
           <item><label>snh-source-span-reference</label> error: elements claiming source spans must point to valid span identifiers.</item>
           <item><label>snh-source-span-target-exists</label> error: each fragment id in `@source` must resolve to an `@xml:id` defined in this document.</item>
           <item><label>snh-transcription-vs-annotation</label> warning: linguistic enrichment must not be mixed into transcription unless declared.</item>
-          <item><label>snh-vocab-version-declared</label> error: TEI roots using Soranoha extension attributes must declare `snh:vocab-version`; the permitted values are those declared for the attribute in this profile.</item>
+          <item><label>snh-vocab-version-declared</label> error: TEI roots using Soranoha extension elements or attributes must declare `snh:vocab-version`; the permitted values are those declared for the attribute in this profile.</item>
           <item><label>snh-preservation-record-shape</label> error: `snh:preservation-record` values must be deterministic sidecar record ids of the form `r000000`.</item>
           <item><label>snh-layout-params-shape</label> error: `snh:layout-params` values must use the key=value grammar checked by this profile.</item>
         </list>
@@ -153,9 +152,680 @@
           </remarks>
         </elementSpec>
         <elementSpec ident="char" mode="change" module="gaiji">
+          <content>
+            <alternate minOccurs="0" maxOccurs="unbounded">
+              <elementRef key="unicodeProp"/>
+              <elementRef key="unihanProp"/>
+              <elementRef key="localProp"/>
+              <elementRef key="mapping"/>
+              <elementRef key="figure"/>
+              <classRef key="model.graphicLike"/>
+              <classRef key="model.noteLike"/>
+              <classRef key="model.descLike"/>
+              <elementRef key="gaiji-reference"/>
+            </alternate>
+          </content>
           <remarks>
             <p>Character declarations document unresolved or custom external-character mappings.</p>
           </remarks>
+        </elementSpec>
+        <elementSpec ident="gaiji-reference" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>One gaiji reference clause in source order; original retains its exact source spelling.</desc>
+          <content>
+            <rng:group>
+              <rng:attribute name="original">
+                <rng:text/>
+              </rng:attribute>
+              <rng:choice>
+                <rng:group>
+                  <rng:attribute name="kind">
+                    <rng:value>jis-code</rng:value>
+                  </rng:attribute>
+                  <rng:attribute name="plane">
+                    <rng:data type="integer">
+                      <rng:param name="minInclusive">1</rng:param>
+                      <rng:param name="maxInclusive">2</rng:param>
+                    </rng:data>
+                  </rng:attribute>
+                  <rng:attribute name="row">
+                    <rng:data type="integer">
+                      <rng:param name="minInclusive">1</rng:param>
+                      <rng:param name="maxInclusive">94</rng:param>
+                    </rng:data>
+                  </rng:attribute>
+                  <rng:attribute name="cell">
+                    <rng:data type="integer">
+                      <rng:param name="minInclusive">1</rng:param>
+                      <rng:param name="maxInclusive">94</rng:param>
+                    </rng:data>
+                  </rng:attribute>
+                </rng:group>
+                <rng:group>
+                  <rng:attribute name="kind">
+                    <rng:value>unicode-code</rng:value>
+                  </rng:attribute>
+                  <rng:attribute name="codepoint">
+                    <rng:choice>
+                      <rng:data type="integer">
+                        <rng:param name="minInclusive">0</rng:param>
+                        <rng:param name="maxInclusive">55295</rng:param>
+                      </rng:data>
+                      <rng:data type="integer">
+                        <rng:param name="minInclusive">57344</rng:param>
+                        <rng:param name="maxInclusive">1114111</rng:param>
+                      </rng:data>
+                    </rng:choice>
+                  </rng:attribute>
+                </rng:group>
+                <rng:group>
+                  <rng:attribute name="kind">
+                    <rng:value>source-location</rng:value>
+                  </rng:attribute>
+                  <rng:attribute name="page">
+                    <rng:data type="string">
+                      <rng:param name="pattern">[0-9]+</rng:param>
+                    </rng:data>
+                  </rng:attribute>
+                  <rng:optional>
+                    <rng:attribute name="volume">
+                      <rng:data type="string">
+                        <rng:param name="minLength">1</rng:param>
+                      </rng:data>
+                    </rng:attribute>
+                  </rng:optional>
+                  <rng:optional>
+                    <rng:attribute name="column">
+                      <rng:data type="string">
+                        <rng:param name="minLength">1</rng:param>
+                      </rng:data>
+                    </rng:attribute>
+                  </rng:optional>
+                  <rng:choice>
+                    <rng:group>
+                      <rng:attribute name="line">
+                        <rng:data type="string">
+                          <rng:param name="minLength">1</rng:param>
+                        </rng:data>
+                      </rng:attribute>
+                      <rng:optional>
+                        <rng:attribute name="part">
+                          <rng:data type="string">
+                            <rng:param name="minLength">1</rng:param>
+                          </rng:data>
+                        </rng:attribute>
+                      </rng:optional>
+                    </rng:group>
+                    <rng:attribute name="part">
+                      <rng:data type="string">
+                        <rng:param name="minLength">1</rng:param>
+                      </rng:data>
+                    </rng:attribute>
+                  </rng:choice>
+                </rng:group>
+                <rng:group>
+                  <rng:attribute name="kind">
+                    <rng:value>reading</rng:value>
+                  </rng:attribute>
+                  <rng:attribute name="text">
+                    <rng:data type="string">
+                      <rng:param name="minLength">1</rng:param>
+                    </rng:data>
+                  </rng:attribute>
+                </rng:group>
+                <rng:group>
+                  <rng:attribute name="kind">
+                    <rng:value>uninterpreted</rng:value>
+                  </rng:attribute>
+                </rng:group>
+              </rng:choice>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-instruction" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Operations retain source order independently of target resolution.</desc>
+          <classes>
+            <memberOf key="model.noteLike"/>
+          </classes>
+          <content>
+            <rng:group>
+              <rng:attribute name="original">
+                <rng:data type="string">
+                  <rng:param name="minLength">1</rng:param>
+                </rng:data>
+              </rng:attribute>
+              <rng:oneOrMore>
+                <rng:ref name="formatting-operation"/>
+              </rng:oneOrMore>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-operation" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>An inherited selector can refer to annotation bytes preceding this clause.</desc>
+          <content>
+            <rng:group>
+              <rng:attribute name="source">
+                <rng:data type="string">
+                  <rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param>
+                </rng:data>
+              </rng:attribute>
+              <rng:ref name="formatting-selector"/>
+              <rng:choice>
+                <rng:ref name="formatting-effect"/>
+                <rng:ref name="rule-presentation"/>
+              </rng:choice>
+              <rng:optional><rng:ref name="formatting-selection"/></rng:optional>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-selector" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Quoted operands retain supplied spelling even when it names a template or repeats an earlier operand.</desc>
+          <content>
+            <rng:choice>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>quoted</rng:value>
+                    <rng:value>parenthesized</rng:value>
+                    <rng:value>named</rng:value>
+                    <rng:value>all-quoted</rng:value>
+                    <rng:value>quoted-whole</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:ref name="formatting-operand"/>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>subtarget</rng:value></rng:attribute>
+                <rng:ref name="formatting-operand"/>
+                <rng:ref name="formatting-operand"/>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>each-quoted</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:oneOrMore>
+                  <rng:ref name="formatting-operand"/>
+                </rng:oneOrMore>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>occurrence</rng:value>
+                    <rng:value>character-position</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:attribute name="ordinal">
+                  <rng:data type="integer">
+                    <rng:param name="minInclusive">1</rng:param>
+                    <rng:param name="maxInclusive">4294967295</rng:param>
+                  </rng:data>
+                </rng:attribute>
+                <rng:ref name="formatting-operand"/>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>unresolved</rng:value>
+                    <rng:value>preceding-text</rng:value>
+                    <rng:value>digits</rng:value>
+                    <rng:value>each-line</rng:value>
+                    <rng:value>following-text</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:empty/>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>following-lines</rng:value></rng:attribute>
+                <rng:attribute name="lines"><rng:data type="positiveInteger"/></rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>arabic-digits-after</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:choice>
+                  <rng:group>
+                    <rng:attribute name="predecessor">
+                      <rng:choice>
+                        <rng:value>alphabetic</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:empty/>
+                  </rng:group>
+                  <rng:group>
+                    <rng:attribute name="predecessor">
+                      <rng:choice>
+                        <rng:value>named-characters</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:oneOrMore>
+                      <rng:ref name="formatting-operand"/>
+                    </rng:oneOrMore>
+                  </rng:group>
+                </rng:choice>
+              </rng:group>
+            </rng:choice>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-operand" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source identifies annotation bytes, not a resolved body target.</desc>
+          <content>
+            <rng:group>
+              <rng:attribute name="source">
+                <rng:data type="string">
+                  <rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param>
+                </rng:data>
+              </rng:attribute>
+              <rng:optional>
+                <rng:attribute name="role">
+                  <rng:choice>
+                    <rng:value>enclosing</rng:value>
+                    <rng:value>selected</rng:value>
+                    <rng:value>anchor</rng:value>
+                    <rng:value>preceding</rng:value>
+                    <rng:value>following</rng:value>
+                    <rng:value>marks</rng:value>
+                    <rng:value>mark</rng:value>
+                    <rng:value>range-start</rng:value>
+                    <rng:value>range-end</rng:value>
+                    <rng:value>members</rng:value>
+                    <rng:value>component</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+              </rng:optional>
+              <rng:data type="string">
+                <rng:param name="minLength">1</rng:param>
+              </rng:data>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-effect" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source-supplied formatting semantics and their values.</desc>
+          <content>
+            <rng:choice>
+              <rng:interleave>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>attribute</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:attribute name="source-kind">
+                  <rng:choice>
+                    <rng:value>aat-inline</rng:value>
+                    <rng:value>aat-block</rng:value>
+                    <rng:value>source-derived</rng:value>
+                    <rng:value>heuristic</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:choice>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>chitsuki</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="align">
+                      <rng:choice>
+                        <rng:value>right</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="offset-from-end">
+                      <rng:data type="integer">
+                        <rng:param name="minInclusive">0</rng:param>
+                      </rng:data>
+                    </rng:attribute>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>baseline-position</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="position">
+                      <rng:choice>
+                        <rng:value>lowered</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                  </rng:interleave>
+                  <rng:attribute name="layout-kind">
+                    <rng:choice>
+                      <rng:value>exponent</rng:value>
+                      <rng:value>fraction</rng:value>
+                    </rng:choice>
+                  </rng:attribute>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>emphasis</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="style">
+                      <rng:choice>
+                        <rng:value>bold</rng:value>
+                        <rng:value>italic</rng:value>
+                        <rng:value>gothic</rng:value>
+                        <rng:value>textbook</rng:value>
+                        <rng:value>handwritten</rng:value>
+                        <rng:value>bouten</rng:value>
+                        <rng:value>bosen</rng:value>
+                        <rng:value>superscript</rng:value>
+                        <rng:value>subscript</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:optional>
+                      <rng:interleave>
+                        <rng:attribute name="decoration-kind">
+                          <rng:text/>
+                        </rng:attribute>
+                        <rng:attribute name="decoration-position">
+                          <rng:choice>
+                            <rng:value>right</rng:value>
+                            <rng:value>left</rng:value>
+                            <rng:value>both</rng:value>
+                            <rng:value>above</rng:value>
+                            <rng:value>below</rng:value>
+                            <rng:value>unknown</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                      </rng:interleave>
+                    </rng:optional>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>font-size</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:optional>
+                      <rng:attribute name="marker">
+                        <rng:text/>
+                      </rng:attribute>
+                    </rng:optional>
+                    <rng:choice>
+                      <rng:interleave>
+                        <rng:attribute name="size-type">
+                          <rng:choice>
+                            <rng:value>large</rng:value>
+                            <rng:value>small</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                        <rng:attribute name="level">
+                          <rng:data type="integer">
+                            <rng:param name="minInclusive">1</rng:param>
+                          </rng:data>
+                        </rng:attribute>
+                      </rng:interleave>
+                      <rng:interleave>
+                        <rng:attribute name="size-type">
+                          <rng:choice>
+                            <rng:value>absolute</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                        <rng:attribute name="size">
+                          <rng:choice>
+                            <rng:value>extra-large</rng:value>
+                            <rng:value>large</rng:value>
+                            <rng:value>medium</rng:value>
+                            <rng:value>small</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                      </rng:interleave>
+                      <rng:interleave>
+                        <rng:attribute name="size-type">
+                          <rng:choice>
+                            <rng:value>qualitative</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                        <rng:attribute name="direction">
+                          <rng:choice>
+                            <rng:value>larger</rng:value>
+                            <rng:value>smaller</rng:value>
+                          </rng:choice>
+                        </rng:attribute>
+                        <rng:optional>
+                          <rng:attribute name="qualifier">
+                            <rng:choice>
+                              <rng:value>やや</rng:value>
+                              <rng:value>ひとまわり</rng:value>
+                            </rng:choice>
+                          </rng:attribute>
+                        </rng:optional>
+                      </rng:interleave>
+                    </rng:choice>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>small-script</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="position">
+                      <rng:choice>
+                        <rng:value>right</rng:value>
+                        <rng:value>left</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>tcy</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:optional>
+                      <rng:attribute name="marker">
+                        <rng:text/>
+                      </rng:attribute>
+                    </rng:optional>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>keigakomi</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:optional>
+                      <rng:attribute name="border">
+                        <rng:text/>
+                      </rng:attribute>
+                    </rng:optional>
+                    <rng:optional>
+                      <rng:attribute name="marker">
+                        <rng:text/>
+                      </rng:attribute>
+                    </rng:optional>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>yokogumi</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="direction">
+                      <rng:choice>
+                        <rng:value>horizontal</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:optional>
+                      <rng:attribute name="marker">
+                        <rng:text/>
+                      </rng:attribute>
+                    </rng:optional>
+                  </rng:interleave>
+                  <rng:interleave>
+                    <rng:attribute name="layout-kind">
+                      <rng:choice>
+                        <rng:value>tategumi</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                    <rng:attribute name="direction">
+                      <rng:choice>
+                        <rng:value>vertical</rng:value>
+                      </rng:choice>
+                    </rng:attribute>
+                  </rng:interleave>
+                </rng:choice>
+              </rng:interleave>
+              <rng:group>
+                <rng:attribute name="kind">
+                  <rng:choice>
+                    <rng:value>upper-relative</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:ref name="formatting-operand"/>
+                <rng:optional><rng:ref name="formatting-base"/></rng:optional>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>reduced-point-lines</rng:value></rng:attribute>
+                <rng:attribute name="placement">
+                  <rng:choice><rng:value>below</rng:value><rng:value>between</rng:value></rng:choice>
+                </rng:attribute>
+                <rng:attribute name="lines">
+                  <rng:data type="integer"><rng:param name="minInclusive">1</rng:param></rng:data>
+                </rng:attribute>
+                <rng:optional>
+                  <rng:attribute name="parentheses-lines">
+                    <rng:data type="integer"><rng:param name="minInclusive">1</rng:param></rng:data>
+                  </rng:attribute>
+                </rng:optional>
+                <rng:choice>
+                  <rng:ref name="formatting-operand"/>
+                  <rng:group><rng:ref name="formatting-operand"/><rng:ref name="formatting-operand"/></rng:group>
+                </rng:choice>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>horizontal-center</rng:value></rng:attribute>
+                <rng:attribute name="lines">
+                  <rng:data type="integer"><rng:param name="minInclusive">1</rng:param></rng:data>
+                </rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>line-setting</rng:value></rng:attribute>
+                <rng:attribute name="lines">
+                  <rng:data type="integer"><rng:param name="minInclusive">1</rng:param></rng:data>
+                </rng:attribute>
+                <rng:optional>
+                  <rng:attribute name="parentheses-lines">
+                    <rng:data type="integer"><rng:param name="minInclusive">1</rng:param></rng:data>
+                  </rng:attribute>
+                </rng:optional>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>relative-placement</rng:value></rng:attribute>
+                <rng:attribute name="relation"><rng:value>below</rng:value></rng:attribute>
+                <rng:attribute name="anchor-kind"><rng:value>day-range</rng:value></rng:attribute>
+                <rng:ref name="formatting-operand"/>
+                <rng:optional><rng:ref name="formatting-anchor"/></rng:optional>
+                <rng:ref name="formatting-operand"/>
+                <rng:optional><rng:ref name="formatting-anchor"/></rng:optional>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>rotation</rng:value></rng:attribute>
+                <rng:attribute name="degrees">
+                  <rng:data type="positiveInteger"/>
+                </rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>ligature</rng:value></rng:attribute>
+                <rng:ref name="formatting-operand"/>
+                <rng:oneOrMore><rng:ref name="formatting-operand"/></rng:oneOrMore>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>layout-policy</rng:value></rng:attribute>
+                <rng:attribute name="indent"><rng:data type="nonNegativeInteger"/></rng:attribute>
+                <rng:attribute name="horizontal"><rng:data type="boolean"/></rng:attribute>
+                <rng:attribute name="align-end"><rng:data type="boolean"/></rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>letter-spacing</rng:value></rng:attribute>
+                <rng:attribute name="amount"><rng:data type="positiveInteger"/></rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>line-start-alignment</rng:value></rng:attribute>
+                <rng:choice>
+                  <rng:group>
+                    <rng:attribute name="relation-kind"><rng:value>relative-line</rng:value></rng:attribute>
+                    <rng:attribute name="lines-before"><rng:data type="positiveInteger"/></rng:attribute>
+                    <rng:optional>
+                      <rng:attribute name="reference-source">
+                        <rng:data type="string"><rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param></rng:data>
+                      </rng:attribute>
+                    </rng:optional>
+                  </rng:group>
+                  <rng:group>
+                    <rng:attribute name="relation-kind"><rng:value>collective</rng:value></rng:attribute>
+                    <rng:ref name="formatting-operand"/>
+                  </rng:group>
+                </rng:choice>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>heading-typography</rng:value></rng:attribute>
+                <rng:attribute name="variant">
+                  <rng:data type="string"><rng:param name="pattern">heading|small-heading</rng:param></rng:data>
+                </rng:attribute>
+              </rng:group>
+              <rng:group>
+                <rng:attribute name="kind"><rng:value>kunten-policy</rng:value></rng:attribute>
+                <rng:attribute name="scope">
+                  <rng:choice>
+                    <rng:value>quoted-region</rng:value>
+                    <rng:value>following-text</rng:value>
+                    <rng:value>insertion-site</rng:value>
+                    <rng:value>following-block</rng:value>
+                    <rng:value>preceding-block</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:attribute name="repeat-following"><rng:data type="boolean"/></rng:attribute>
+                <rng:attribute name="vertical-rule-right"><rng:data type="boolean"/></rng:attribute>
+                <rng:ref name="formatting-operand"/>
+                <rng:zeroOrMore><rng:ref name="kunten-exclusion"/></rng:zeroOrMore>
+              </rng:group>
+            </rng:choice>
+          </content>
+        </elementSpec>
+        <elementSpec ident="rule-presentation" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source-supplied presentation of rule glyphs in the selected lines.</desc>
+          <content>
+            <rng:attribute name="variant"><rng:value>wavy</rng:value></rng:attribute>
+          </content>
+        </elementSpec>
+        <elementSpec ident="kunten-exclusion" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>A source phrase in which a marker-shaped character remains principal text.</desc>
+          <content>
+            <rng:group>
+              <rng:ref name="formatting-operand"/>
+              <rng:ref name="formatting-operand"/>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-selection" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source identifies the enclosing body scope within which the selector was resolved.</desc>
+          <content>
+            <rng:group>
+              <rng:attribute name="source"><rng:data type="string"><rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param></rng:data></rng:attribute>
+              <rng:oneOrMore><rng:ref name="formatting-target"/></rng:oneOrMore>
+            </rng:group>
+          </content>
+        </elementSpec>
+        <elementSpec ident="formatting-target" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source identifies selected body text independently of its annotation operand.</desc>
+          <content><rng:attribute name="source"><rng:data type="string"><rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param></rng:data></rng:attribute></content>
+        </elementSpec>
+        <elementSpec ident="formatting-base" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>Source identifies the body occurrence of a named relative-placement base.</desc>
+          <content><rng:attribute name="source"><rng:data type="string"><rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param></rng:data></rng:attribute></content>
+        </elementSpec>
+        <elementSpec ident="formatting-anchor" mode="add" ns="https://w3id.org/soranoha/ns/tei">
+          <desc>A resolved body occurrence that anchors one endpoint of a source-stated day range.</desc>
+          <content>
+            <rng:group>
+              <rng:attribute name="source"><rng:data type="string"><rng:param name="pattern">#[A-Za-z_][A-Za-z0-9_.\-]*</rng:param></rng:data></rng:attribute>
+              <rng:attribute name="role"><rng:choice><rng:value>range-start</rng:value><rng:value>range-end</rng:value></rng:choice></rng:attribute>
+              <rng:attribute name="day"><rng:data type="positiveInteger"/></rng:attribute>
+            </rng:group>
+          </content>
         </elementSpec>
         <classSpec ident="att.global" mode="change" module="tei" type="atts">
           <attList>
@@ -163,6 +833,8 @@
               <desc>Soranoha TEI namespace vocabulary major version. This value list declares the permitted versions; add to it rather than replacing it.</desc>
               <valList type="closed">
                 <valItem ident="1"/>
+                <valItem ident="2"/>
+                <valItem ident="3"/>
               </valList>
             </attDef>
             <attDef ident="preservation-record" mode="add" ns="https://w3id.org/soranoha/ns/tei" usage="opt">
@@ -195,6 +867,22 @@
               <desc>Aozora accent notation code projected into TEI.</desc>
               <datatype>
                 <rng:data type="string"/>
+              </datatype>
+            </attDef>
+            <attDef ident="accent-name" mode="add" ns="https://w3id.org/soranoha/ns/tei" usage="opt">
+              <desc>Aozora accent character name retained from the source notation.</desc>
+              <datatype>
+                <rng:data type="string">
+                  <rng:param name="minLength">1</rng:param>
+                </rng:data>
+              </datatype>
+            </attDef>
+            <attDef ident="decoration-source-locator" mode="add" ns="https://w3id.org/soranoha/ns/tei" usage="opt">
+              <desc>Source-edition locator supplied with a text decoration.</desc>
+              <datatype>
+                <rng:data type="string">
+                  <rng:param name="minLength">1</rng:param>
+                </rng:data>
               </datatype>
             </attDef>
             <attDef ident="style-source" mode="add" ns="https://w3id.org/soranoha/ns/tei" usage="opt">
@@ -380,11 +1068,17 @@
         </constraintSpec>
 
         <constraintSpec ident="snh-vocab-version-declared" scheme="schematron">
-          <desc>Require generated TEI with Soranoha extension attributes to declare the Soranoha vocabulary version. The permitted values are declared once, for the attribute itself.</desc>
+          <desc>Require generated TEI with Soranoha extension elements or attributes to declare the Soranoha vocabulary version. The permitted values are declared once, for the attribute itself.</desc>
           <constraint>
-            <sch:rule context="tei:TEI[@snh:* or .//@snh:*]">
+            <sch:rule context="tei:TEI[@snh:* or .//@snh:* or .//snh:*]">
               <sch:assert test="@snh:vocab-version">
-                TEI roots using Soranoha extension attributes must declare snh:vocab-version.
+                TEI roots using Soranoha extension elements or attributes must declare snh:vocab-version.
+              </sch:assert>
+              <sch:assert test="not(.//snh:gaiji-reference) or @snh:vocab-version = ('2', '3')">
+                Soranoha gaiji reference elements require vocabulary version 2 or 3.
+              </sch:assert>
+              <sch:assert test="not(.//snh:formatting-instruction) or @snh:vocab-version = '3'">
+                Soranoha formatting instructions require vocabulary version 3.
               </sch:assert>
             </sch:rule>
           </constraint>

@@ -12,8 +12,8 @@
             [soranoha.za.scaffold :as scaffold]))
 
 (defn retained-observations
-  "Read declared evidence files below evidence-root, refusing escapes and
-  digest mismatches before any evaluator stage can execute."
+  "Read declared evidence files below evidence-root, rejecting paths that
+  leave it and digest mismatches before any evaluator stage can execute."
   [source evidence-root]
   (into {}
         (for [{:strs [id selector path sha256]} (get source "observations")

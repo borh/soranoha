@@ -5,14 +5,12 @@
 (def ^:private max-safe-json-integer 9007199254740991N)
 
 ;; The canonical form is written into one StringBuilder rather than assembled
-;; from a string per object and array. The output is identical; what changes is
-;; that a manifest is no longer rebuilt once per nesting level on the way out.
+;; from a string per object and array, so a manifest is not rebuilt once per
+;; nesting level.
 ;;
-;; `path` is the same idea applied to error reporting. It names where a
-;; rejection happened, so it has to be exact, but a vector conjed at every node
-;; is allocated for the whole document to describe the one node that fails.
-;; Here it is a stack pushed and popped around each descent and read only when
-;; something is thrown.
+;; `path` identifies where a rejection happened, so it must be exact. It is a
+;; stack pushed and popped around each descent and read only when an exception
+;; is thrown, rather than a vector conjoined at every node.
 
 (defn- path-of [^ArrayList path] (vec path))
 
@@ -75,13 +73,13 @@
 (defn- append-string!
   "Serialize one JSON string. RFC 8785 leaves this to RFC 8259's shortest
   form: escape only the quote, the reverse solidus and C0, with lowercase
-  hex. Nothing else, which is why the solidus, DEL, U+2028 and U+2029 and
-  every astral character go through as themselves.
+  hex. No other character is escaped, so the solidus, DEL, U+2028 and U+2029
+  and every astral character are written as themselves.
 
   Written out here rather than delegated to a general JSON writer because a
   manifest at corpus scale holds a few hundred thousand strings and that
-  writer pays its setup on each one. What keeps the two forms identical is
-  `unicode-literals-match-the-pinned-escaping-engine`, which compares them
+  writer has a setup cost per string.
+  `unicode-literals-match-the-pinned-escaping-engine` compares the two forms
   over every BMP code point and an astral pair."
   [^StringBuilder sb ^String value path position]
   (validate-utf16! value path position)

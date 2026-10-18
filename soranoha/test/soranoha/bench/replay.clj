@@ -24,9 +24,9 @@
   `endpoints-only` keeps just the two ends of that range. The range is still
   resolved and still has to be a real first-parent range, so the answer remains
   about upstream history rather than about two unrelated commits; what is
-  dropped is every build in between. That is what makes a comparison across an
-  arbitrary distance affordable, and it is the difference between measuring how
-  the build behaves over history and asking what two revisions differ by."
+  dropped is every build in between. A comparison across an arbitrary distance
+  therefore costs two builds, and it compares two revisions rather than
+  measuring the build over the history between them."
   [repo from to & [endpoints-only]]
   (let [resolve! #(git! repo "rev-parse" "--verify" "--end-of-options" (str % "^{commit}"))
         first-revision (resolve! from)
