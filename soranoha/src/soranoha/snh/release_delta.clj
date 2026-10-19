@@ -2,7 +2,7 @@
   "What changed between two published releases, read from the two manifests
   and nothing else.
 
-  Everything the comparison needs is already in signed bytes.
+  Signed bytes provide all data required for the comparison.
   `corpus.upstream_rev` identifies the upstream revision the release was built
   from, `toolchain` carries each stage's closure hash and code version, and
   every `works[]` entry carries the work's `source_content_hash` beside its
@@ -78,6 +78,20 @@
                     [stage {:from (get a stage) :to (get b stage)}])))
           (set/union (set (keys a)) (set (keys b))))))
 
+(defn- validation-delta
+  "Differences in invalid works between two releases, with invalid counts:
+  works newly invalid in `later`, and works newly valid (invalid in `earlier`
+  but valid in `later`). Derived from the `validation_summary` in each
+  manifest, which verifiers reconstruct from published validation records.
+  No cause is attributed: a tightened profile and a conversion regression
+  both appear here, distinguished by differences in `:toolchain`."
+  [earlier later]
+  (let [before (set (get-in earlier ["validation_summary" "invalid_slugs"]))
+        after (set (get-in later ["validation_summary" "invalid_slugs"]))]
+    {:invalid {:from (count before) :to (count after)}
+     :newly-invalid (sorted-vec (set/difference after before))
+     :newly-valid (sorted-vec (set/difference before after))}))
+
 (defn- classify
   "The one established cause for a work present in both releases. Source is
   tested first because it is the only cause the manifest attributes on its
@@ -109,6 +123,8 @@
              :source-changed [slug] :rights-changed [slug]
              :documents-changed [slug] :layers-changed [slug]
              :unchanged <count>}
+     :validation {:invalid {:from <count> :to <count>}
+                  :newly-invalid [slug] :newly-valid [slug]}
      :unexplained [slug]}
 
   `:withdrawn` and `:dropped` are both works the later release does not
@@ -140,6 +156,7 @@
              :documents-changed documents-changed
              :layers-changed (sorted-vec (:layers-changed buckets))
              :unchanged (count (:unchanged buckets))}
+     :validation (validation-delta earlier later)
      :unexplained (if (and (empty? stages) (unmoved? catalog) (unmoved? rights))
                     documents-changed
                     [])}))
@@ -167,4 +184,10 @@
            "works" (into (sorted-map)
                          (map (fn [[k v]] [(name k) v]))
                          (:works d))
+           "validation" (into (sorted-map)
+                              {"invalid" (into (sorted-map)
+                                               {"from" (get-in d [:validation :invalid :from])
+                                                "to" (get-in d [:validation :invalid :to])})
+                               "newly_invalid" (get-in d [:validation :newly-invalid])
+                               "newly_valid" (get-in d [:validation :newly-valid])})
            "unexplained" (:unexplained d)})))

@@ -453,6 +453,8 @@
           nativeBuildInputs = [
             pkgs.pkg-config
             pkgs.zstd
+            # the ab-check integration tests run adapters/test-adapter
+            pkgs.babashka
           ];
           buildInputs = workspaceExtraBuildInputs;
           doCheck = true;
@@ -466,6 +468,7 @@
           nativeBuildInputs = [
             pkgs.pkg-config
             pkgs.zstd
+            pkgs.babashka
           ];
           buildInputs = workspaceExtraBuildInputs;
           cargoBuildFlags = [ "--workspace" ];

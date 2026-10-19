@@ -700,7 +700,7 @@ static BODY_PATTERNS: &[BodyPattern] = &[
     },
     // 文末より / 行末より: raised alignment measured from the end of the
     // text (vs 地から = bottom margin). Same zero-width AlignEnd hook.
-    // `この行は行末より…` needs its own anchored needle.
+    // `この行は行末より…` requires its own anchored needle.
     BodyPattern {
         needle: "文末より",
         family: BodyFamily::AlignEndParamPrefix,

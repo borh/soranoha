@@ -1264,7 +1264,7 @@
   out of 17,602, but a toolchain change changes every one of them, and a page
   listing them all would be larger than the manifests it summarises.
 
-  `source_content_hash` decides `changed`, because it is the fact
+  `source_content_hash` determines `changed`, because it is the fact
   about the work rather than about the toolchain: a release that reruns an
   unchanged source through a new parser publishes different artifacts, and
   saying that every work changed would obscure the two that did."

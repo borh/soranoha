@@ -64,7 +64,7 @@
   (testing "a header built without a grant carries no rights claim at all"
     (is (not (string/includes? (header-xml nil) "availability")))))
 
-(deftest render-stage-refuses-to-build-without-terms-test
+(deftest render-stage-rejects-build-without-terms-test
   (testing "the published TEI cannot be produced with the rights grant missing"
     (is (= :missing-rights-grant
            (:reason (ex-data (try (stages/render-stage "test-runtime" nil)

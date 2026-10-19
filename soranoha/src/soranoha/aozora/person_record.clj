@@ -10,7 +10,7 @@
 (defn- assert-calendar-valid!
   "Reject a record whose date field passes the schema regex but states a
   day that does not exist. The schema bounds month and day separately;
-  the calendar check needs a date library."
+  calendar validation requires a date library."
   [record]
   (doseq [field ["date_of_birth" "date_of_death"]
           :let [v (get record field)]

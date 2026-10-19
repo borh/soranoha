@@ -301,11 +301,11 @@
     (is (not= (get-in manifest-1 ["admission" "assessment_snapshot"])
               (get-in manifest-2 ["admission" "assessment_snapshot"])))))
 
-(deftest oracle-refuses-incomparable-evidence
+(deftest oracle-rejects-incomparable-evidence
   ;; a changed trace key means a changed declared input only under
   ;; complete, identical stage evidence: divergent or absent coordinate
   ;; tables, an uncovered analyzed stage, and a missing trace key are all
-  ;; refused rather than read as explained executions (trace invalidation
+  ;; rejected rather than read as explained executions (trace invalidation
   ;; under coordinate changes itself is proven by the engine tests)
   (let [root (corpus/init-corpus! [merosu])
         store (temp-store!)

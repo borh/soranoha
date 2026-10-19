@@ -15,89 +15,106 @@ case "$mode" in
   aat)
     script="$(mktemp)"
     trap 'rm -f "$script"' EXIT
-    cat > "$script" <<'PY'
-import hashlib
-import json
-import re
-import sys
+    cat > "$script" <<'CLJ'
+(require '[cheshire.core :as json])
+(import '(java.security MessageDigest))
 
-raw = sys.stdin.buffer.read()
-if raw.startswith(b"\xef\xbb\xbf"):
-    text = raw[3:].decode("utf-8")
-    encoding = "utf-8-bom"
-else:
-    try:
-        text = raw.decode("utf-8")
-        encoding = "utf-8"
-    except UnicodeDecodeError:
-        text = raw.decode("cp932")
-        encoding = "windows-31j"
+(def raw (.readAllBytes System/in))
 
-source_hash = "sha256:" + hashlib.sha256(raw).hexdigest()
+(defn strict-utf8
+  "The bytes as UTF-8, or nil when they are not valid UTF-8."
+  [^bytes bytes]
+  (let [text (String. bytes "UTF-8")]
+    (when (java.util.Arrays/equals bytes (.getBytes text "UTF-8")) text)))
 
-def span_for(start, end):
-    line = text.count("\n", 0, start) + 1
-    return {
-        "line_start": line,
-        "line_end": line,
-        "byte_start": len(text[:start].encode("utf-8")),
-        "byte_end": len(text[:end].encode("utf-8")),
-    }
+(def bom? (and (>= (alength raw) 3)
+               (= (aget raw 0) (unchecked-byte 0xEF))
+               (= (aget raw 1) (unchecked-byte 0xBB))
+               (= (aget raw 2) (unchecked-byte 0xBF))))
 
-content = []
-pos = 0
-pattern = re.compile(r"(?P<ruby_base>[^｜\s《》※［＃]+)《(?P<reading>[^》]+)》|※［＃(?P<gaiji>[^］]+)］")
-for match in pattern.finditer(text):
-    if match.start() > pos:
-        content.append({"kind": "text", "value": text[pos:match.start()], "span": span_for(pos, match.start())})
-    if match.group("reading") is not None:
-        content.append({
-            "kind": "ruby",
-            "base": match.group("ruby_base"),
-            "reading": match.group("reading"),
-            "span": span_for(match.start(), match.end()),
-        })
-    else:
-        description = match.group("gaiji")
-        resolved = None
-        u = re.search(r"U\+([0-9A-Fa-f]{4,6})", description)
-        if u:
-            resolved = chr(int(u.group(1), 16))
-        content.append({
-            "kind": "gaiji",
-            "description": description,
-            "resolved": resolved,
-            "jis_code": None,
-            "unresolved_reason": None if resolved else "not resolved by test-adapter",
-            "span": span_for(match.start(), match.end()),
-        })
-    pos = match.end()
+(def decoded
+  (cond
+    bom? [(or (strict-utf8 (java.util.Arrays/copyOfRange raw 3 (alength raw)))
+              (throw (ex-info "invalid UTF-8 after BOM" {})))
+          "utf-8-bom"]
+    :else [(or (strict-utf8 raw)
+               (throw (ex-info "test-adapter reads UTF-8 only; babashka carries no windows-31j charset" {})))
+           "utf-8"]))
 
-if pos < len(text):
-    content.append({"kind": "text", "value": text[pos:], "span": span_for(pos, len(text))})
-if not content:
-    content.append({"kind": "text", "value": "", "span": {"line_start": 1, "line_end": 1, "byte_start": 0, "byte_end": 0}})
+(def ^String text (first decoded))
+(def encoding (second decoded))
 
-aat = {
-    "version": 1,
-    "work_id": "test_work",
-    "blocks": [{"kind": "paragraph", "content": content}],
-    "meta": {
-        "adapter": "test-adapter",
-        "adapter_version": "0.0.1 test",
-        "source_encoding": encoding,
-        "source_hash": source_hash,
-        "parse_complete": True,
-        "warnings": [],
-    },
-}
-json.dump(aat, sys.stdout, ensure_ascii=False, indent=2)
-print()
-PY
-    python "$script"
+(def source-hash
+  (str "sha256:" (format "%064x" (BigInteger. 1 (.digest (MessageDigest/getInstance "SHA-256") raw)))))
+
+(defn utf8-length [s] (alength (.getBytes ^String s "UTF-8")))
+
+(defn span-for [start end]
+  (let [before (subs text 0 start)
+        line (inc (count (filter #(= \newline %) before)))]
+    (array-map "line_start" line
+               "line_end" line
+               "byte_start" (utf8-length before)
+               "byte_end" (utf8-length (subs text 0 end)))))
+
+(defn text-node [start end]
+  (array-map "kind" "text" "value" (subs text start end) "span" (span-for start end)))
+
+(def pattern
+  (re-pattern "(?U)(?<base>[^｜\\s《》※［＃]+)《(?<reading>[^》]+)》|※［＃(?<gaiji>[^］]+)］"))
+
+(def content
+  (let [matcher (re-matcher pattern text)]
+    (loop [pos 0 nodes []]
+      (if (.find matcher)
+        (let [start (.start matcher)
+              end (.end matcher)
+              nodes (if (> start pos) (conj nodes (text-node pos start)) nodes)
+              node (if-some [reading (.group matcher "reading")]
+                     (array-map "kind" "ruby"
+                                "base" (.group matcher "base")
+                                "reading" reading
+                                "span" (span-for start end))
+                     (let [description (.group matcher "gaiji")
+                           resolved (when-let [[_ hex] (re-find #"U\+([0-9A-Fa-f]{4,6})" description)]
+                                      (String. (Character/toChars (Integer/parseInt hex 16))))]
+                       (array-map "kind" "gaiji"
+                                  "description" description
+                                  "resolved" resolved
+                                  "jis_code" nil
+                                  "unresolved_reason" (when-not resolved "not resolved by test-adapter")
+                                  "span" (span-for start end))))]
+          (recur end (conj nodes node)))
+        (let [nodes (if (< pos (count text)) (conj nodes (text-node pos (count text))) nodes)]
+          (if (empty? nodes)
+            [(array-map "kind" "text" "value" ""
+                        "span" (array-map "line_start" 1 "line_end" 1 "byte_start" 0 "byte_end" 0))]
+            nodes))))))
+
+(def aat
+  (array-map "version" 1
+             "work_id" "test_work"
+             "blocks" [(array-map "kind" "paragraph" "content" content)]
+             "meta" (array-map "adapter" "test-adapter"
+                               "adapter_version" "0.0.1 test"
+                               "source_encoding" encoding
+                               "source_hash" source-hash
+                               "parse_complete" true
+                               "warnings" [])))
+
+(println (json/generate-string aat {:pretty true}))
+CLJ
+    bb -f "$script"
     ;;
   html)
-    python -c 'import html,sys; print("<p>" + html.escape(sys.stdin.read()) + "</p>")'
+    bb -e '(let [s (slurp *in*)
+                 escaped (-> s
+                             (clojure.string/replace "&" "&amp;")
+                             (clojure.string/replace "<" "&lt;")
+                             (clojure.string/replace ">" "&gt;")
+                             (clojure.string/replace "\"" "&quot;")
+                             (clojure.string/replace (str (char 39)) "&#x27;"))]
+             (println (str "<p>" escaped "</p>")))'
     ;;
   *)
     echo "usage: test-adapter --mode aat|html < input.txt" >&2

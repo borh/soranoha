@@ -972,7 +972,7 @@ fn nested_references_complete(description: &str) -> bool {
 /// [`resolve_at`], and the LSP / wire resolution view all apply this test.
 ///
 /// Returns the parsed [`GaijiBody`] iff the body is a gaiji; `None` for a
-/// plain directive (e.g. `改ページ`). A gaiji needs a non-empty description and
+/// plain directive (e.g. `改ページ`). A gaiji requires a non-empty description and
 /// either the simple `「…」`-quoted form, a trailing mencode anchor, *or* a bare
 /// description that is a complete component substitution or known dictionary
 /// entry (for example `※［＃二重かっこ開く］`); the description must round-trip
@@ -980,7 +980,7 @@ fn nested_references_complete(description: &str) -> bool {
 #[must_use]
 pub fn recognize_gaiji_body(body: &str) -> Option<GaijiBody<'_>> {
     let parsed = parse_gaiji_body(body);
-    // Unanchored descriptions need an explicit glyph construction or a known
+    // Unanchored descriptions require an explicit glyph construction or a known
     // glyph name; arbitrary quoted directives remain outside this contract.
     let bare_unanchored = !parsed.quoted && parsed.mencode.is_none();
     if parsed.description.is_empty()

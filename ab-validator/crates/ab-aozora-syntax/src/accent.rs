@@ -1184,7 +1184,7 @@ mod tests {
                 }
                 continue;
             }
-            // Cedilla needs a following letter; every other entry is
+            // Cedilla requires a following letter; every other entry is
             // context-free. `a` satisfies both.
             let input = format!("_{pat}a");
             let out = decompose_fragment(&input);

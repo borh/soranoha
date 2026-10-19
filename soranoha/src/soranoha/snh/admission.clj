@@ -4,7 +4,7 @@
   "The executable rule value whose canonical bytes inclusion_rule_hash binds.
   Changing any decision-bearing value changes the hash.
 
-  A candidate is decided on one of two tracks, and the track is determined by
+  A candidate evaluates under one of two tracks, and the track is determined by
   whether the snapshot carries an edition reliance for it. A
   reliance candidate relies on Aozora Bunko's own rights determination, and it
   is admitted exactly when that reliance has admit_reliance_status; anything
@@ -13,14 +13,14 @@
   contribution) equals admit_when_all, excluded with exclude_reason when any
   status equals exclude_when_any, and quarantined otherwise.
 
-  So exclude_when_any decides the independent track only. A candidate whose
-  reliance was refused is quarantined even when a status in the snapshot reads
+  So exclude_when_any governs the independent track only. A candidate whose
+  reliance was rejected is quarantined even when a status in the snapshot reads
   in-copyright. This is not a missed exclusion: the release requested Aozora
   Bunko's determination for that edition and did not receive one it could
   publish on, so the record states that the reliance track was not completed
-  rather than deciding from the independent track. The refusal reason
+  rather than evaluating against the independent track. The rejection reason
   `restrictive-independent-assessment` is also a reliance outcome rather than
-  an independent decision. Neither bucket publishes, so the distinction
+  an independent classification. Neither bucket publishes, so the distinction
   affects only the report.
 
   `docs/design/snh-protocol-v1.md` states the same two tracks and is the

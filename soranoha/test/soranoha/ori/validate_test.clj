@@ -49,7 +49,7 @@
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not match" (run)))))
       (finally (fs/delete-tree dir)))))
 
-(deftest validation-layer-refuses-another-domains-status
+(deftest validation-layer-rejects-another-domains-status
   (doseq [status ["passed" :passed :assessment/available :aozora/available]]
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Invalid TEI validation status"
                           (#'validate/validation-layer status "fixture" "fixture")))))

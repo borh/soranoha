@@ -61,7 +61,7 @@
                       (get work "trailing_bytes_after_archive")}]))
         (get report "works")))
 
-(defn- report-toolchain
+(defn report-toolchain
   "The manifest toolchain object from the report's stage-coordinate table."
   [report]
   (assemble/toolchain-value
@@ -70,6 +70,36 @@
            :stage-version (get coordinate "stage_version")
            :toolchain-id (get coordinate "toolchain_id")})
         (get report "stages"))))
+
+(defn projection-change
+  "The first projection component (excluding the corpus) that differs
+  from `head-manifest`, returned as a map with a `reason` key, or nil
+  when toolchain, admission, and selection params match `head-manifest`.
+  `current` is a map of candidate projection values:
+  {:toolchain :snapshot-id :policy-hash :selection-params}. The inclusion
+  rule is compared against the kernel's constant. Any differing component
+  constitutes a new projection, prompting a release even when the corpus
+  revision is unchanged."
+  [head-manifest {:keys [toolchain snapshot-id policy-hash selection-params]}]
+  (let [head-toolchain (get head-manifest "toolchain")
+        admission (get head-manifest "admission")]
+    (cond
+      (not= head-toolchain toolchain)
+      {"reason" "toolchain-changed"
+       "changed_stages" (vec (sort (for [stage (into (set (keys head-toolchain))
+                                                     (keys toolchain))
+                                         :when (not= (get head-toolchain stage)
+                                                     (get toolchain stage))]
+                                     stage)))}
+      (not= (get admission "assessment_snapshot") snapshot-id)
+      {"reason" "assessment-snapshot-changed"}
+      (not= (get admission "policy_hash") policy-hash)
+      {"reason" "rights-policy-changed"}
+      (not= (get admission "inclusion_rule_hash")
+            (hash/sha256-canonical-json admission/inclusion-rule))
+      {"reason" "inclusion-rule-changed"}
+      (not= (get head-manifest "selection_params") selection-params)
+      {"reason" "selection-params-changed"})))
 
 (defn release!
   "Account for the full selection, then request artifacts for each verified head.

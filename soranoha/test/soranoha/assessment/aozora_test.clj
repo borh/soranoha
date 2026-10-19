@@ -119,7 +119,7 @@
           (testing label
             (reset! responses (assoc baseline url replacement))
             (is (= {:state :aozora/unavailable :reason expected} (check)))))
-        (testing "preparation refuses the protected classification"
+        (testing "preparation rejects the protected classification"
           (reset! responses (assoc baseline aozora/catalog-url (catalog-bytes dir "あり" "")))
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not-classified-expired"
                                 (aozora/prepare! root evidence slug opts))))

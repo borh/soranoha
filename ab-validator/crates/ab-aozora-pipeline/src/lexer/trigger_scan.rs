@@ -1,7 +1,7 @@
 //! Trigger scan: byte offsets of every Aozora notation marker in the source.
 //!
 //! Aozora's 13 notation triggers (`｜《》≪≫［］＃※〔〕「」`) are each a
-//! 3-byte BMP UTF-8 codepoint. The tokenize stage needs their positions
+//! 3-byte BMP UTF-8 codepoint. The tokenize stage requires their positions
 //! before it can cut the buffer into text runs and delimiters, so this is
 //! the first pass over the source.
 //!

@@ -45,9 +45,9 @@
                      (canonical/rfc8785-safe-integer-json-string-v1 s)))
                 strings))))
 
-(deftest escaping-agrees-on-multi-character-strings
+(deftest escaping-matches-on-multi-character-strings
   ;; the single-character sweep above cannot reach the fast path, which
-  ;; copies the run before the first character needing an escape and then
+  ;; copies the run before the first character that requires an escape and then
   ;; escapes the rest. Escapes at the front, in the middle, at the end and
   ;; back to back are where a boundary would be off by one.
   (let [alphabet (concat [\" \\ \newline \return \tab \formfeed \backspace

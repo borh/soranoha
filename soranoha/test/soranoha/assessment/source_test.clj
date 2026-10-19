@@ -128,7 +128,7 @@
     (is (= :missing-evidence
            (reason #(source/retained-observations input dir))))))
 
-(deftest assessment-reuses-content-facts-and-refuses-corrupt-cache-bytes
+(deftest assessment-reuses-content-facts-and-rejects-corrupt-cache-bytes
   (let [root (corpus/init-corpus! [work])
         dir (fs/create-temp-dir {:prefix "assessment-cached-source"})
         input (str (fs/path dir "source.json"))

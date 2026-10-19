@@ -14,6 +14,7 @@
             [soranoha.assessment.aozora :as aozora]
             [soranoha.core.hash :as hash]
             [soranoha.main :as main]
+            [soranoha.snh.admission :as admission]
             [soranoha.snh.decode :as decode]
             [soranoha.snh.fixture :as fx]
             [soranoha.snh.sign :as sign]
@@ -23,6 +24,7 @@
             [soranoha.aozora.csv :as csv]
             [soranoha.yomi.catalog :as catalog]
             [soranoha.yomi.select :as select]
+            [soranoha.za.assemble :as assemble]
             [soranoha.za.corpus :as corpus]
             [soranoha.za.release :as release]
             [soranoha.za.scaffold :as scaffold]))
@@ -233,39 +235,108 @@
                    (:chain (verified-chain clone))))))
 
         ;; last, because each case advances the upstream checkout
-        (testing "release-needed answers before anything is assembled or built"
+        (testing "release-needed evaluates before assembly or build"
           (let [ks (vector-keys)
                 dir (fs/create-temp-dir {:prefix "release-needed"})
                 write! (fn [name content]
                          (let [path (str (fs/path dir name))] (spit path content) path))
-                needed (fn [] (main/release-needed!
-                               {:chain-clone clone :branch fx/branch :aozora-root root
-                                :release-pub (write! "release.pub"
-                                                     (str (get-in ks ["release" "pub"]) "\n"))
-                                :governance-pub (write! "governance.pub"
-                                                        (str (get-in ks ["governance" "pub"]) "\n"))}))]
-            (testing "the revision already published needs nothing"
+                ;; what the head release published, as the next release would
+                ;; compute it from its own inputs
+                published {:toolchain (release/report-toolchain (run->report run-2))
+                           :snapshot-id (:id (assemble/snapshot-encoding
+                                              [(pd merosu) (pd kumo) (pd added)]))
+                           :policy-hash policy-hash
+                           :selection-params {}}
+                needed (fn needed
+                         ([] (needed published))
+                         ([current]
+                          (main/release-needed!
+                           {:chain-clone clone :branch fx/branch :aozora-root root
+                            :release-pub (write! "release.pub"
+                                                 (str (get-in ks ["release" "pub"]) "\n"))
+                            :governance-pub (write! "governance.pub"
+                                                    (str (get-in ks ["governance" "pub"]) "\n"))}
+                           current)))]
+            (testing "an already published revision requires no release"
               (is (= {"needed" false "reason" "revision-already-published"} (needed))))
-            (testing "a commit touching no work archive and no published row needs nothing"
+            (testing "a changed stage coordinate triggers a release at the published revision"
+              (is (= {"needed" true "reason" "toolchain-changed" "changed_stages" ["render"]}
+                     (needed (assoc-in published [:toolchain "render" "stage_code_version"] "2")))))
+            (testing "a regenerated snapshot triggers a release at the published revision"
+              (is (= {"needed" true "reason" "assessment-snapshot-changed"}
+                     (needed (assoc published :snapshot-id
+                                    (:id (assemble/snapshot-encoding [(pd merosu) (pd kumo)])))))))
+            (testing "an edited rights policy triggers a release at the published revision"
+              (is (= {"needed" true "reason" "rights-policy-changed"}
+                     (needed (assoc published :policy-hash (hash/sha256-string "edited policy"))))))
+            (testing "a commit touching no work archive and no published row requires no release"
               (spit (str (fs/path root "index_pages" "note.txt")) "site copy edit\n")
               (corpus/commit-corpus! root)
               (is (= {"needed" false "reason" "nothing-published-changed"} (needed))))
-            (testing "a catalog row for a work that is not selected needs nothing"
+            (testing "a catalog row for an unselected work requires no release"
               ;; a row with no archive behind it is never selected, so
               ;; nothing published reads it
               (corpus/write-catalog! root [merosu kumo added ghost])
               (corpus/commit-corpus! root)
               (is (= {"needed" false "reason" "nothing-published-changed"} (needed))))
-            (testing "a catalog-only correction to a published work's row needs a release"
+            (testing "a catalog-only correction to a published work's row triggers a release"
               (corpus/write-catalog! root [merosu kumo (assoc added :title "added-work corrected") ghost])
               (corpus/commit-corpus! root)
               (is (= {"needed" true "reason" "catalog-rows-changed" "changed_works" 1}
                      (needed))))
-            (testing "a commit touching a work archive needs a release"
+            (testing "a commit modifying a work archive triggers a release"
               (corpus/write-work! root (assoc added :text (str (:text added) "\u3002")))
               (corpus/commit-corpus! root)
               (is (= {"needed" true "reason" "work-archives-changed" "changed_archives" 1}
                      (needed))))))))))
+
+(deftest projection-change-identifies-the-first-differing-component
+  (let [stage {"nix_closure_hash" "sha256:closure" "stage_code_version" "1"}
+        head {"toolchain" {"render" stage "validate" stage}
+              "admission" {"assessment_snapshot" "sha256:snapshot"
+                           "policy_hash" "sha256:policy"
+                           "inclusion_rule_hash"
+                           (hash/sha256-canonical-json admission/inclusion-rule)}
+              "selection_params" {}}
+        same {:toolchain (get head "toolchain")
+              :snapshot-id "sha256:snapshot"
+              :policy-hash "sha256:policy"
+              :selection-params {}}]
+    (is (nil? (release/projection-change head same)))
+    (doseq [[case current expected]
+            [["a stage code version"
+              (assoc-in same [:toolchain "render" "stage_code_version"] "2")
+              {"reason" "toolchain-changed" "changed_stages" ["render"]}]
+             ["a stage closure"
+              (assoc-in same [:toolchain "validate" "nix_closure_hash"] "sha256:other")
+              {"reason" "toolchain-changed" "changed_stages" ["validate"]}]
+             ["a stage absent from the head manifest"
+              (assoc-in same [:toolchain "plaintext"] stage)
+              {"reason" "toolchain-changed" "changed_stages" ["plaintext"]}]
+             ["a stage present in the head manifest but omitted in candidate"
+              (update same :toolchain dissoc "validate")
+              {"reason" "toolchain-changed" "changed_stages" ["validate"]}]
+             ["the snapshot"
+              (assoc same :snapshot-id "sha256:regenerated")
+              {"reason" "assessment-snapshot-changed"}]
+             ["the rights policy"
+              (assoc same :policy-hash "sha256:edited")
+              {"reason" "rights-policy-changed"}]
+             ["the selection params"
+              (assoc same :selection-params {"limit" 1})
+              {"reason" "selection-params-changed"}]
+             ["toolchain before snapshot when both differ"
+              (-> same
+                  (assoc-in [:toolchain "render" "stage_code_version"] "2")
+                  (assoc :snapshot-id "sha256:regenerated"))
+              {"reason" "toolchain-changed" "changed_stages" ["render"]}]]]
+      (testing case
+        (is (= expected (release/projection-change head current)))))
+    (testing "the inclusion rule, against the kernel's constant"
+      (is (= {"reason" "inclusion-rule-changed"}
+             (release/projection-change
+              (assoc-in head ["admission" "inclusion_rule_hash"] "sha256:previous-rule")
+              same))))))
 
 (deftest malformed-assessment-snapshot-publishes-nothing
   (let [root (corpus/init-corpus! [merosu])
@@ -293,7 +364,7 @@
 (deftest a-work-omitted-from-works-and-snapshot-cannot-pass-totality
   ;; the co-omission failure: kumo is absent from the built works and from
   ;; the snapshot, but the selected population captured before execution
-  ;; still lists it, so the driver refuses before assembly
+  ;; still lists it, so the driver rejects before assembly
   (let [root (corpus/init-corpus! [merosu kumo])
         run (corpus/run-corpus! root (temp-store!))
         {:keys [clone]} (fx/make-repos!)
@@ -302,7 +373,7 @@
         outcome (try (release/release!
                       (assoc (driver-inputs clone broken (:cas-dir run)
                                             (snapshot-bytes [(pd merosu)]))
-                             :build-works! (fn [_] (throw (ex-info "must refuse before building" {})))))
+                             :build-works! (fn [_] (throw (ex-info "must reject before building" {})))))
                      nil
                      (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :totality-violation (:reason outcome)))
@@ -479,7 +550,7 @@
                        (or (:reason (ex-data e)) (:option (ex-data e))
                            (ex-message e)))))]
     (commit-assessment-inputs! dir)
-    (testing "the blocking production rights state refuses release"
+    (testing "the blocking production rights state rejects release"
       (is (= :rights-blocked
              (error (assoc base :policy
                            (write! "blocked.edn"
@@ -784,7 +855,7 @@
                                            {:outcome :published})]
             (is (= :published (:outcome (main/release! opts)))))
           (is (= [:build :check :retry :build :check :publish] @events))))
-      (testing "withdrawal after preflight refuses before publication"
+      (testing "withdrawal after preflight rejects publication"
         (with-redefs [main/publication-stages (constantly corpus/stage-set)
                       main/execute-build! (fn [& _]
                                             (reset! current {slug {:state :aozora/unavailable :reason :aozora/protected-card}})
@@ -796,7 +867,7 @@
                  (try (main/release! opts) nil
                       (catch clojure.lang.ExceptionInfo e (or (:reason (ex-data e)) (ex-message e))))))
           (is (false? @published?))))
-      (testing "a stale accepted snapshot builds before the final check refuses publication"
+      (testing "a stale accepted snapshot builds before the final check rejects publication"
         (let [events (atom [])]
           (with-redefs [main/publication-stages (constantly corpus/stage-set)
                         main/execute-build! (fn [& _] (swap! events conj :build) report)

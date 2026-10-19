@@ -2,8 +2,8 @@
   "How the corpus at one upstream revision differs from what a release
   published, computed on the reader's own machine.
 
-  `soranoha.snh.release-delta` answers the same question between two
-  releases, from published bytes alone. This answers it for a revision no
+  `soranoha.snh.release-delta` computes the delta between two
+  releases, from published bytes alone. This namespace computes it for a revision no
   release was built at, which no manifest describes: the bytes at that
   revision are not in the chain. The archives at that revision must be read,
   and the reader reads them from their own aozorabunko checkout, rather than
@@ -17,7 +17,7 @@
 
   The comparison is therefore about sources, not about documents. Under one
   toolchain a source difference is the only thing that can change a
-  document, so the sources answer the whole question; across a toolchain
+  document, so source comparisons resolve the full difference; across a toolchain
   change it does not, and a full rebuild of both revisions is the only thing
   that does. `docs/performance.md` has that recipe.
 

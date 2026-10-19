@@ -18,7 +18,7 @@
 # /works/<id>/read -> read.html) without rewriting any body. It is tried after
 # the literal path, so it can never shadow a chain file: /works/<id>/tei
 # resolves to the symlink, and only a path with no file behind it falls through
-# to its .html page. The reading view therefore needs no route of its own — it
+# to its .html page. The reading view therefore requires no route of its own; it
 # lives under the work's existing short-cache prefix.
 {
 	admin off

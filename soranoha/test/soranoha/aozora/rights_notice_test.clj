@@ -7,15 +7,15 @@
   (mapv #(hash-map "作品著作権フラグ" %) flags))
 
 (defn- never-read []
-  (throw (AssertionError. "the archive was opened for a work the flag decided")))
+  (throw (AssertionError. "the archive was opened for a work resolved by flag alone")))
 
-(deftest an-expired-work-is-decided-without-opening-its-archive
+(deftest an-expired-work-is-resolved-without-opening-its-archive
   (is (= {:standing "public-domain"} (notice/standing (rows "なし") never-read)))
   (is (= {:standing "public-domain"}
          (notice/standing (rows "なし" "なし" "なし") never-read))
       "one work filed under several contributor cards still has one standing"))
 
-(deftest the-licence-url-decides-a-subsisting-work
+(deftest the-licence-url-determines-standing-for-a-subsisting-work
   (testing "each form Aozora Bunko's notices actually carry"
     (doseq [[url expected]
             [["http://creativecommons.org/licenses/by/2.1/jp/" "CC-BY-2.1-JP"]
@@ -86,7 +86,7 @@
   (is (= {:refused :unknown-copyright-flag :flags ["不明"]}
          (notice/standing (rows "不明") never-read))))
 
-(deftest a-licence-this-build-cannot-state-refuses-the-work-and-nothing-else
+(deftest a-licence-this-build-cannot-state-rejects-the-work-and-nothing-else
   ;; Every standing the corpus carries is one of the four this build has
   ;; statements for. A version or a port not seen before appears with an
   ;; upstream update, and until someone writes its terms the work is refused

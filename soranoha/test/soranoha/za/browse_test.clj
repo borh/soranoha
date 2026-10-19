@@ -153,7 +153,7 @@
       (is (string/includes? (page pages "ndc/index.html") "/ndc/9"))
       (is (string/includes? (page pages "ndc/9.html") "蜘蛛の糸")))
 
-    (testing "the work page carries the facts a citation needs"
+    (testing "the work page carries the facts required for a citation"
       (let [work-page (page pages "works/000092_000879/index.html")]
         (doseq [fact ["蜘蛛の糸" "くものいと" "芥川 龍之介" "新字新仮名"
                       "NDC 913 小説．物語 <span class=\"en\" lang=\"en\">/ Fiction.Romance.Novel</span>"

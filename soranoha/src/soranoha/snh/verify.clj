@@ -381,8 +381,8 @@
   `younger` is the already-verified successor commit whose evidence grants
   blob reuse, or nil when there is none, in which case every artifact is
   read and hashed. The transition against the predecessor manifest is not
-  checked here: it needs the predecessor decoded, which the caller does next
-  in both walk directions.
+  checked here: evaluating that transition requires the predecessor decoded,
+  which the caller does next in both walk directions.
 
   This is the one definition of what a commit must satisfy. The full walk
   and the increment check both call it, so both check the same conditions."
@@ -401,7 +401,7 @@
       (when genesis? (check-genesis! c m))
       (check-signature! v c pinned-keys "release-manifest" m-hex
                         (manifest-sig-path m-hex))
-      (let [;; a reuse grant needs both halves of the proof: the
+      (let [;; a reuse grant requires both halves of the proof: the
             ;; younger, already-verified commit held this hex at
             ;; this path, and the tree comparison shows this
             ;; commit's entry is identical
@@ -443,12 +443,12 @@
   checked. A `stop` of nil means the run continues to genesis.
 
   The run's oldest commit is left open when `stop` is given: its
-  predecessor is decoded by the next run, so what closing that transition
-  needs is returned under `:open` instead. `:open` is nil exactly when
+  predecessor is decoded by the next run, so the data required to close that
+  transition is returned under `:open` instead. `:open` is nil exactly when
   the run reached genesis.
 
   The run follows real parent links and stops only on the commit it was
-  given, so the spine that chose `stop` is scheduling input rather than
+  given, so the spine that specified `stop` is scheduling input rather than
   evidence: a run that walks past its stop reaches genesis and fails."
   [v commit stop pinned-keys]
   (let [head (head-at v commit)

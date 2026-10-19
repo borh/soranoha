@@ -39,6 +39,7 @@
             [soranoha.aozora.csv :as csv]
             [soranoha.yomi.catalog :as catalog]
             [soranoha.yomi.select :as select]
+            [soranoha.za.assemble :as assemble]
             [soranoha.za.maturity :as maturity]
             [soranoha.za.release :as za-release]
             [soranoha.za.scaffold :as scaffold]
@@ -114,6 +115,17 @@
   (into (publication-stages opts)
         (map (fn [[stage make]] [stage (make opts)]))
         research-stages))
+
+(defn- release-stages
+  "The stage set a release builds and whose coordinates its manifest's
+  toolchain object records: the publication stages with the research
+  stages removed by name."
+  [opts]
+  (apply dissoc (publication-stages opts) (keys research-stages)))
+
+;; Every release publishes the full selection, so the manifest's
+;; selection_params object is constant.
+(def ^:private release-selection-params {})
 
 (defn- read-cas-json [store hex]
   (record-json/read-json-bytes (cas/get-bytes (:cas-dir store) hex)))
@@ -660,9 +672,7 @@
                   inputs (update captured :candidates #(filterv (comp requested :slug) %))
                   _ (selected-metadata! inputs)
                   stage-set (if (seq requested)
-                              (apply dissoc
-                                     (publication-stages (assoc opts :rights rights))
-                                     (keys research-stages))
+                              (release-stages (assoc opts :rights rights))
                               {})
                   report (execute-build! (dissoc opts :out) inputs stage-set)]
               (when-not (and (= source-commit (get report "aozora_git_commit")
@@ -690,7 +700,7 @@
               report))
           :cas-dir (config/cas-dir (config/root root))
           :upstream-origin upstream-origin
-          :selection-params {}
+          :selection-params release-selection-params
           :policy-id policy-id :policy-hash policy-hash :rights rights
           :snapshot-bytes snapshot-bytes
           :clone (str chain-clone) :branch branch
@@ -751,80 +761,115 @@
                                (published-catalog-fields (get after work-id))))
                        selected))))))
 
-(defn release-needed!
-  "Whether an upstream revision requires a release, decided before anything
-  is assembled or built.
-
-  A release is minted when a published byte would change, not on every
-  upstream commit: 796 of aozorabunko's 5,476 first-parent commits touch no
-  work archive, and a release for one of those would carry a 9.1 MB manifest
-  and a 14.45 MB catalog to record a 40-hex string. `corpus.covers_from`
-  allows a reader to map those revisions to the release that covers them.
-
-  Two conditions decide it. A changed work archive is a changed text. When
-  none changed, the catalog rows of the selected works are compared as the
-  record builder reads them: a corrected title or a changed date reaches the
-  catalog artifact, the TEI header and every citation, so it is a release,
-  while a column no record reads is not. Of the catalog-only commits about
-  one in ten changes a published work's row, roughly five releases a year.
-
-  Decided here rather than inside the transaction because the transaction
-  cannot return `no release`: `corpus.upstream_rev` is a projection key
-  precisely so that a corpus change is a projection change and not a
-  determinism halt, and the expensive part being skipped is the corpus build,
-  not the chain walk.
-
-  The head is fully verified before its revision is read, so a forged origin
-  cannot cause a skip. Fail-open on every uncertainty: an unreachable
-  predecessor revision, a diff that errors, an empty chain, all report
-  `needed`. Skipping a release is the outcome that can lose work, so it is
-  taken only when the comparison succeeded.
-
-  Exits 0 when a release is needed and 10 when it is not, so a runner reads
-  an exit code rather than parsing the report."
-  [{:keys [chain-clone branch aozora-root release-pub governance-pub]}]
+(defn- current-projection!
+  "Candidate projection components (excluding the corpus) derived from
+  publication inputs: stage set coordinates, snapshot ID, rights policy
+  hash, and selection parameters."
+  [{:keys [assessment policy assets-root] :as opts}]
   (require-flags! "release-needed"
-                  {"--chain-clone" chain-clone
-                   "--aozora-root" aozora-root
-                   "--release-pub" release-pub
-                   "--governance-pub" governance-pub})
-  (let [current (source-provenance! aozora-root)
-        v (view/git-view (str chain-clone))
-        commit (repo/fetch! (str chain-clone) branch)
-        head (when commit
-               (verify/verify-repository-at v commit
-                                            (pinned-keys-from-files release-pub governance-pub)))
-        head-rev (when (and head (not (:empty head)))
-                   (get-in (:head-manifest head) ["corpus" "upstream_rev"]))
-        ;; The archive diff first, because it is a path match and needs no
-        ;; parse; the catalog comparison only when no archive changed. A path
-        ;; match on the CSV would skip nothing: every commit that touches a
-        ;; work archive touches the CSV in the same commit, all 4,673 of
-        ;; them, so the path would match on 5,469 of 5,476 revisions. Reading
-        ;; the rows separates a correction to a published work from a
-        ;; card-page edit the records do not read.
-        changed (when (and head-rev (not= head-rev current))
-                  (git! aozora-root "diff" "--name-only" (str head-rev ".." current)
-                        "--" "cards/*/files/*.zip"))
-        rows-changed (when (and changed (string/blank? changed))
-                       (published-works-with-changed-rows aozora-root head-rev current))
-        report (cond
-                 (nil? head-rev) {"needed" true "reason" "no-published-release"}
-                 (= head-rev current) {"needed" false "reason" "revision-already-published"}
-                 (nil? changed) {"needed" true "reason" "revisions-not-comparable"}
-                 (not (string/blank? changed))
-                 {"needed" true "reason" "work-archives-changed"
-                  "changed_archives" (count (string/split-lines changed))}
-                 (nil? rows-changed) {"needed" true "reason" "revisions-not-comparable"}
-                 (pos? rows-changed) {"needed" true "reason" "catalog-rows-changed"
-                                      "changed_works" rows-changed}
-                 :else {"needed" false "reason" "nothing-published-changed"})]
-    (println (record-json/write-deterministic-json-str
-              (into (sorted-map)
-                    (cond-> report
-                      head-rev (assoc "head_rev" head-rev)
-                      true (assoc "current_rev" current)))))
-    report))
+                  {"--assessment" assessment
+                   "--policy" policy
+                   "--assets-root" assets-root})
+  (let [snapshot (:value (decode/decode "assessment-snapshot"
+                                        (fs/read-all-bytes (str assessment))))]
+    {:toolchain (assemble/toolchain-value (vals (release-stages opts)))
+     :snapshot-id (:id (assemble/snapshot-encoding (get snapshot "candidates")))
+     :policy-hash (:policy-hash (za-release/rights-authority!
+                                 (fs/read-all-bytes (str policy))))
+     :selection-params release-selection-params}))
+
+(defn release-needed!
+  "Whether a release would publish a new projection, evaluated before
+  anything is assembled or built.
+
+  The manifest projection has five components: corpus, toolchain,
+  selection params, admission and rights. Toolchain, admission and
+  selection params are compared exactly against the head manifest, from
+  the same inputs the release reads, so a changed stage version or Nix
+  closure, a regenerated snapshot, an edited rights policy or a changed
+  inclusion rule triggers a release even when the corpus revision is the
+  one already published. This is the case after any change to the parser,
+  the renderer or the TEI profile: the upstream texts remain unchanged
+  while published artifacts change.
+
+  The corpus is not compared by revision alone. A release is minted when a
+  published byte would change, not on every upstream commit: 796 of
+  aozorabunko's 5,476 first-parent commits touch no work archive, and a
+  release for one of those would carry a 9.1 MB manifest and a 14.45 MB
+  catalog to record a 40-hex string. `corpus.covers_from` maps those
+  revisions to the release that covers them.
+
+  Two checks evaluate the corpus. A changed work archive is a changed
+  text. When none changed, the catalog rows of the selected works are
+  compared as the record builder reads them: a corrected title or a
+  changed date reaches the catalog artifact, the TEI header and every
+  citation, and requires a release, while changes in unread columns do not.
+  Of the catalog-only commits about one in ten changes a published work's
+  row, roughly five releases a year.
+
+  Evaluated outside the transaction because the transaction cannot return
+  `no release`: `corpus.upstream_rev` is a projection key precisely so
+  that a corpus change is a projection change and not a determinism halt,
+  and the expensive part being skipped is the corpus build, not the chain
+  walk.
+
+  The head is fully verified before its manifest is read, so a forged
+  origin cannot cause a skip. Fail-open on every uncertainty: an
+  unreachable predecessor revision, a diff failure, an empty chain, all
+  report `needed`. Skipping a release is the outcome that can lose work,
+  so it is taken only when the comparison succeeded.
+
+  Exits 0 when a release is needed and 10 when it is not, so callers
+  inspect the exit code without parsing JSON."
+  ([opts]
+   (release-needed! opts (current-projection! opts)))
+  ([{:keys [chain-clone branch aozora-root release-pub governance-pub]} current-projection]
+   (require-flags! "release-needed"
+                   {"--chain-clone" chain-clone
+                    "--aozora-root" aozora-root
+                    "--release-pub" release-pub
+                    "--governance-pub" governance-pub})
+   (let [current (source-provenance! aozora-root)
+         v (view/git-view (str chain-clone))
+         commit (repo/fetch! (str chain-clone) branch)
+         head (when commit
+                (verify/verify-repository-at v commit
+                                             (pinned-keys-from-files release-pub governance-pub)))
+         head-manifest (when (and head (not (:empty head)))
+                         (:head-manifest head))
+         head-rev (get-in head-manifest ["corpus" "upstream_rev"])
+         projection-change (when head-manifest
+                             (za-release/projection-change head-manifest current-projection))
+         ;; The archive diff first, because it is a path match and requires no
+         ;; parsing; the catalog comparison only when no archive changed. A path
+         ;; match on the CSV would skip nothing: every commit that touches a
+         ;; work archive touches the CSV in the same commit, all 4,673 of
+         ;; them, so the path would match on 5,469 of 5,476 revisions. Reading
+         ;; the rows separates a correction to a published work from a
+         ;; card-page edit the records do not read.
+         changed (when (and head-rev (nil? projection-change) (not= head-rev current))
+                   (git! aozora-root "diff" "--name-only" (str head-rev ".." current)
+                         "--" "cards/*/files/*.zip"))
+         rows-changed (when (and changed (string/blank? changed))
+                        (published-works-with-changed-rows aozora-root head-rev current))
+         report (cond
+                  (nil? head-rev) {"needed" true "reason" "no-published-release"}
+                  projection-change (assoc projection-change "needed" true)
+                  (= head-rev current) {"needed" false "reason" "revision-already-published"}
+                  (nil? changed) {"needed" true "reason" "revisions-not-comparable"}
+                  (not (string/blank? changed))
+                  {"needed" true "reason" "work-archives-changed"
+                   "changed_archives" (count (string/split-lines changed))}
+                  (nil? rows-changed) {"needed" true "reason" "revisions-not-comparable"}
+                  (pos? rows-changed) {"needed" true "reason" "catalog-rows-changed"
+                                       "changed_works" rows-changed}
+                  :else {"needed" false "reason" "nothing-published-changed"})]
+     (println (record-json/write-deterministic-json-str
+               (into (sorted-map)
+                     (cond-> report
+                       head-rev (assoc "head_rev" head-rev)
+                       true (assoc "current_rev" current)))))
+     report)))
 
 (defn- verified-manifest
   "The decoded manifest for `hex`, read from the tree of the verified commit.
@@ -892,9 +937,9 @@
   "How the corpus in a local aozorabunko checkout differs from what a release
   published, as deterministic JSON.
 
-  `release-delta` answers this between two releases from published bytes
-  alone. This answers it for a revision no release was built at, which the
-  chain cannot reach: the archives at that revision are not in it. So the
+  `release-delta` computes this between two releases from published bytes
+  alone. This command computes it for a revision no release was built at, which
+  the chain cannot reach: the archives at that revision are not in it. So the
   reader supplies them, from their own checkout, rather than asking a server to
   rebuild history on demand. The chain is still verified against the pinned
   keys first, so the only unsigned side is the one the reader supplies.
@@ -1137,6 +1182,7 @@
    :commit {:coerce :string}
    :from {:coerce :string}
    :to {:coerce :string}
+   :fail-on-newly-invalid {:coerce :boolean}
    ;; default pinned to the measured resource envelope (peak RSS < 8 GiB
    ;; with -Xmx4g); 0 = one worker per available processor
    :concurrency {:coerce :long :default 16}
@@ -1176,19 +1222,25 @@
       (let [opts (merge {:branch "main"} (deployment-options parsed))]
         (case command
           "build" (build! opts)
-          ;; scheduled-runner exit contract: success covers the no-op; a
-        ;; requeue asks the next scheduled run to retry from the new head;
-        ;; a determinism halt is an ordinary failure
+          ;; runner exit contract: success covers the no-op; a requeue prompts
+          ;; the next run to retry from the new head; a determinism halt is
+          ;; an ordinary failure
           "release" (let [{:keys [outcome]} (release! opts)]
                       (when-not (#{:published :already-published} outcome)
                         (System/exit (if (= :requeue outcome) 3 1))))
-          ;; scheduled-runner exit contract: 0 requests a release, 10 means
-          ;; the corpus did not change. An exit code rather than parsed output,
-          ;; so the runner needs no JSON tool on its path; the report still
-          ;; prints, and carries the reason.
+          ;; runner exit contract: exit code 0 indicates a release
+          ;; is needed, 10 indicates nothing new to publish. Callers inspect
+          ;; the exit code without parsing JSON; the report still prints, and
+          ;; carries the reason.
           "release-needed" (when-not (get (release-needed! opts) "needed")
                              (System/exit 10))
-          "release-delta" (release-delta! opts)
+          ;; runner exit contract: with --fail-on-newly-invalid, exit code 11
+          ;; indicates newly invalid works relative to the predecessor; the
+          ;; report still prints, listing each slug.
+          "release-delta" (let [report (release-delta! opts)]
+                            (when (and (:fail-on-newly-invalid opts)
+                                       (seq (get-in report ["validation" "newly_invalid"])))
+                              (System/exit 11)))
           "corpus-delta" (corpus-delta! opts)
           "governance-event-prepare" (governance-event-prepare! opts)
           "governance" (let [{:keys [outcome]} (governance! opts)]

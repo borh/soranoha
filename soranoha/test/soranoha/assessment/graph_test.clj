@@ -52,7 +52,7 @@
         work (get-in resolved [:facts (records/fact-key "work" "work-status")])]
     (is (= :assessment/available (:state work)))
     (is (= "public-domain" (:value work)))
-    (testing "and a candidate with no findings at all is decided too, as absent"
+    (testing "and a candidate with no findings at all resolves as absent"
       (let [absent (get-in resolved [:facts (records/fact-key "independent" "work-status")])]
         (is (= :assessment/unavailable (:state absent)))
         (is (= :assessment/unavailable-contribution-completeness (:reason absent)))))
@@ -63,7 +63,7 @@
       (is (= (set (keys (:facts resolved))) (set (:order resolved))))
       (is (= (count (:facts resolved)) (count (:order resolved)))))))
 
-(deftest staging-adds-two-identifiers-and-decides-nothing
+(deftest staging-adds-two-identifiers-and-evaluates-no-admissibility
   ;; Characterizes the graph/staging split. A snapshot-byte comparison would
   ;; not cover it: stage-result! stages only the semantic value and the basis,
   ;; so :dependencies never reaches the snapshot and a provenance defect would

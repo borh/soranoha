@@ -85,8 +85,8 @@
   returning the work's primary text. Returns `{:standing s}` if the work may
   be published, otherwise `{:refused reason}` with whatever the notice stated.
 
-  The text is a thunk because the flag alone decides an expired work, which is
-  almost every work, and no archive is opened for it."
+  The text is a thunk because expired status is determined by the flag alone,
+  which covers almost every work, and no archive is opened for it."
   [rows text-fn]
   (let [flags (copyright-flags rows)]
     (cond

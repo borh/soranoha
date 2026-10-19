@@ -134,11 +134,32 @@
     (is (nil? (get-in toolchain ["annotate" :from])))
     (is (= "closure-9" (get-in toolchain ["annotate" :to "nix_closure_hash"])))))
 
+(deftest validation-is-compared-as-published-with-no-cause-attributed
+  (let [works [(work "000001_1" "sha256:one") (work "000002_1" "sha256:two")
+               (work "000003_1" "sha256:three")]
+        earlier (assoc (manifest "rev-a" works)
+                       "validation_summary" {"invalid_count" 1 "invalid_slugs" ["000001_1"]})
+        later (assoc (manifest "rev-b" works)
+                     "validation_summary" {"invalid_count" 2
+                                           "invalid_slugs" ["000002_1" "000003_1"]})
+        {:keys [validation]} (release-delta/delta earlier later)]
+    (is (= {:from 1 :to 2} (:invalid validation)))
+    (is (= ["000002_1" "000003_1"] (:newly-invalid validation)))
+    (is (= ["000001_1"] (:newly-valid validation)))
+    (testing "manifests with no invalid works produce empty lists"
+      (let [clean (assoc (manifest "rev-c" works)
+                         "validation_summary" {"invalid_count" 0 "invalid_slugs" []})]
+        (is (= {:invalid {:from 2 :to 0} :newly-invalid [] :newly-valid ["000002_1" "000003_1"]}
+               (:validation (release-delta/delta later clean))))))))
+
 (deftest the-report-form-is-string-keyed-and-ordered
   (let [earlier (manifest "rev-a" [(work "000001_1" "sha256:one")])
         later (manifest "rev-b" [(work "000001_1" "sha256:two")])
         r (release-delta/report earlier later)]
-    (is (= ["catalog" "corpus" "rights" "toolchain" "unexplained" "works"] (vec (keys r))))
+    (is (= ["catalog" "corpus" "rights" "toolchain" "unexplained" "validation" "works"]
+           (vec (keys r))))
+    (is (= {"invalid" {"from" 0 "to" 0} "newly_invalid" [] "newly_valid" []}
+           (update (into {} (get r "validation")) "invalid" (partial into {}))))
     (is (= {"from" "rev-a" "to" "rev-b"} (into {} (get r "corpus"))))
     (is (= ["000001_1"] (get-in r ["works" "source-changed"])))
     (is (= 0 (get-in r ["works" "unchanged"])))))

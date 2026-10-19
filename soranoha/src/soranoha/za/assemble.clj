@@ -36,6 +36,12 @@
                                                     contributions))))))
                       candidates)))})
 
+(defn snapshot-encoding
+  "Assessment snapshot encoded from `candidates`: {:id :hex :bytes :value}.
+  The manifest field `admission.assessment_snapshot` records this :id."
+  [candidates]
+  (decode/encode "assessment-snapshot" (snapshot-value candidates)))
+
 (defn- report-value
   [snapshot-id {:keys [admitted excluded quarantined]} policy-hash rule]
   {"schema" "snh-admission-report/1"
@@ -131,8 +137,7 @@
     minus withdrawn."
   [{:keys [cas-dir corpus toolchain selection-params policy-id policy-hash
            rights candidates works source-hashes withdrawn-slugs selection]}]
-  (let [snapshot-enc (decode/encode "assessment-snapshot"
-                                    (snapshot-value candidates))
+  (let [snapshot-enc (snapshot-encoding candidates)
         rule admission/inclusion-rule
         _ (doseq [{:strs [slug reliance]} candidates
                   :when (= "relied-upon" (get reliance "status"))]
@@ -213,8 +218,8 @@
   Both facts are already on the chain and neither is accepted unverified: every
   verifier re-derives `validation_summary.invalid_slugs` from the published
   validation records, and the work entry carries the source hash its
-  artifacts were built from. So this compares two signed statements, and it
-  needs no threshold. A work absent from either release, newly published or
+  artifacts were built from. So this compares two signed statements and
+  requires no threshold. A work absent from either release, newly published or
   withdrawn, is not a regression and is not here."
   [head-manifest manifest]
   (let [source-of (fn [m]
