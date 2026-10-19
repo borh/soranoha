@@ -93,9 +93,10 @@
   (into {} (map (fn [[hex bytes]] [(verify/blob-path hex) bytes])) blobs))
 
 (defn- verify-reason-at [clone commit]
-  (try (do (verify/verify-repository-at (view/git-view clone) commit (fx/pinned-keys))
-           :valid)
-       (catch clojure.lang.ExceptionInfo e (:reason (ex-data e)))))
+  (try
+    (verify/verify-repository-at (view/git-view clone) commit (fx/pinned-keys))
+    :valid
+    (catch clojure.lang.ExceptionInfo e (:reason (ex-data e)))))
 
 (deftest a-chain-publishing-a-catalog-v1-verifies
   (let [{:keys [clone head-commit head]} (chain-ctx)
