@@ -77,7 +77,7 @@
     (throw (ex-info "boundary decode applies only to the five protocol JSON objects"
                     {:type type :known (keys schema/schema-resources)})))
   (let [value (parse-value type stored-bytes)]
-    (when-let [errors (schema/validation-errors type value)]
+    (when-let [errors (schema/decode-errors type value)]
       (reject! :schema-invalid type {:errors errors}))
     ((semantic/check-for type) value)
     (let [canonical-bytes (canonical/rfc8785-safe-integer-json-bytes-v1 value)]
@@ -92,8 +92,17 @@
 
 (defn encode
   "Returns canonical bytes and id for a protocol value of `type`.
-  Round-trips through `decode` to ensure validity before emission."
+  Round-trips through `decode` to ensure validity before emission. The
+  writer is pinned to the current schema version, so a value that `decode`
+  can read as historical cannot be re-emitted under that version."
   [type value]
+  ;; `decode` reads every published version; a derived value is emitted under
+  ;; the current one, so the current requirements are checked here. Every
+  ;; type but `catalog` has one published version, for which this repeats the
+  ;; schema check `decode` already makes.
+  (when (= "catalog" type)
+    (when-let [errors (schema/validation-errors type value)]
+      (reject! :schema-invalid type {:errors errors})))
   (let [bytes (canonical/rfc8785-safe-integer-json-bytes-v1 value)
         decoded (decode type bytes)]
     (assoc decoded :bytes bytes)))
