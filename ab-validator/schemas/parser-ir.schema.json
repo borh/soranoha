@@ -503,6 +503,7 @@
         },
         "ids": {"type":"string","minLength":1},
         "glyphwiki_glyph": {"type":"string","pattern":"^[a-z0-9-]+$"},
+        "mapping_source": {"type":"string","enum":["cjkvi-data"]},
         "resolved": {
           "type": "boolean"
         }

@@ -46,11 +46,14 @@
 //!    the U+2160 / U+2170 blocks.
 //! 7. **Voicing mark**: a `濁点付き…` / `半濁点付き…` description,
 //!    composed as the base followed by U+3099 / U+309A.
-//! 8. **Single-character description**: a description that is one
+//! 8. **cjkvi-data table**: keyed by the description text, from the
+//!    community table `data/aozora-gaiji-cjkvi.tsv`. [`lookup_with_source`]
+//!    reports a hit here as [`MappingSource::CjkviData`].
+//! 9. **Single-character description**: a description that is one
 //!    character resolves to that character.
-//! 9. **None**: unresolved. The renderer outputs the raw `description`.
-//!    [`external_identity`] may still name the character by its
-//!    Ideographic Description Sequence and `GlyphWiki` glyph.
+//! 10. **None**: unresolved. The renderer outputs the raw `description`.
+//!     [`external_identity`] may still name the character by its
+//!     Ideographic Description Sequence and `GlyphWiki` glyph.
 //!
 //! ## Two PHF maps
 //!
@@ -67,8 +70,8 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use crate::jisx0213_table::{
-    DESCRIPTION_TO_CHAR, DESCRIPTION_TO_EXTERNAL, JISX0213_MENCODE_TO_CHAR,
-    JISX0213_MENCODE_TO_STR, ROMAN_NUMERAL_LOWER, ROMAN_NUMERAL_UPPER,
+    DESCRIPTION_TO_CHAR, DESCRIPTION_TO_CHAR_CJKVI, DESCRIPTION_TO_EXTERNAL,
+    JISX0213_MENCODE_TO_CHAR, JISX0213_MENCODE_TO_STR, ROMAN_NUMERAL_LOWER, ROMAN_NUMERAL_UPPER,
 };
 
 /// Resolution outcome — either a single Unicode scalar or a static
@@ -180,6 +183,17 @@ impl Resolved {
     }
 }
 
+/// Which tier of the lookup order supplied a [`Resolved`] value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MappingSource {
+    /// A JIS or `U+` reference, the 外字注記辞書 and its curated
+    /// supplements, a composition rule, or the description's own single
+    /// character.
+    Standard,
+    /// The cjkvi-data table of Aozora notations, `data/aozora-gaiji-cjkvi.tsv`.
+    CjkviData,
+}
+
 /// Pure-function lookup used by `aozora-pipeline`'s classify stage
 /// to populate the gaiji node's `ucs` field at construction time.
 ///
@@ -192,8 +206,18 @@ pub fn lookup(
     mencode: Option<&str>,
     description: &str,
 ) -> Option<Resolved> {
+    lookup_with_source(existing, mencode, description).map(|(resolved, _)| resolved)
+}
+
+/// [`lookup`] together with the tier that supplied the value.
+#[must_use]
+pub fn lookup_with_source(
+    existing: Option<char>,
+    mencode: Option<&str>,
+    description: &str,
+) -> Option<(Resolved, MappingSource)> {
     if let Some(ch) = existing {
-        return Some(Resolved::Char(ch));
+        return Some((Resolved::Char(ch), MappingSource::Standard));
     }
     let mut reference = None;
     for clause in mencode.into_iter().flat_map(reference_clauses).chain(
@@ -213,19 +237,22 @@ pub fn lookup(
             reference = Some(resolved);
         }
     }
-    if reference.is_some() {
-        return reference;
+    if let Some(resolved) = reference {
+        return Some((resolved, MappingSource::Standard));
     }
     if let Some(&ch) = DESCRIPTION_TO_CHAR.get(description) {
-        return Some(Resolved::Char(ch));
+        return Some((Resolved::Char(ch), MappingSource::Standard));
     }
     // Bare `ローマ数字N` is composed from the U+2160 block: the N≥13
     // forms have no single JIS cell and no entry in the description table.
     if let Some(s) = roman_numeral_glyph(description) {
-        return Some(Resolved::Multi(s));
+        return Some((Resolved::Multi(s), MappingSource::Standard));
     }
     if let Some(voiced) = voiced_glyph(description) {
-        return Some(voiced);
+        return Some((voiced, MappingSource::Standard));
+    }
+    if let Some(&ch) = DESCRIPTION_TO_CHAR_CJKVI.get(description) {
+        return Some((Resolved::Char(ch), MappingSource::CjkviData));
     }
     // A description that is itself a single character resolves to that
     // character. The corpora contain this form where the transcriber could
@@ -243,7 +270,7 @@ pub fn lookup(
     if let Some(only) = chars.next()
         && chars.next().is_none()
     {
-        return Some(Resolved::Char(only));
+        return Some((Resolved::Char(only), MappingSource::Standard));
     }
     None
 }
@@ -520,7 +547,8 @@ fn parse_u_plus(mencode: &str) -> Option<char> {
 // `aozora-gaiji-special.tsv` (hand-curated 〓 / 〻 placeholders).
 // `build.rs` generates the table as
 // `crate::jisx0213_table::DESCRIPTION_TO_CHAR` (imported at the top of
-// this module).
+// this module), and the descriptions only `aozora-gaiji-cjkvi.tsv` maps
+// as `DESCRIPTION_TO_CHAR_CJKVI`. The two key sets are disjoint.
 
 /// Entry counts of the compiled tables, for tests and diagnostics:
 /// `(single_char_count, combo_count, description_count)`.
@@ -2368,5 +2396,68 @@ mod voiced_and_external_tests {
             rows += 1;
         }
         assert_eq!(rows, DESCRIPTION_TO_EXTERNAL.len());
+    }
+
+    #[test]
+    fn cjkvi_table_keys_are_what_the_body_parser_derives() {
+        let table = include_str!("../data/aozora-gaiji-cjkvi.tsv");
+        let mut rows = 0;
+        for line in table
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
+            let cols: Vec<&str> = line.split('\t').collect();
+            let (description, codepoint, notation) = (cols[0], cols[1], cols[2]);
+            let body = notation
+                .strip_prefix("※［＃")
+                .and_then(|body| body.strip_suffix('］'))
+                .unwrap_or_else(|| panic!("{notation} is not a complete marker"));
+            assert_eq!(
+                parse_gaiji_body(body).description,
+                description,
+                "{notation}"
+            );
+            assert!(
+                !DESCRIPTION_TO_CHAR.contains_key(description),
+                "{description} is in the official dictionary"
+            );
+            let expected = char::from_u32(u32::from_str_radix(codepoint, 16).unwrap()).unwrap();
+            assert_eq!(
+                lookup_with_source(None, None, description),
+                Some((Resolved::Char(expected), MappingSource::CjkviData)),
+                "{description}"
+            );
+            rows += 1;
+        }
+        assert_eq!(rows, DESCRIPTION_TO_CHAR_CJKVI.len());
+    }
+
+    #[test]
+    fn cjkvi_tier_yields_to_references_and_the_official_dictionary() {
+        assert_eq!(
+            lookup_with_source(None, None, "「纏」の「广」に代えて「厂」"),
+            Some((Resolved::Char('纒'), MappingSource::CjkviData))
+        );
+        assert_eq!(
+            lookup_with_source(None, Some("第3水準1-87-64"), "「纏」の「广」に代えて「厂」"),
+            Some((Resolved::Char('燄'), MappingSource::Standard)),
+            "a JIS reference decides before any description table"
+        );
+        assert_eq!(
+            lookup_with_source(None, None, "朽のつくり"),
+            Some((Resolved::Char('丂'), MappingSource::Standard))
+        );
+        assert_eq!(
+            lookup_with_source(None, None, "濁点付き片仮名エ"),
+            Some((
+                Resolved::Voiced {
+                    base: 'エ',
+                    mark: '\u{3099}'
+                },
+                MappingSource::Standard
+            )),
+            "composition rules decide before the cjkvi table"
+        );
+        assert_eq!(lookup_with_source(None, None, "未知の字"), None);
     }
 }

@@ -242,10 +242,20 @@
   [^String value]
   (if (> (.codePointCount value 0 (.length value)) 1) "composed" "unicode"))
 
+(def ^:private mapping-source-urls
+  "The published table a parser-IR `mapping_source` value stands for."
+  {"cjkvi-data" "https://github.com/cjkvi/cjkvi-data/blob/e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1/aozora_gaiji_chuki.txt"})
+
 (defn- declaration->char [declaration]
   (cond-> [:char {:xml/id (:xml-id declaration)}]
     (:unicode declaration)
     (conj [:mapping {:type (mapping-type (:unicode declaration))} (:unicode declaration)])
+
+    (:mapping-source declaration)
+    (conj [:localProp {:name "mappingSource"
+                       :value (or (mapping-source-urls (:mapping-source declaration))
+                                  (throw (ex-info "unknown gaiji mapping source"
+                                                  {:mapping-source (:mapping-source declaration)})))}])
 
     (:ids declaration)
     (conj [:mapping {:type "IDS"} (:ids declaration)])

@@ -124,11 +124,14 @@
                    "gaiji" {"raw_marker" "冫＋虫" "reference" "12-3" "unicode" nil "resolved" false
                             "unresolved_reason" "unresolved"
                             "ids" "⿰冫虫" "glyphwiki_glyph" "u2ff0-u51ab-u866b"}}
-        rendered (tei/render {"nodes" [voiced unencoded]})
+        community {"type" "gaiji"
+                   "gaiji" {"raw_marker" "「纏」の「广」に代えて「厂」" "reference" "224-5"
+                            "unicode" "纒" "resolved" true "mapping_source" "cjkvi-data"}}
+        rendered (tei/render {"nodes" [voiced unencoded community]})
         chars (map #(drop 2 (#'header/declaration->char %)) (:char_declarations rendered))
         ^String xml (:tei (render/render-work
                            {:rights @fixture/grant
-                            :parser-ir {"nodes" [voiced unencoded]}
+                            :parser-ir {"nodes" [voiced unencoded community]}
                             :metadata-record {"work" {"title" "試験" "aozora_modified" "2026-10-19"}
                                               "contributors" []}
                             :persons-by-id {}}))]
@@ -141,6 +144,10 @@
                 [:figDesc "⿰冫虫"]]}
              (set (remove #(and (= :localProp (first %)) (not= "glyphwiki" (:name (second %))))
                           (second chars)))))
+      (is (= [[:mapping {:type "unicode"} "纒"]
+              [:localProp {:name "mappingSource"
+                           :value "https://github.com/cjkvi/cjkvi-data/blob/e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1/aozora_gaiji_chuki.txt"}]]
+             (take 2 (nth chars 2))))
       (is (not (string/includes? xml "type=\"unicode\">エ")))
       (spit xml-path xml)
       (is (empty? (:violations (rng/validate! {:schema-path "schemas/tei-profile.rng"

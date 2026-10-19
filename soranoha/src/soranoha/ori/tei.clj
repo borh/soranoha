@@ -321,7 +321,10 @@
       (assoc :ids (get gaiji "ids"))
 
       (seq (get gaiji "glyphwiki_glyph"))
-      (assoc :glyphwiki (get gaiji "glyphwiki_glyph")))))
+      (assoc :glyphwiki (get gaiji "glyphwiki_glyph"))
+
+      (seq (get gaiji "mapping_source"))
+      (assoc :mapping-source (get gaiji "mapping_source")))))
 
 (declare render-node)
 

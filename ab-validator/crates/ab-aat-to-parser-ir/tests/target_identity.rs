@@ -159,6 +159,15 @@ fn unencoded_gaiji_keeps_its_ids_and_glyphwiki_glyph() {
 }
 
 #[test]
+fn cjkvi_resolution_keeps_its_mapping_source() {
+    let ir = convert("詩集※［＃「纏」の「广」に代えて「厂」、224-5］後");
+    let all = nodes(&ir);
+    let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], "纒");
+    assert_eq!(glyph["gaiji"]["mapping_source"], "cjkvi-data");
+}
+
+#[test]
 fn unresolved_combined_punctuation_retains_visible_fallback() {
     let marker = "［＃「!!!」は一文字、95-13］";
     let body = format!("詩集!!!{marker}後");
@@ -1112,8 +1121,8 @@ fn a_witness_can_retain_an_unmapped_glyph_without_inventing_its_character() {
 #[test]
 fn component_substitution_glyphs_remain_structured_witnesses() {
     for description in [
-        "「闃」の「目」に代えて「自」",
-        "「贏」の「貝」に代えて「果」、（二）-27-3",
+        "「闃」の「目」に代えて「耳」",
+        "「贏」の「貝」に代えて「耳」、（二）-27-3",
     ] {
         let marker = format!("※［＃{description}］");
         let body = format!("字［＃「字」は底本では「{marker}」］");

@@ -52,6 +52,7 @@ fn main() {
     let dict_tsv = data_dir.join("aozora-gaiji-chuki.tsv");
     let special_tsv = data_dir.join("aozora-gaiji-special.tsv");
     let external_tsv = data_dir.join("aozora-gaiji-glyphwiki.tsv");
+    let cjkvi_tsv = data_dir.join("aozora-gaiji-cjkvi.tsv");
     // The full table supplies older cells for explicit gaiji references
     // and level annotations for the reverse character classifier.
     let std_txt = data_dir.join("jisx0213-2004-std.txt");
@@ -62,14 +63,16 @@ fn main() {
     println!("cargo:rerun-if-changed={}", dict_tsv.display());
     println!("cargo:rerun-if-changed={}", special_tsv.display());
     println!("cargo:rerun-if-changed={}", external_tsv.display());
+    println!("cargo:rerun-if-changed={}", cjkvi_tsv.display());
     println!("cargo:rerun-if-changed={}", std_txt.display());
 
     let mut single = parse_single_tsv(&single_tsv);
     add_older_jis_cells(&mut single, &std_txt);
     let combo = parse_combo_tsv(&combo_tsv);
-    let dict = parse_description_tsv(&dict_tsv);
-    let special = parse_description_tsv(&special_tsv);
+    let dict = parse_description_tsv(&dict_tsv, 2);
+    let special = parse_description_tsv(&special_tsv, 2);
     let external = parse_external_tsv(&external_tsv);
+    let cjkvi = parse_description_tsv(&cjkvi_tsv, 4);
     let levels = build_level_table(&std_txt);
 
     // Hand-curated specials take precedence over dictionary entries
@@ -85,6 +88,24 @@ fn main() {
     // Sorting gives the same order on every build, so the generated
     // file diffs cleanly when inspected.
     description.sort_by(|a, b| a.description.cmp(&b.description));
+
+    // The cjkvi table only fills descriptions the official dictionary
+    // lacks, so a key present in both resolves through one map.
+    let official: std::collections::HashSet<&str> =
+        description.iter().map(|e| e.description.as_str()).collect();
+    let mut cjkvi: Vec<DescriptionEntry> = cjkvi
+        .into_iter()
+        .filter(|e| !official.contains(e.description.as_str()))
+        .collect();
+    cjkvi.sort_by(|a, b| a.description.cmp(&b.description));
+    for pair in cjkvi.windows(2) {
+        assert!(
+            pair[0].description != pair[1].description,
+            "{}: duplicate description {}",
+            cjkvi_tsv.display(),
+            pair[0].description
+        );
+    }
 
     let plane1_count = single.iter().filter(|e| e.plane == 1).count();
     let plane2_count = single.iter().filter(|e| e.plane == 2).count();
@@ -165,6 +186,22 @@ fn main() {
         out,
         "pub(crate) static DESCRIPTION_TO_CHAR: phf::Map<&'static str, char> = {};",
         description_builder.build(),
+    )
+    .expect(INFALLIBLE);
+    writeln!(out).expect(INFALLIBLE);
+
+    let mut cjkvi_builder = phf_codegen::Map::<&str>::new();
+    let cjkvi_values: Vec<String> = cjkvi
+        .iter()
+        .map(|e| format!("'\\u{{{:04X}}}'", e.codepoint))
+        .collect();
+    for (entry, value) in cjkvi.iter().zip(cjkvi_values.iter()) {
+        cjkvi_builder.entry(entry.description.as_str(), value.as_str());
+    }
+    writeln!(
+        out,
+        "pub(crate) static DESCRIPTION_TO_CHAR_CJKVI: phf::Map<&'static str, char> = {};",
+        cjkvi_builder.build(),
     )
     .expect(INFALLIBLE);
     writeln!(out).expect(INFALLIBLE);
@@ -376,17 +413,24 @@ fn parse_combo_tsv(path: &std::path::Path) -> Vec<ComboEntry> {
     out
 }
 
-fn parse_description_tsv(path: &std::path::Path) -> Vec<DescriptionEntry> {
+/// `description<TAB>codepoint_hex` rows, with `columns` tab-separated
+/// fields per row; fields after the second do not reach the binary.
+fn parse_description_tsv(path: &std::path::Path, columns: usize) -> Vec<DescriptionEntry> {
     let text =
         fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
     let mut out = Vec::new();
     for line in text.lines() {
-        let trimmed = line.trim_end();
+        let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
         let cols: Vec<&str> = trimmed.split('\t').collect();
-        assert_eq!(cols.len(), 2);
+        assert_eq!(
+            cols.len(),
+            columns,
+            "{}: expected {columns} columns: {trimmed}",
+            path.display()
+        );
         let codepoint = u32::from_str_radix(cols[1], 16).expect("codepoint hex");
         out.push(DescriptionEntry {
             description: cols[0].to_owned(),

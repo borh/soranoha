@@ -96,6 +96,7 @@ character:
 | Child | Meaning |
 |---|---|
 | `mapping[@type='unicode']` | The one code point the converter chose from the marker's JIS X 0213 cell, `U+` code or description. |
+| `localProp[@name='mappingSource']` | Present when the code point comes from the cjkvi-data table of Aozora notations rather than the JIS reference, the 外字注記辞書 or a composition rule: the URL of that table at the commit the parser reads. |
 | `mapping[@type='composed']` | A sequence of code points: a JIS X 0213 cell whose Unicode form is a base and a combining mark, a roman numeral above twelve, or a `濁点付き…` description composed as the base followed by U+3099 or U+309A. |
 | `mapping[@type='IDS']` | The Ideographic Description Sequence of a character Unicode does not encode, from the GlyphWiki group for Aozora Bunko gaiji. |
 | `localProp[@name='glyphwiki']` | The GlyphWiki glyph name for that character; `figure/graphic/@url` beside it points at the glyph image on glyphwiki.org. |

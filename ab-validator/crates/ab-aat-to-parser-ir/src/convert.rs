@@ -979,7 +979,7 @@ fn gaiji_payload(node: &Value) -> Value {
     if let Some(reason) = node.get("unresolved_reason") {
         payload["unresolved_reason"] = reason.clone();
     }
-    for key in ["ids", "glyphwiki_glyph"] {
+    for key in ["ids", "glyphwiki_glyph", "mapping_source"] {
         if let Some(value) = node.get(key) {
             payload[key] = value.clone();
         }

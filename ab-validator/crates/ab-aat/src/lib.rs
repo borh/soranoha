@@ -6584,6 +6584,11 @@ fn gaiji_json(decoded: &DecodedSource, span: &Span, gaiji: &AozoraGaiji) -> Valu
         glyph["ids"] = json!(identity.ids);
         glyph["glyphwiki_glyph"] = json!(identity.glyphwiki);
     }
+    if let Some((_, encoding::gaiji::MappingSource::CjkviData)) =
+        encoding::gaiji::lookup_with_source(None, gaiji.mencode.as_deref(), &gaiji.description)
+    {
+        glyph["mapping_source"] = json!("cjkvi-data");
+    }
     if gaiji.resolved.is_none()
         && !source.starts_with("［＃")
         && !source.starts_with("[#")
@@ -10361,7 +10366,7 @@ mod tests {
         assert_eq!(gaiji["unresolved_reason"], "unresolved");
     }
 
-    /// A gaiji Unicode does not encode carries the identity the GlyphWiki
+    /// A gaiji Unicode does not encode carries the identity the `GlyphWiki`
     /// table records for its description; a resolved gaiji and an unlisted
     /// description carry neither field.
     #[test]
@@ -10384,6 +10389,28 @@ mod tests {
         let gaiji = find_first_node(&resolved, "gaiji");
         assert_eq!(gaiji["resolved"], "燄");
         assert!(gaiji.get("ids").is_none());
+    }
+
+    /// A description only the cjkvi-data table maps resolves and names that
+    /// table; a description the official dictionary maps carries no
+    /// `mapping_source`.
+    #[test]
+    fn cjkvi_resolution_names_its_source() {
+        let aat = aat_value_for(
+            "※［＃「纏」の「广」に代えて「厂」、224-5］と※［＃「けものへん＋苗」、第3水準1-87-64］\n",
+        );
+        let gaiji: Vec<&Value> = aat["blocks"][0]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["kind"] == "gaiji")
+            .collect();
+        assert_eq!(gaiji.len(), 2);
+        assert_eq!(gaiji[0]["resolved"], "纒");
+        assert_eq!(gaiji[0]["mapping_source"], "cjkvi-data");
+        assert!(gaiji[0]["unresolved_reason"].is_null());
+        assert_eq!(gaiji[1]["resolved"], "燄");
+        assert!(gaiji[1].get("mapping_source").is_none());
     }
 
     /// A `濁点付き…` description without a precomposed character resolves

@@ -165,6 +165,7 @@ Gaiji fields:
 | `unresolved_reason` | string or null | Reason the adapter did not resolve the gaiji. Null or empty means resolved/no unresolved reason. |
 | `ids` | string | Ideographic Description Sequence of an unresolved gaiji that Unicode does not encode. Present only with `glyphwiki_glyph`. |
 | `glyphwiki_glyph` | string | GlyphWiki glyph name for the same character; the glyph is served at `https://glyphwiki.org/glyph/<name>.svg`. |
+| `mapping_source` | string | `cjkvi-data` when the code point in `resolved` comes from the cjkvi-data table of Aozora notations rather than the JIS reference, the 外字注記辞書 or a composition rule. Absent otherwise. |
 
 ## Selector Protocol v1
 
