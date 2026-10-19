@@ -21,6 +21,7 @@
             [soranoha.ori.validate :as validate]
             [soranoha.core.json :as record-json]
             [soranoha.core.ndc :as ndc]
+            [soranoha.gates.active-path-hygiene :as active-path-hygiene]
             [soranoha.gates.catalog-figures :as catalog-figures]
             [soranoha.gates.docs-links :as docs-links]
             [soranoha.gates.flake-inputs :as flake-inputs]
@@ -1208,6 +1209,7 @@
                             (System/exit 1))
           ;; repository gates: each prints its findings and the exit code
           ;; is the gate's verdict
+          "active-path-hygiene" (exit-unless-zero! (active-path-hygiene/gate! (require-repo! "active-path-hygiene" opts)))
           "docs-links" (exit-unless-zero! (docs-links/gate! (require-repo! "docs-links" opts)))
           "flake-input-policy" (exit-unless-zero! (flake-inputs/gate! (require-repo! "flake-input-policy" opts)))
           "schema-hash-coherence" (exit-unless-zero! (schema-hashes/gate! (require-repo! "schema-hash-coherence" opts)))
@@ -1216,7 +1218,7 @@
                               (assoc opts :repo (require-repo! "catalog-figures" opts)
                                      :aozora-root (or (:aozora-root opts) (System/getenv "CORPUS_CHECKOUT")))))
           (do (binding [*out* *err*]
-                (println "usage: build|release|release-needed|release-delta|corpus-delta|governance-event-prepare|governance|serving-activate|publication-init|assessment-evaluate|assessment-drift|aozora-reliance-prepare|archive-verify|ndc9-sections|docs-links|flake-input-policy|schema-hash-coherence|catalog-figures [--root R --aozora-root A --assets-root S ...]"))
+                (println "usage: build|release|release-needed|release-delta|corpus-delta|governance-event-prepare|governance|serving-activate|publication-init|assessment-evaluate|assessment-drift|aozora-reliance-prepare|archive-verify|ndc9-sections|active-path-hygiene|docs-links|flake-input-policy|schema-hash-coherence|catalog-figures [--root R --aozora-root A --assets-root S ...]"))
               (System/exit 2))))
       (System/exit 0)
       (catch clojure.lang.ExceptionInfo e

@@ -38,16 +38,14 @@ Run the standard validation gate:
 just validate
 ```
 
-This checks runtime configuration, active path hygiene, TEI profile generation and
-version coherence, release-critical flake input pins, Python quality, and Nix
-formatting. It runs the publication tests, builds every check of the validator
-flake, checks parser binary reproducibility, and evaluates the root and validator
-flakes directly.
+This recipe verifies runtime configuration, active path hygiene, TEI profile generation and
+version coherence, release-critical flake input pins, and Nix formatting. It executes
+publication tests, builds each check of the validator flake, checks parser
+binary reproducibility, and evaluates the root and validator flakes directly.
 
 Focused checks:
 
 ```sh
-just python-quality
 just nix-format-check
 just soranoha-tests
 just typecheck
@@ -191,8 +189,8 @@ from the pinned input, failing if the committed file differs.
 
 ## Source identity
 
-Nix owns source identity and the toolchain; domain behaviour is implemented in
-Clojure, Rust and Python. Every evidence-bearing input (the TEI P5 source, the TEI-EAJ
+Source identity and toolchains are managed through Nix; domain behavior is implemented in
+Clojure and Rust. Every evidence-bearing input (the TEI P5 source, the TEI-EAJ
 reference, the corpus snapshot, dictionary and converter sources) is pinned by
 revision or release tag in its flake URL, not only in the lock, so a routine
 lock update cannot move it. Infrastructure inputs such as nixpkgs and clj-nix
@@ -201,8 +199,8 @@ are lock-only pins.
 The root `flake.lock` is the canonical lock. The `ab-validator/flake.lock`
 supports working in that component directly and must agree with the root lock
 for shared non-path inputs, so one change updates a shared input in both locks.
-`just flake-input-policy` enforces both rules, and `just tei-version-coherence`
-checks that every TEI reference in the repository is P5 4.11.0.
+Both rules are validated via `just flake-input-policy`; `just tei-version-coherence`
+verifies that all TEI references across the repository specify P5 4.11.0.
 
 ## Where the rest is written
 

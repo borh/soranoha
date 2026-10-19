@@ -1,14 +1,14 @@
-# JIS X 0213:2004 mencode table — single-codepoint cells only.
+# JIS X 0213:2004 men-ku-ten mapping table — single-codepoint cells only.
 #
-# Generated from jisx0213-2004-std.txt by generate_jisx0213_tables.py.
+# Generated from jisx0213-2004-std.txt by tests/jisx0213_tables.rs.
 # Do not edit: regenerate instead.
 #
 # Terms: inherited from the source table, whose header grants free use,
 # modification and distribution (Project X0213, earthian@tama.or.jp, I'O).
 #
-# Filtered to gaiji territory: plane 1 cells the source marks [2000] or [2004],
-# which are the ones JIS X 0213 introduced over JIS X 0208 (第3水準), plus all
-# plane 2 cells (第4水準). Cells whose mapping is a combining sequence are in
+# Filtered to gaiji territory: plane 1 cells marked [2000] or [2004] in the source,
+# representing characters introduced by JIS X 0213 beyond JIS X 0208 (第3水準), plus all
+# plane 2 cells (第4水準). Cells mapped to combining sequences appear in
 # jisx0213-combo.tsv.
 #
 # Format: plane<TAB>row<TAB>cell<TAB>codepoint_hex

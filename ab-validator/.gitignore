@@ -5,8 +5,6 @@ target/
 adapters/*/target/
 result
 result-*
-__pycache__/
-*.pyc
 
 # Local scratch directory for benchmark/run outputs (kept out of /tmp/)
 scratch/

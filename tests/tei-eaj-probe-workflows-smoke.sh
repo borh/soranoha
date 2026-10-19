@@ -6,21 +6,12 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin"
 
-cat > "$tmp/bin/nix" <<'SH'
-#!/usr/bin/env bash
+cat > "$tmp/bin/nix" <<SH
+#!$(command -v bash)
 set -euo pipefail
-: "${TRACE:?}"
-printf '%s\n' "$*" >> "$TRACE"
-case "$1" in
-  build)
-    test "$*" = "build ./ab-validator#ab-aat-to-parser-ir --no-link --print-out-paths"
-    printf '%s\n' /nix/store/fake-ab-aat-to-parser-ir
-    ;;
-  run)
-    test "${ABC_TEI_EAJ_ALIGNMENT_PROBE_BIN:-}" = "/nix/store/fake-ab-aat-to-parser-ir/bin/ab-aat-to-parser-ir"
-    ;;
-  *) exit 64 ;;
-esac
+: "\${TRACE:?}"
+printf '%s\n' "\$*" >> "\$TRACE"
+test "\$1" = run
 SH
 chmod +x "$tmp/bin/nix"
 

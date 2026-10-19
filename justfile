@@ -128,10 +128,7 @@ runtime-config-smoke:
 	@bash tests/runtime-config-smoke.sh
 
 active-path-hygiene:
-	@bash tests/monorepo-active-path-hygiene-smoke.sh
-
-python-quality:
-	@bash scripts/python-quality.sh
+	@{{kernel}} active-path-hygiene --repo "$PWD"
 
 # Scans the files git tracks, so it runs here rather than as a flake check:
 # the check source is a store path with no git directory, and a tree walk
@@ -142,10 +139,14 @@ comment-hygiene:
 docs-links:
 	@{{kernel}} docs-links --repo "$PWD"
 
-# The two JIS X 0213 gaiji tables must match the generator's output from the
-# licensed source table, so a hand edit cannot separate either from its terms.
+# The two JIS X 0213 gaiji tables must match their derivation from the
+# licensed source table, ensuring that committed data remains consistent with source terms.
 gaiji-table-drift:
-	@python ab-validator/crates/ab-aozora-encoding/data/generate_jisx0213_tables.py --check
+	@cd ab-validator && cargo test -p ab-aozora-encoding --test jisx0213_tables
+
+# Rewrite the two tables from the source table.
+gaiji-tables-regenerate:
+	@cd ab-validator && AB_WRITE_JISX0213_TABLES=1 cargo test -p ab-aozora-encoding --test jisx0213_tables
 
 # Re-derive every corpus figure quoted in prose from the pinned Aozora catalog.
 # Not part of any bundled gate: it needs a corpus checkout, which the sandboxed
@@ -202,17 +203,19 @@ tei-eaj-alignment-probe *args:
 tei-eaj-reports-with-probes *args:
 	@scripts/run-tei-eaj-probe-workflow.sh reports-with-probes {{args}}
 
+tei-eaj-probe-workflow-smoke:
+	@bash tests/tei-eaj-probe-workflows-smoke.sh
+
 validate-eval-cache-smoke:
 	@bash tests/validate-eval-cache-smoke.sh
 
-check-no-build: runtime-config-smoke active-path-hygiene root-flake-output-contract tei-version-coherence flake-input-policy schema-hash-coherence figure-quotes python-quality comment-hygiene docs-links gaiji-table-drift nix-format-check validate-eval-cache-smoke root-flake-check-no-build
+check-no-build: runtime-config-smoke tei-eaj-probe-workflow-smoke active-path-hygiene root-flake-output-contract tei-version-coherence flake-input-policy schema-hash-coherence figure-quotes comment-hygiene docs-links gaiji-table-drift nix-format-check validate-eval-cache-smoke root-flake-check-no-build
 	@(cd ab-validator && AB_WORKSPACE_ROOT="$(pwd)/.." {{nix_eval}} flake check --no-build)
 
 # Publication tests, the generated TEI profile and the NDC9 class table must match their checked-in sources.
 evidence-gate: soranoha-tests typecheck
 	@system="$({{nix_eval}} eval --impure --raw --expr builtins.currentSystem)"; \
-	{{nix_eval}} build ".#checks.$system.tei-profile-drift" ".#checks.$system.ndc9-sections-drift" \
-		"./ab-validator#checks.$system.tei-eaj-python-tests" --print-build-logs
+	{{nix_eval}} build ".#checks.$system.tei-profile-drift" ".#checks.$system.ndc9-sections-drift" --print-build-logs
 
 # Soranoha kernel + snh conformance suite plus clj-kondo/cljfmt, hermetic
 # against the root wrapper's shared Clojure/dependency-cache context.

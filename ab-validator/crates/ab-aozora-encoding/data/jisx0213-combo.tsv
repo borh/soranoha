@@ -1,16 +1,16 @@
 # JIS X 0213:2004 multi-codepoint cells.
 #
-# Generated from jisx0213-2004-std.txt by generate_jisx0213_tables.py.
+# Generated from jisx0213-2004-std.txt by tests/jisx0213_tables.rs.
 # Do not edit: regenerate instead.
 #
 # Terms: inherited from the source table, whose header grants free use,
 # modification and distribution (Project X0213, earthian@tama.or.jp, I'O).
 #
 # The 25 plane 1 第3水準 cells whose canonical mapping is a Unicode combining
-# sequence, a base character followed by a combining diacritic, rather than a
-# single scalar. They cannot be represented as a single `char` and therefore
-# live in a separate string-valued phf::Map. The lookup API stitches both maps
-# together so callers get a uniform `&str` result.
+# sequence: a base character followed by a combining diacritic rather than an
+# individual scalar value. Because a combining sequence exceeds a single Unicode
+# scalar, these entries are recorded in a separate string map. Queries across both
+# mappings return uniform `&str` results through the lookup interface.
 #
 # Format: plane<TAB>row<TAB>cell<TAB>comma-separated codepoint hex
 # (e.g. `1\t4\t87\t304B,309A` = か + 半濁点 = か゚)

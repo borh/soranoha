@@ -208,27 +208,11 @@
           mkdir -p ../soranoha/test/fixtures
           cp -R ${soranoha-assets}/test/fixtures/canonicalization ../soranoha/test/fixtures/
         '';
-        teiEajPythonTests =
-          pkgs.runCommand "tei-eaj-python-tests"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.python3Packages.pytest
-              ];
-            }
-            ''
-              cp -R ${source}/tools/tei-eaj tei-eaj
-              chmod -R u+w tei-eaj
-              cd tei-eaj
-              python -m pytest -q .
-              touch "$out"
-            '';
         teiEajApp = subcommand: {
           type = "app";
           program = toString (
             pkgs.writeShellScript "tei-eaj-${subcommand}" ''
-              exec ${pkgs.python3}/bin/python ${source}/tools/tei-eaj/tei_eaj_aozora_reports.py \
-                --compare-script ${source}/tools/tei-eaj/tei_eaj_compare.py \
+              exec ${abAatToParserIr}/bin/ab-aat-to-parser-ir tei-eaj-reports \
                 --tei-eaj-root ${tei-eaj-aozora-tei} \
                 --source-rev ${tei-eaj-aozora-tei.rev} ${subcommand} "$@"
             ''
@@ -468,7 +452,6 @@
           pname = "ab-validator";
           nativeBuildInputs = [
             pkgs.pkg-config
-            pkgs.python3
             pkgs.zstd
           ];
           buildInputs = workspaceExtraBuildInputs;
@@ -482,7 +465,6 @@
           pname = "ab-validator-check";
           nativeBuildInputs = [
             pkgs.pkg-config
-            pkgs.python3
             pkgs.zstd
           ];
           buildInputs = workspaceExtraBuildInputs;
@@ -498,7 +480,6 @@
           nativeBuildInputs = [
             rustToolchain
             pkgs.pkg-config
-            pkgs.python3
             pkgs.zstd
           ];
 
@@ -586,15 +567,8 @@
           pkgs.fd
           pkgs.jq
           pkgs.hyperfine
-          pkgs.python3
           pkgs.jdk
         ];
-
-        pythonWithAatSchemaDeps = pkgs.python3.withPackages (ps: [
-          ps.jsonschema
-          ps.tomli
-          ps.pytest
-        ]);
 
         mkSmokeCheck =
           {
@@ -719,7 +693,6 @@
           nativeBuildInputs = [
             pkgs.git
             pkgs.just
-            pkgs.python3
           ];
           extraPreScript = "git init -q";
         };
@@ -797,7 +770,6 @@
             pkgs.babashka
             pkgs.clojure
             pkgs.jq
-            pythonWithAatSchemaDeps
           ];
           extraEnv = {
             AB_AAT_TO_PARSER_IR_BIN = "${abAatToParserIr}/bin/ab-aat-to-parser-ir";
@@ -845,7 +817,6 @@
           };
 
         checks = {
-          tei-eaj-python-tests = teiEajPythonTests;
           default = workspaceCheck;
           cargo-fmt = cargoFmtCheck;
           cargo-check = cargoCheck;

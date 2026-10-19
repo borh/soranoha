@@ -15,6 +15,4 @@ case "$workflow" in
 esac
 
 cd "$repo_root"
-probe_root="$(nix build ./ab-validator#ab-aat-to-parser-ir --no-link --print-out-paths)"
-export ABC_TEI_EAJ_ALIGNMENT_PROBE_BIN="$probe_root/bin/ab-aat-to-parser-ir"
 exec nix run "./ab-validator#$app" -- "$@"

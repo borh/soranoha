@@ -216,8 +216,8 @@
             pkgs.bash
             pkgs.coreutils
             pkgs.git
+            pkgs.jq
             pkgs.nix
-            pkgs.python3
           ];
 
           mkWrappedScript =
@@ -233,7 +233,7 @@
           flake-input-policy = mkWrappedScript "soranoha-flake-input-policy" ''exec ${kernel} flake-input-policy --repo "$PWD" "$@"'';
           validate = mkWrappedScript "soranoha-validate" ''
             workspace_root="$PWD"
-            bash tests/monorepo-active-path-hygiene-smoke.sh
+            ${kernel} active-path-hygiene --repo "$workspace_root"
             bash tests/root-flake-output-contract-smoke.sh
             bash scripts/monorepo-tei-version-coherence.sh
             ${kernel} flake-input-policy --repo "$workspace_root"
@@ -311,9 +311,9 @@
           # which starts from its store copy of soranoha/ and takes the
           # repository root as `--repo`.
           kernel = self.apps.${pkgs.stdenv.hostPlatform.system}.soranoha-kernel.program;
-          # A check that runs a script from the repository root. bash,
-          # coreutils and python are on every check's path; `extraTools`
-          # adds what one script needs beyond them.
+          # A check that runs a script from the repository root. bash and
+          # coreutils are on every check's path; `extraTools` adds what one
+          # script needs beyond them.
           mkMonorepoCheck =
             name: extraTools: script:
             pkgs.runCommand name
@@ -321,7 +321,6 @@
                 nativeBuildInputs = [
                   pkgs.bash
                   pkgs.coreutils
-                  pkgs.python3
                 ]
                 ++ extraTools;
                 src = self;
@@ -332,6 +331,8 @@
                 touch "$out"
               '';
           teiEaj = ab-validator.inputs.tei-eaj-aozora-tei;
+          teiEajReportsWithProbes =
+            ab-validator.apps.${pkgs.stdenv.hostPlatform.system}.tei-eaj-aozora-reports-with-probes.program;
         in
         {
           # Evaluates the ceremony image without building it. nix flake check
@@ -440,32 +441,15 @@
           monorepo-runtime-config = mkMonorepoCheck "soranoha-monorepo-runtime-config" [ ] ''
             bash tests/runtime-config-smoke.sh
           '';
-          monorepo-active-path-hygiene =
-            mkMonorepoCheck "soranoha-monorepo-active-path-hygiene"
-              [
-                pkgs.findutils
-                pkgs.ripgrep
-              ]
-              ''
-                bash tests/monorepo-active-path-hygiene-smoke.sh
-              '';
-          monorepo-workflow-run-lib = mkMonorepoCheck "soranoha-monorepo-workflow-run-lib" [ ] ''
+          monorepo-active-path-hygiene = mkMonorepoCheck "soranoha-monorepo-active-path-hygiene" [ ] ''
+            ${kernel} active-path-hygiene --repo "$src"
+          '';
+          monorepo-workflow-run-lib = mkMonorepoCheck "soranoha-monorepo-workflow-run-lib" [ pkgs.jq ] ''
             bash tests/workflow-run-lib-smoke.sh
           '';
-          monorepo-python-quality =
-            mkMonorepoCheck "soranoha-monorepo-python-quality"
-              [
-                pkgs.findutils
-                pkgs.git
-                pkgs.gnused
-                pkgs.mypy
-                pkgs.ruff
-              ]
-              ''
-                export RUFF_CACHE_DIR="$TMPDIR/ruff-cache"
-                export MYPY_CACHE_DIR="$TMPDIR/mypy-cache"
-                bash scripts/python-quality.sh
-              '';
+          monorepo-tei-eaj-probe-workflow = mkMonorepoCheck "soranoha-monorepo-tei-eaj-probe-workflow" [ ] ''
+            bash tests/tei-eaj-probe-workflows-smoke.sh
+          '';
           monorepo-nix-format =
             mkMonorepoCheck "soranoha-monorepo-nix-format"
               [
@@ -481,59 +465,32 @@
                   | xargs -0 nixfmt --check
               '';
           tei-eaj-aozora-alignment-probe-generation =
-            mkMonorepoCheck "soranoha-tei-eaj-aozora-alignment-probe-generation" [ pkgs.gnugrep ]
+            mkMonorepoCheck "soranoha-tei-eaj-aozora-alignment-probe-generation"
+              [
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.jq
+              ]
               ''
                 work="$TMPDIR/tei-eaj-alignment-probe"
                 mkdir -p "$work/abc"
                 cd "$work"
 
+                # Insert a paragraph after the TEI-EAJ body to produce a tail addition during probe alignment.
                 cp "${teiEaj}/data/complete/tei_lib_lv4/1567_tei.xml" abc/melos.xml
                 chmod u+w abc/melos.xml
-                python - <<'PY'
-                from pathlib import Path
+                sed -i 's#</body>#<p>（古伝説と、シルレルの詩から。）</p></body>#' abc/melos.xml
 
-                path = Path("abc/melos.xml")
-                text = path.read_text(encoding="utf-8")
-                text = text.replace(
-                    "</body>",
-                    "<p>（古伝説と、シルレルの詩から。）</p></body>",
-                )
-                path.write_text(text, encoding="utf-8")
-                PY
-
-                export ABC_TEI_EAJ_ALIGNMENT_PROBE_BIN="${abValidatorPackages.ab-aat-to-parser-ir}/bin/ab-aat-to-parser-ir"
-                python "$src/ab-validator/tools/tei-eaj/tei_eaj_aozora_reports.py" \
-                  --compare-script "$src/ab-validator/tools/tei-eaj/tei_eaj_compare.py" \
-                  --tei-eaj-root "${teiEaj}" \
-                  --source-rev ${teiEaj.rev} \
+                ${teiEajReportsWithProbes} \
                   --abc-melos abc/melos.xml \
                   --abc-tei 1567=abc/melos.xml \
-                  all-with-probes \
                   --max-probe-rows 4 \
                   melos.md all-work.md workset.json alignment-probe.json alignment-probe.md
 
                 grep -q "tail_addition" alignment-probe.md
-                python - <<'PY'
-                import json
-
-                with open("alignment-probe.json", encoding="utf-8") as fh:
-                    probe_report = json.load(fh)
-                with open("workset.json", encoding="utf-8") as fh:
-                    workset = json.load(fh)
-
-                assert probe_report["schema_version"] == "tei-eaj-alignment-probe-report-v1"
-                assert probe_report["rows"]
-                attached = [
-                    row
-                    for row in workset["files"]
-                    if row.get("alignment_probe")
-                ]
-                assert attached
-                assert any(
-                    row["alignment_probe"]["diagnosis_counts"].get("tail_addition") == 1
-                    for row in attached
-                )
-                PY
+                jq -e '.schema_version == "tei-eaj-alignment-probe-report-v1" and (.rows | length) > 0' alignment-probe.json
+                jq -e '[.files[] | select(.alignment_probe)]
+                  | length > 0 and any(.[]; .alignment_probe.diagnosis_counts.tail_addition == 1)' workset.json
               '';
         }
       );
@@ -569,10 +526,7 @@
               pkgs.git
               pkgs.just
               pkgs.jq
-              pkgs.mypy
               pkgs.nixfmt
-              pkgs.ruff
-              pkgs.python3
             ];
             shellHook = ''
               if [ -f scripts/soranoha-runtime-env.sh ]; then

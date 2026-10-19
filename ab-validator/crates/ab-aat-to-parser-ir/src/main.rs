@@ -11,6 +11,7 @@ use ab_aat_to_parser_ir::{
         TeiEajAlignmentProbeConfig, run_tei_eaj_alignment_probe,
         write_tei_eaj_alignment_probe_reports,
     },
+    tei_eaj_reports,
 };
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -115,6 +116,13 @@ enum Command {
         report_md: PathBuf,
         #[arg(long)]
         max_rows: Option<usize>,
+    },
+    /// Compare ABC TEI with the pinned TEI-EAJ aozora_tei checkout
+    TeiEajReports {
+        #[command(flatten)]
+        inputs: tei_eaj_reports::ReportInputs,
+        #[command(subcommand)]
+        report: tei_eaj_reports::ReportCommand,
     },
 }
 
@@ -295,6 +303,14 @@ fn main() -> Result<()> {
             })?;
             write_tei_eaj_alignment_probe_reports(&report, &summary_json, &report_md)?;
             eprintln!("wrote {} TEI-EAJ alignment probe row(s)", report.rows.len());
+        }
+        Command::TeiEajReports { mut inputs, report } => {
+            if inputs.abc_tei.is_empty() && inputs.abc_tei_dir.is_empty() {
+                inputs.abc_tei_dir = tei_eaj_reports::abc_tei_dirs_from_env(
+                    std::env::var("ABC_TEI_EAJ_ABC_TEI_DIRS").ok().as_deref(),
+                );
+            }
+            tei_eaj_reports::run(&inputs, report)?;
         }
     }
     Ok(())

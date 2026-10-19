@@ -75,47 +75,6 @@ smoke_jq 'all(.records[]; .aat_pointer != "meta.parse_complete")' "$out_dir/dive
 smoke_jq '.aat.parse_complete == true' "$out_dir/divergence.json"
 smoke_jq 'all(.records[]; .rule_id != null and .message != null and .count >= 1)' "$out_dir/divergence.json"
 
-python_jsonschema=(python)
-if ! python - <<'PY' >/dev/null 2>&1
-import jsonschema
-PY
-then
-  if command -v uv >/dev/null 2>&1; then
-    python_jsonschema=(uv run --isolated --no-project --with 'jsonschema>=4.0' python)
-  else
-    echo "python jsonschema module is required; install it or run through nix" >&2
-    exit 1
-  fi
-fi
-
-"${python_jsonschema[@]}" - "$repo_root/schemas/parser-ir.schema.json" \
-  "$repo_root/schemas/aat-parser-ir-divergence.schema.json" \
-  "$repo_root/schemas/outputs/aat-parser-ir-divergence-bundle-v1.schema.json" \
-  "$out_dir/parser-ir.json" \
-  "$out_dir/divergence.json" <<'PY'
-import json
-import sys
-
-import jsonschema
-
-parser_schema_path, record_schema_path, bundle_schema_path, parser_ir_path, bundle_path = sys.argv[1:]
-with open(parser_schema_path, encoding="utf-8") as handle:
-    parser_schema = json.load(handle)
-with open(record_schema_path, encoding="utf-8") as handle:
-    record_schema = json.load(handle)
-with open(bundle_schema_path, encoding="utf-8") as handle:
-    bundle_schema = json.load(handle)
-with open(parser_ir_path, encoding="utf-8") as handle:
-    parser_ir = json.load(handle)
-with open(bundle_path, encoding="utf-8") as handle:
-    bundle = json.load(handle)
-
-jsonschema.validate(parser_ir, parser_schema)
-jsonschema.validate(bundle, bundle_schema)
-for record in bundle["records"]:
-    jsonschema.validate(record, record_schema)
-PY
-
 audit_dir="$out_dir/audit-corpus"
 mkdir -p "$audit_dir"
 cp "$aat" "$audit_dir/pass.aat.json"

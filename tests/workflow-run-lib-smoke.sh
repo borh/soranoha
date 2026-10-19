@@ -14,19 +14,15 @@ workflow_step_pass "first" "out/first.txt"
 workflow_step_fail "second" "broken"
 workflow_finish "failed"
 
-python3 - "$run_file" <<'PY'
-import json
-import sys
+jq -e '
+  .workflow_id == "shell.fixture.v1"
+  and .status == "failed"
+  and .step_count == 2
+  and .steps_passed == 1
+  and .steps_failed == 1
+  and .steps[0].id == "first"
+  and .steps[1].id == "second"
+  and .steps[1].status == "failed"
+  and .steps[1].error.message == "broken"' "$run_file" > /dev/null
 
-path = sys.argv[1]
-data = json.load(open(path, encoding="utf-8"))
-assert data["workflow_id"] == "shell.fixture.v1"
-assert data["status"] == "failed"
-assert data["step_count"] == 2
-assert data["steps_passed"] == 1
-assert data["steps_failed"] == 1
-assert data["steps"][0]["id"] == "first"
-assert data["steps"][1]["id"] == "second"
-assert data["steps"][1]["status"] == "failed"
-assert data["steps"][1]["error"]["message"] == "broken"
-PY
+echo "workflow run lib smoke ok"

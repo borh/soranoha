@@ -45,9 +45,6 @@ quality:
 flake-cargo *ARGS:
 	@nix develop "{{repo_root}}#default" --command cargo {{ARGS}}
 
-flake-python *ARGS:
-	@nix develop "{{repo_root}}#default" --command python {{ARGS}}
-
 quality-fix:
 	@just fmt
 	@just workspace-check

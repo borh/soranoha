@@ -8,6 +8,8 @@ pub mod ortho_detect;
 pub mod schema;
 pub mod structural_probe;
 pub mod tei_eaj_alignment_probe;
+pub mod tei_eaj_compare;
+pub mod tei_eaj_reports;
 pub(crate) mod tei_eaj_workset;
 
 pub use canonical_json::{sort_keys_deep, to_canonical_json_pretty};

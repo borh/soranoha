@@ -5,7 +5,7 @@ workflow_utc_now() {
 }
 
 workflow_json_escape() {
-  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+  jq -cn --arg value "$1" '$value'
 }
 
 workflow_init() {
@@ -48,35 +48,25 @@ workflow_finish() {
   local status="$1"
   local ended_at
   ended_at="$(workflow_utc_now)"
-  python3 - "$WORKFLOW_RUN_FILE" "$WORKFLOW_STEPS_FILE" "$WORKFLOW_ID" "$WORKFLOW_RUN_ID" "$status" "$WORKFLOW_STARTED_AT" "$ended_at" <<'PY'
-import json
-import sys
-
-run_file, steps_file, workflow_id, run_id, status, started_at, ended_at = sys.argv[1:]
-steps = []
-with open(steps_file, encoding="utf-8") as handle:
-    for line in handle:
-        line = line.strip()
-        if line:
-            steps.append(json.loads(line))
-failed = sum(1 for step in steps if step["status"] == "failed")
-passed = sum(1 for step in steps if step["status"] == "passed")
-run = {
-    "schema_id": "https://w3id.org/soranoha/schemas/workflow-run.schema.json",
-    "schema_version": "soranoha-workflow-run-v1",
-    "workflow_id": workflow_id,
-    "run_id": run_id,
-    "status": status,
-    "started_at": started_at,
-    "ended_at": ended_at,
-    "duration_ms": 0,
-    "step_count": len(steps),
-    "steps_passed": passed,
-    "steps_failed": failed,
-    "steps": steps,
-}
-with open(run_file, "w", encoding="utf-8") as handle:
-    json.dump(run, handle, ensure_ascii=False, sort_keys=True, indent=2)
-    handle.write("\n")
-PY
+  jq -S -s \
+    --arg workflow_id "$WORKFLOW_ID" \
+    --arg run_id "$WORKFLOW_RUN_ID" \
+    --arg status "$status" \
+    --arg started_at "$WORKFLOW_STARTED_AT" \
+    --arg ended_at "$ended_at" \
+    '. as $steps
+     | {
+         schema_id: "https://w3id.org/soranoha/schemas/workflow-run.schema.json",
+         schema_version: "soranoha-workflow-run-v1",
+         workflow_id: $workflow_id,
+         run_id: $run_id,
+         status: $status,
+         started_at: $started_at,
+         ended_at: $ended_at,
+         duration_ms: 0,
+         step_count: ($steps | length),
+         steps_passed: ([$steps[] | select(.status == "passed")] | length),
+         steps_failed: ([$steps[] | select(.status == "failed")] | length),
+         steps: $steps
+       }' "$WORKFLOW_STEPS_FILE" > "$WORKFLOW_RUN_FILE"
 }

@@ -14,7 +14,7 @@ report() {
 }
 
 # Collect tracked and staged files, excluding build artifacts and corpora.
-mapfile -d '' candidates < <(git ls-files -z -- '*.md' '*.rs' '*.clj' '*.cljc' '*.cljs' '*.py' '*.sh' '*.nix' '*.edn' '*.toml' '*.yml' '*.yaml' justfile)
+mapfile -d '' candidates < <(git ls-files -z -- '*.md' '*.rs' '*.clj' '*.cljc' '*.cljs' '*.sh' '*.nix' '*.edn' '*.toml' '*.yml' '*.yaml' justfile)
 files=()
 for path in "${candidates[@]}"; do
   if [[ -f "$path" && "$path" != scripts/comment-hygiene-check.sh ]]; then
