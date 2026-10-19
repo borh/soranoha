@@ -1,21 +1,20 @@
 (ns soranoha.gates.schema-hashes
-  "Every schema hash a repository record states agrees with the canonical
-  digest of the schema it names, so a schema edit fails here rather than at
-  the first import of real data."
+  "Verifies that schema hashes recorded in repository documents match the
+  canonical digests of their referenced schemas."
   (:require [babashka.fs :as fs]
             [clojure.string :as string]
             [soranoha.core.hash :as hash]
             [soranoha.core.json :as json]))
 
 (def ^:private skipped
-  "Directories holding historical records pinned to earlier schema versions."
+  "Directories containing historical records pinned to earlier schema versions."
   [".beads" ".git" "archive" "ab-validator/docs"])
 
 (def ^:private id-suffix "_schema_id")
 (def ^:private hash-suffix "_schema_hash")
 
 (defn schema-hashes
-  "Each published schema's `$id` to its current canonical digest."
+  "Maps each published schema's `$id` to its canonical SHA-256 digest."
   [repo-root]
   (into (sorted-map)
         (map (fn [path]
@@ -27,8 +26,8 @@
         (sort (fs/glob (fs/path repo-root "soranoha" "schemas") "*.schema.json"))))
 
 (defn record-pins
-  "Every `[schema-id schema-hash]` pair a document states, found as sibling
-  members `<name>_schema_id` and `<name>_schema_hash` at any depth."
+  "Extracts `[schema-id schema-hash]` pairs from sibling members
+  `<name>_schema_id` and `<name>_schema_hash` at any depth."
   [node]
   (cond
     (map? node)

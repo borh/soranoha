@@ -3,7 +3,7 @@
 Aozora Bunko publishes a copyright flag per work and per person, and Soranoha
 relies on that classification at the edition level. Recorded here is what the
 flag asserts, the published guidance it rests on, and which rights-relevant
-fields the catalog carries. Soranoha's
+fields are present in the catalog. Soranoha's
 [assessment evaluator](../assessment-evaluation.md) keeps that reliance separate
 from independent rights findings, which is why the field boundaries below matter.
 

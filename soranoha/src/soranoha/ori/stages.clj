@@ -64,7 +64,7 @@
               ;; records, so the member is read whole; unzip reads the decoy
               ;; record among them and rejects the file. Recorded here
               ;; because the count is known only while the archive is being
-              ;; read, and the work page uses it to explain the rejection.
+              ;; read, and work pages report it to explain decompression issues.
               (:trailing-garbage-trimmed inspection)
               (assoc "trailing_bytes_after_archive"
                      (:trailing-garbage-trimmed inspection))))}))})
@@ -208,7 +208,7 @@
     (throw (ex-info "render stage requires the publication rights grant"
                     {:reason :missing-rights-grant})))
   {:stage-id "render"
-   :stage-version "63"
+   :stage-version "65"
    :toolchain-id (core-hash/sha256-canonical-json
                   {"clj" clj-toolchain-id "rights" rights})
    :f (fn [{:keys [blob]} inputs]

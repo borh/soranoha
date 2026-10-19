@@ -163,9 +163,10 @@ Gaiji fields:
 | `resolved` | string or null | Adapter-emitted character resolution, if any. |
 | `jis_code` | string or null | Adapter-emitted JIS plane-row-cell or row-cell code, if known. |
 | `unresolved_reason` | string or null | Reason the adapter did not resolve the gaiji. Null or empty means resolved/no unresolved reason. |
-| `ids` | string | Ideographic Description Sequence of an unresolved gaiji that Unicode does not encode. Present only with `glyphwiki_glyph`. |
-| `glyphwiki_glyph` | string | GlyphWiki glyph name for the same character; the glyph is served at `https://glyphwiki.org/glyph/<name>.svg`. |
-| `mapping_source` | string | `cjkvi-data` when the code point in `resolved` comes from the cjkvi-data table of Aozora notations rather than the JIS reference, the 外字注記辞書 or a composition rule. Absent otherwise. |
+| `ids` | string | Ideographic Description Sequence of an unresolved gaiji unencoded in Unicode. Present only in conjunction with `glyphwiki_glyph`. |
+| `glyphwiki_glyph` | string | GlyphWiki glyph name for the same character, accessible at `https://glyphwiki.org/glyph/<name>.svg`. |
+| `mapping_source` | string | `cjkvi-data` when the code point or variation sequence in `resolved` derives from the cjkvi-data table of Aozora notations rather than a JIS reference, the 外字注記辞書, or a composition rule. Absent otherwise. |
+| `ivs_source` | string | `cjkvi-data` when `resolved` is an Ideographic Variation Sequence whose selector comes from the cjkvi-data tables. Present without `mapping_source` when the base code point is the official one and only the selector is cjkvi's. |
 
 ## Selector Protocol v1
 

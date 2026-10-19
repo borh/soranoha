@@ -6584,10 +6584,19 @@ fn gaiji_json(decoded: &DecodedSource, span: &Span, gaiji: &AozoraGaiji) -> Valu
         glyph["ids"] = json!(identity.ids);
         glyph["glyphwiki_glyph"] = json!(identity.glyphwiki);
     }
-    if let Some((_, encoding::gaiji::MappingSource::CjkviData)) =
-        encoding::gaiji::lookup_with_source(None, gaiji.mencode.as_deref(), &gaiji.description)
-    {
-        glyph["mapping_source"] = json!("cjkvi-data");
+    match encoding::gaiji::lookup_with_source(None, gaiji.mencode.as_deref(), &gaiji.description) {
+        Some((resolved, encoding::gaiji::MappingSource::CjkviData)) => {
+            glyph["mapping_source"] = json!("cjkvi-data");
+            if let encoding::gaiji::Resolved::Multi(text) = resolved
+                && encoding::gaiji::is_variation_sequence(text)
+            {
+                glyph["ivs_source"] = json!("cjkvi-data");
+            }
+        }
+        Some((_, encoding::gaiji::MappingSource::CjkviSelector)) => {
+            glyph["ivs_source"] = json!("cjkvi-data");
+        }
+        _ => {}
     }
     if gaiji.resolved.is_none()
         && !source.starts_with("［＃")
@@ -10366,12 +10375,12 @@ mod tests {
         assert_eq!(gaiji["unresolved_reason"], "unresolved");
     }
 
-    /// A gaiji Unicode does not encode carries the identity the `GlyphWiki`
-    /// table records for its description; a resolved gaiji and an unlisted
-    /// description carry neither field.
+    /// Gaiji unencoded in Unicode receive the identity recorded in the
+    /// `GlyphWiki` table for their description; neither field is attached to
+    /// resolved gaiji or unlisted descriptions.
     #[test]
     fn unencoded_gaiji_carries_ids_and_glyphwiki_glyph() {
-        let aat = aat_value_for("※［＃「冫＋虫」、12-3］と※［＃「参らせ候」のくずし字、13-9］\n");
+        let aat = aat_value_for("※［＃「冫＋影」、12-3］と※［＃「参らせ候」のくずし字、13-9］\n");
         let gaiji: Vec<&Value> = aat["blocks"][0]["content"]
             .as_array()
             .unwrap()
@@ -10380,8 +10389,8 @@ mod tests {
             .collect();
         assert_eq!(gaiji.len(), 2);
         assert!(gaiji[0]["resolved"].is_null());
-        assert_eq!(gaiji[0]["ids"], "⿰冫虫");
-        assert_eq!(gaiji[0]["glyphwiki_glyph"], "u2ff0-u51ab-u866b");
+        assert_eq!(gaiji[0]["ids"], "⿰冫影");
+        assert_eq!(gaiji[0]["glyphwiki_glyph"], "u2ff0-u51ab-u5f71");
         assert!(gaiji[1].get("ids").is_none());
         assert!(gaiji[1].get("glyphwiki_glyph").is_none());
 
@@ -10391,13 +10400,13 @@ mod tests {
         assert!(gaiji.get("ids").is_none());
     }
 
-    /// A description only the cjkvi-data table maps resolves and names that
-    /// table; a description the official dictionary maps carries no
-    /// `mapping_source`.
+    /// When mapped exclusively in the cjkvi-data table, descriptions resolve
+    /// with that table identified as mapping source; descriptions mapped in the
+    /// official dictionary do not include `mapping_source`.
     #[test]
     fn cjkvi_resolution_names_its_source() {
         let aat = aat_value_for(
-            "※［＃「纏」の「广」に代えて「厂」、224-5］と※［＃「けものへん＋苗」、第3水準1-87-64］\n",
+            "※［＃「抜」の「友」に代えて「ノ／友」、224-5］と※［＃「けものへん＋苗」、第3水準1-87-64］\n",
         );
         let gaiji: Vec<&Value> = aat["blocks"][0]["content"]
             .as_array()
@@ -10406,15 +10415,36 @@ mod tests {
             .filter(|node| node["kind"] == "gaiji")
             .collect();
         assert_eq!(gaiji.len(), 2);
-        assert_eq!(gaiji[0]["resolved"], "纒");
+        assert_eq!(gaiji[0]["resolved"], "㧞");
         assert_eq!(gaiji[0]["mapping_source"], "cjkvi-data");
         assert!(gaiji[0]["unresolved_reason"].is_null());
         assert_eq!(gaiji[1]["resolved"], "燄");
         assert!(gaiji[1].get("mapping_source").is_none());
+
+        let ivs =
+            aat_value_for("※［＃「圖」の「回」に代えて「面から一、二画目をとったもの」、12-3］\n");
+        let gaiji = find_first_node(&ivs, "gaiji");
+        assert_eq!(gaiji["resolved"], "圖\u{E0103}");
+        assert_eq!(gaiji["mapping_source"], "cjkvi-data");
+        assert_eq!(gaiji["ivs_source"], "cjkvi-data");
+        assert!(gaiji["x-codepoint"].is_null());
+    }
+
+    /// When mapped in the official dictionary, a description retains an
+    /// unlabeled base character while recording the cjkvi-data selector as
+    /// `ivs_source`.
+    #[test]
+    fn selector_refinement_labels_only_the_selector() {
+        let aat = aat_value_for("※［＃「赤＋報のつくり」、第3水準1-76-63］\n");
+        let gaiji = find_first_node(&aat, "gaiji");
+        assert_eq!(gaiji["resolved"], "赧\u{E0101}");
+        assert!(gaiji.get("mapping_source").is_none());
+        assert_eq!(gaiji["ivs_source"], "cjkvi-data");
+        assert!(gaiji["x-codepoint"].is_null());
     }
 
     /// A `濁点付き…` description without a precomposed character resolves
-    /// to the base and the combining mark.
+    /// to the base and combining mark.
     #[test]
     fn voiced_description_resolves_to_a_combining_sequence() {
         let aat = aat_value_for("※［＃濁点付き片仮名エ、45-2］\n");

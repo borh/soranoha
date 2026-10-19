@@ -22,10 +22,11 @@ Correcting descriptions that were previously included changes the affected
 text identities; readings without images keep their existing `body-v1`
 identity.
 
-A `soranoha-annotation-layer/1` JSON file holds one producer's claims. The
-envelope has the view identity, a vocabulary content hash, the producer's named
-input hashes, the actual dependency hashes, the eligible spans, the execution
-status and the records. A record has an identifier, a half-open byte range, a
+In a `soranoha-annotation-layer/1` JSON file, claims from a single
+producer are recorded. The envelope contains the view identity, a vocabulary
+content hash, the producer's named input hashes, the actual dependency hashes,
+the eligible spans, the execution status and the records. A record has an
+identifier, a half-open byte range, a
 label and string-valued features. The vocabulary and producer identities fix
 what the claims mean; validating the envelope does not check whether the
 claims are linguistically right.
@@ -89,20 +90,20 @@ These are choices for horizontal display, not a rotation of the vertical source
 typography. Each generated span keeps the original `rend` in `data-tei-rend`,
 and the projection report classifies it as `transformed`.
 
-The profile omits source apparatus, alternative readings and layout such as
-exact pagination. Generic `emphasis` has no visual style and is unsupported.
-Unknown rendition tokens, other TEI inline styles, unsupported ruby placement
-and unresolved glyphs are listed in the report, and their text is kept. A
-`complete-for-profile` result means complete for this projection; it does not
-mean the parser was correct or the edition faithful.
+Source apparatus, alternative readings, and layout elements (such as
+exact pagination) are omitted from the profile. Generic `emphasis` has no visual
+style and is unsupported. Unknown rendition tokens, other TEI inline styles,
+unsupported ruby placement and unresolved glyphs are listed in the report, and
+their text is kept. A `complete-for-profile` result means complete for this
+projection; it does not mean the parser was correct or the edition faithful.
 
 ## Source correspondence and reading variants
 
-The TEI attaches decoded UTF-8 source ranges through local `@source`
-references. In the referenced note, the range record and, when available, the
-content hash of the primary text are preserved. Equal range records share one
-identifier. Parser-text offsets are a different coordinate system and cannot
-stand in for a missing source range.
+In the TEI edition, decoded UTF-8 source ranges are linked through local
+`@source` references. In the referenced note, the range record and, when
+available, the content hash of the primary text are preserved. Equal range
+records share one identifier. Parser-text offsets are a different coordinate
+system and cannot stand in for a missing source range.
 
 A supplied reading that differs from the base text is an `app`: `lem` for the
 supplied reading, `rdg type="base-text"` for the base text. This does not

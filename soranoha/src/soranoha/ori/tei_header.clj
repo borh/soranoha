@@ -93,11 +93,11 @@
   "Build <titleStmt>. `contributors` is a vector of
   {:relation-to-work <role-string> :person <person-body-map>}.
 
-  Four title forms where the catalog carries them. The subtitle is needed for
-  identification: author and title alone leave 2357 works in
-  the Aozora Bunko catalog ambiguous, and adding 副題 cuts that to 882. The original
-  title of a translated work carries no language attribute because the catalog
-  records no source language, and guessing one from the string would be an
+  Four title forms when recorded in the catalog. The subtitle is needed for
+  identification: author and title alone leave 2,357 works in the Aozora Bunko
+  catalog ambiguous, and adding 副題 cuts that to 882. The original title of a
+  translated work carries no language attribute because source languages are not
+  recorded in the catalog, and guessing one from the string would be an
   assertion this project cannot support."
   [work contributors]
   (let [authors (filter #(= "著者" (:relation-to-work %)) contributors)
@@ -186,10 +186,10 @@
     (conj [:note {:type "proof-edition"} (get edition "proof_edition")])))
 
 (defn- fallback-source-bibl
-  "What can be stated about the source when the catalog records no edition.
-  The Aozora Bunko card URL is not part of this: it is published
-  unconditionally in the publication statement, so every work links back to
-  Aozora Bunko whether or not it has edition metadata."
+  "Bibliographic description for works where no edition is recorded in the
+  catalog. The Aozora Bunko card URL is provided independently in the
+  publication statement, ensuring that every work links back to upstream
+  catalog records."
   [work]
   (if-let [title (get work "title")]
     [:bibl [:title title]]
@@ -237,25 +237,39 @@
    (source-desc work source-content-hash primary-text-hash witness-declarations)])
 
 (defn- mapping-type
-  "`unicode` for one code point, `composed` for a sequence of them, the
-  distinction TEI P5 chapter 5 draws between the two."
+  "`unicode` for a single code point, `composed` for a sequence of code
+  points, following the distinction defined in TEI P5 chapter 5."
   [^String value]
   (if (> (.codePointCount value 0 (.length value)) 1) "composed" "unicode"))
 
 (def ^:private mapping-source-urls
-  "The published table a parser-IR `mapping_source` value stands for."
+  "Canonical URL for each recognized parser-IR `mapping_source` or
+  `ivs_source` table."
   {"cjkvi-data" "https://github.com/cjkvi/cjkvi-data/blob/e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1/aozora_gaiji_chuki.txt"})
+
+(defn- source-url [source]
+  (or (mapping-source-urls source)
+      (throw (ex-info "unknown gaiji mapping source" {:source source}))))
+
+(defn- base-character
+  "The first code point of a variation sequence."
+  [^String sequence]
+  (String. (Character/toChars (.codePointAt sequence 0))))
 
 (defn- declaration->char [declaration]
   (cond-> [:char {:xml/id (:xml-id declaration)}]
-    (:unicode declaration)
+    (:ivs declaration)
+    (into [[:mapping {:type "unicode"} (base-character (:ivs declaration))]
+           [:mapping {:type "IVS"} (:ivs declaration)]])
+
+    (and (:unicode declaration) (not (:ivs declaration)))
     (conj [:mapping {:type (mapping-type (:unicode declaration))} (:unicode declaration)])
 
     (:mapping-source declaration)
-    (conj [:localProp {:name "mappingSource"
-                       :value (or (mapping-source-urls (:mapping-source declaration))
-                                  (throw (ex-info "unknown gaiji mapping source"
-                                                  {:mapping-source (:mapping-source declaration)})))}])
+    (conj [:localProp {:name "mappingSource" :value (source-url (:mapping-source declaration))}])
+
+    (:ivs-source declaration)
+    (conj [:localProp {:name "variationSource" :value (source-url (:ivs-source declaration))}])
 
     (:ids declaration)
     (conj [:mapping {:type "IDS"} (:ids declaration)])
@@ -371,9 +385,9 @@
     [:ptr {:target "https://w3id.org/soranoha/ns/tei"}]]])
 
 (defn- editorial-decl
-  "One `p` per parser-IR emendation, in parser-IR order. `sic` quotes the
-  transcribed source text and `corr` the text the parser read; `@source`
-  refers to the `source-span` note of the emended extent."
+  "One `p` per parser-IR emendation, in parser-IR order. `sic` contains the
+  transcribed source text and `corr` the emended text adopted during parsing;
+  `@source` refers to the `source-span` note of the emended extent."
   [emendations]
   (when (seq emendations)
     [:editorialDecl
@@ -433,9 +447,8 @@
   the relation_to_work value never enters the person body.
 
   :rights is optional here so a header can be built for inspection without a
-  policy in hand; the render stage supplies it for every published work and
-  the profile's snh-publication-licence rule rejects a published file without
-  it."
+  policy in hand; the render stage supplies it for every published work, as
+  required on all published files under snh-publication-licence."
   [{:keys [work contributors slug char-declarations witness-declarations source-content-hash
            primary-text-hash rights emendations]}]
   [:teiHeader

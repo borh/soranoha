@@ -1,12 +1,12 @@
 (ns soranoha.gates.catalog-figures
-  "Every corpus figure quoted in prose agrees with its derivation from the
-  pinned Aozora Bunko catalog, and every file recorded as quoting a figure
-  still states it.
+  "Verifies that corpus figures cited in documentation remain consistent with
+  their derivations from the pinned Aozora Bunko catalog, and that citations
+  in referenced documents continue to match recorded values.
 
-  The registry below is the record of what each number claims and where it is
-  quoted. Re-derivation needs a corpus checkout at the pinned snapshot, so the
-  bundled gates run only the quotation check; the full check runs when the
-  pin changes."
+  The registry below records the definition and derivation basis for each
+  cited figure, along with its citing documents. Because re-derivation requires
+  a local checkout of the pinned corpus snapshot, default gates verify
+  citation consistency; full re-derivation runs upon snapshot updates."
   (:require [babashka.fs :as fs]
             [babashka.process :as process]
             [charred.api :as charred]
@@ -352,8 +352,8 @@
      ["median-stem-run" catalog-pop] (long (median (map longest-run stems)))}))
 
 (defn check
-  "Figures whose derivation disagrees with the quoted value, then the
-  quotation problems of the figures that still agree."
+  "Finds figures whose derivations differ from their quoted values, followed by
+  quotation discrepancies among figures that remain consistent."
   [repo-root figures measured]
   (let [{:keys [problems agreeing]}
         (reduce (fn [acc {:keys [key population what quoted] :as figure}]
@@ -372,8 +372,8 @@
     (doseq [problem problems] (println (str "catalog-figures: " problem)))))
 
 (defn gate!
-  "The quotation check alone with `:quotes-only`, otherwise the re-derivation
-  against the checkout at `:aozora-root`; the exit code for the kernel."
+  "Executes quotation verification when `:quotes-only` is set; otherwise verifies
+  derivations against the checkout at `:aozora-root`. Returns the exit code."
   [{:keys [repo aozora-root stems quotes-only]}]
   (if quotes-only
     (let [all (concat figures stem-figures history-figures)

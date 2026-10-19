@@ -21,20 +21,19 @@
     (record-json/read-json-bytes bytes)))
 
 (defn- archive-stem
-  "The Aozora Bunko archive's own name for the work's primary text member, without
-  its extension: `92_ruby_164.zip` holds `kumono_ito.txt`, so the stem is
-  `kumono_ito` and not the archive's own name. Aozora Bunko volunteers
-  hand-curated these names with word boundaries, which is why the serving
-  layer renders download filenames from this rather than from a mechanical
-  romanization of the title reading. Every published work has exactly one
-  primary text member: the source bundle fails closed on none and on
-  several, so no fallback rule is reachable here.
+  "The primary text member name within the upstream Aozora Bunko archive,
+  omitting its file extension: for instance, `92_ruby_164.zip` contains
+  `kumono_ito.txt`, yielding the stem `kumono_ito` rather than the ZIP filename.
+  Aozora Bunko contributors curated these names with explicit word boundaries;
+  the serving layer uses them for download filenames rather than generating
+  mechanical romanizations from title readings. Each published work contains
+  exactly one primary text member.
 
-  Normalized to the character set the catalog's schema admits, which ten
-  archives in the corpus need. The word boundaries are what the field is for,
-  and both foldings preserve them, so nothing the serving layer reads off this
-  changes. Stems are not unique to begin with, 17,602 works carrying 16,489 of
-  them, and folding these ten collides none that were not already equal."
+  The stem is normalized to the character set permitted by the catalog schema.
+  Preserving word boundaries is the primary purpose of this field; normalizing
+  these characters retains word boundaries without altering serving behavior.
+  Stems are not unique across the corpus (16,489 distinct stems across 17,602
+  works); normalizing these ten instances introduces no new collisions."
   [slug primary-text-member]
   (when-not (string? primary-text-member)
     (fail! :missing-primary-text-member {:slug slug}))

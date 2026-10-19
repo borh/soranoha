@@ -73,10 +73,10 @@ BibLaTeX:
 }
 ```
 
-`CITATION.cff` in the repository root carries the corpus-level record in
-machine-readable form; GitHub-compatible forges and Zenodo read it directly. It
-describes the corpus, not one release, and has neither the head nor the
-version DOI; fill those in from the release you read.
+`CITATION.cff` in the repository root provides the corpus-level citation
+record in Citation File Format; platforms such as GitHub and Zenodo read it
+directly. It describes the corpus as a whole rather than a specific release,
+omitting the release head and version DOI; fill those in from the release you read.
 
 To cite the corpus across releases rather than one of them, use the Zenodo
 *concept* DOI, which always resolves to the latest version. Do not use it when
@@ -93,10 +93,10 @@ the upstream catalog. The work identifier, such as `000092_000879`, distinguishe
 all of them and does not change between releases; see
 [work identifiers](../soranoha/docs/work-identifiers.md).
 
-Every work page carries both forms below, ready to copy, and the same record
-as CSL-JSON and BibLaTeX. All of them are generated from the work's TEI
-header, which is the bibliographic record; the catalog and every citation
-format are derived from it.
+Both citation forms below appear on every work page, ready to copy,
+accompanied by the same record in CSL-JSON and BibLaTeX. Each format is
+generated from the work's TEI header, which serves as the authoritative
+bibliographic record; the catalog and all citation exports are derived from it.
 
 ### For a Japanese bibliography
 
@@ -205,10 +205,10 @@ look like `1981（昭和56）年3月20日`, and of the 1033 that do not, 667 add
 printing history, as in
 `1948（昭和23）年5月15日、1963（昭和38）年5月16日第20刷改版`. The first
 Gregorian year is taken; where several years appear, the earliest is the first
-edition's, which is what the field means. Work pages show the recorded string
-in full; only the machine-readable fields carry the extracted year.
+edition's, which is what the field means. The recorded string appears in full
+on individual work pages; only machine-readable fields contain the extracted year.
 
-### What CSL cannot carry
+### Kana readings in citation formats
 
 CSL has no field for kana readings, and CSL and Zotero support for several
 scripts is limited, so 作品名読み goes in `note`. In BibLaTeX, it is stored in

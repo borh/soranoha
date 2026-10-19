@@ -115,8 +115,9 @@ Author pages, NDC class pages, three-digit NDC subclass pages (such as
 their own works. So there are five sizes of archive: the corpus, a person, a
 class, a subclass and the children's books.
 
-Each archive holds the readable filenames plus a `catalog.csv` at its root
-with the citation fields of the works inside:
+Files within each archive are stored under human-readable names,
+accompanied by `catalog.csv` at the root recording bibliographic details for
+each work:
 
     identifier, title, subtitle, title_reading, author,
     orthographic_style, ndc, first_published, body_character_count,
@@ -125,9 +126,9 @@ with the citation fields of the works inside:
 
 The fields to cite are `identifier`, `source_content_hash` and `release`. Read
 `catalog.csv` with `utf-8-sig` to strip the UTF-8 byte-order mark.
-`source_edition_year` is the Gregorian year taken out of Aozora Bunko's
-free-form 初版発行年 string (such as `1981（昭和56）年3月20日`); work pages show
-the string in full.
+`source_edition_year` is the Gregorian year extracted from Aozora Bunko's
+free-form 初版発行年 string (such as `1981（昭和56）年3月20日`); the full string
+appears on individual work pages.
 
 To fetch works one by one, for example a filtered subset:
 
@@ -165,18 +166,18 @@ The work count for each release is stated on the landing page and in
 `/catalog.json`; each release represents a fixed set of works, not a live view.
 
 Contributors keep their Aozora Bunko roles, such as 著者, 翻訳者, 校訂者 or
-編者. A work can have several contributors, and the site indexes people under
-every role they hold, not only authorship.
+編者. A work can have several contributors, and contributors are indexed under
+each role they hold, rather than by authorship alone.
 
 Two principles govern what a release contains:
 
-**A work is published only after its rights are assessed.** A work enters a
-release only when its rights evaluation passes against recorded evidence, by
-default Aozora Bunko's catalog metadata. See
+**A work is published only after its rights are assessed.** A work is
+admitted to a release only when rights evaluation confirms its eligibility
+based on recorded evidence, by default Aozora Bunko's catalog metadata. See
 [admission and assessment](user-glossary.md#admission).
 
 **Illustrations are recorded by reference.** Where the source refers to an
-illustration, the TEI records the reference and its caption. Aozora Bunko's
+illustration, the TEI record notes the reference and its caption. Aozora Bunko's
 image files are outside the grant and are not published.
 
 ## Licence

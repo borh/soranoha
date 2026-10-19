@@ -4,7 +4,7 @@
   "mapping_schema_hash": "sha256:c75eaa2e3f4f42002e25ff6cccf725c019c98d653360ca4e648c0f96bec2958a",
   "source_aat_version": 1,
   "target_parser_ir_schema_id": "https://w3id.org/soranoha/schemas/parser-ir.schema.json",
-  "target_parser_ir_schema_hash": "sha256:36002f47c6a9aed7f44d80745ba013d9de784a379d4006ff05ccc3b59e9b4b96",
+  "target_parser_ir_schema_hash": "sha256:81cf826cc7718f9750dea6b83a69f496588500d01f32d8a476702fca05afd20b",
   "transform_rule_descriptions": [
     {
       "rule_id": "A-03",

@@ -1,32 +1,38 @@
-# Aozora Bunko gaiji descriptions that cjkvi-data maps to a Unicode code point
-# and the official 外字注記辞書 does not.
+# Aozora Bunko gaiji descriptions mapped to a Unicode code point in cjkvi-data,
+# where no mapping appears in the official 外字注記辞書.
 #
 # Source: cjkvi/cjkvi-data, file aozora_gaiji_chuki.txt, commit
 # e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1 (2014-04-10).
 #   https://github.com/cjkvi/cjkvi-data/blob/e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1/aozora_gaiji_chuki.txt
-# Licence: the repository carries no LICENSE file; the project page
-# (http://kanji-database.sourceforge.net/) states that its data is available
-# under the GPL and the MIT licence. This file is used under the MIT licence.
+# Licence: no LICENSE file is present in the repository; on the project page
+# (http://kanji-database.sourceforge.net/), the data is described as available
+# under the GPL and MIT licenses. This file is used under the MIT licence.
 #
-# The source lists each notation the archive used up to 2014 with the UCS code
-# point, and where applicable the IVS, that cjkvi assigned. Rows kept here:
-#  * the notation is a complete ※［＃…］ marker and names exactly one UCS code
+# In the source table, notations used in the archive up to 2014 are recorded
+# alongside their assigned UCS code point and, where applicable, IVS. Rows
+# retained here:
+#  * the notation forms a complete ※［＃…］ marker specifying exactly one UCS code
 #    point outside the private use areas; rows with an IVS or a second code
-#    point are omitted (an IVS tier waits on a consumer that renders it)
-#  * rows the source marks 包摂適用 are omitted: that comment states the code
-#    point is a unified form, not the glyph the notation describes
-#  * the description is the key `gaiji::parse_gaiji_body` derives from the
-#    marker body: the quoted text for 「…」 with an empty or 、-led tail,
-#    otherwise the body before any trailing JIS cell or page-line clauses
-#  * rows whose key the official dictionary (aozora-gaiji-chuki.tsv,
-#    aozora-gaiji-special.tsv) already states are omitted, as are keys with
-#    unbalanced 「」, a nested ［＃, the word 水準, a trailing cell number, a
-#    single character, or two code points for one key
-#  * the source normalised every hyphen to U+2212 MINUS SIGN, which the
-#    archive never writes inside a marker; rows containing it are omitted
+#    point are omitted (IVS mappings are handled in aozora-gaiji-cjkvi-ivs.tsv)
+#  * rows marked with 包摂適用 in the source are omitted: that designation
+#    identifies the code point as a unified form rather than the specific glyph
+#    described in the notation
+#  * the description corresponds to the key derived by `gaiji::parse_gaiji_body`
+#    from the marker body: quoted text for 「…」 with an empty or 、-led tail,
+#    or the body preceding any trailing JIS cell or page-line clauses
+#  * rows whose key already appears in the official dictionary (aozora-gaiji-chuki.tsv,
+#    aozora-gaiji-special.tsv) are omitted, as are keys with unbalanced 「」, a
+#    nested ［＃, the term 水準, a trailing cell number, a single character, or
+#    multiple code points for a single key
+#  * in the source data, hyphens were normalized to U+2212 MINUS SIGN, a
+#    character that does not appear inside markers in the archive; rows
+#    containing this character are omitted, except the one row whose form
+#    with U+FF0D FULLWIDTH HYPHEN-MINUS the archive attests
+#    (「慌」の「亡」に代えて「曷－日－勹」), written in that form
 #
-# Resolution consults this file after the official dictionary and the
-# composition rules; a hit is labelled in the AAT as mapping_source cjkvi-data.
+# During resolution, this file is consulted after the official dictionary and
+# composition rules; matching entries are designated in the AAT with
+# mapping_source set to cjkvi-data.
 #
 # Columns: description<TAB>codepoint_hex<TAB>notation<TAB>source_comment
 破断線	00A6	※［＃破断線、1-9-5］	
@@ -562,7 +568,6 @@ HP,ホースパワー(馬力)	33CB	※［＃HP,ホースパワー(馬力)、1-3-
 「激」の「さんずい」に代えて「糸」	7E73	※［＃「激」の「さんずい」に代えて「糸」、第4水準2-84-56］	
 「燧」の「火」に代えて「糸」	7E78	※［＃「燧」の「火」に代えて「糸」］	
 「類」の「大」に代えて「糸」	7E87	※［＃「類」の「大」に代えて「糸」、第4水準2-84-60］	
-「纏」の「广」に代えて「厂」	7E92	※［＃「纏」の「广」に代えて「厂」］	
 「糸＋壘」の「土」に代えて「糸」	7E9D	※［＃「糸＋壘」の「土」に代えて「糸」］	
 「螢」の「虫」に代えて「缶」	7F43	※［＃「螢」の「虫」に代えて「缶」、第4水準2-84-69］	
 「磬」の「石」に代えて「缶」	7F44	※［＃「磬」の「石」に代えて「缶」、第4水準2-84-70］	
@@ -946,3 +951,4 @@ HP,ホースパワー(馬力)	33CB	※［＃HP,ホースパワー(馬力)、1-3-
 虫＋糸	2B2BA	※［＃「虫＋糸」］	
 纒のつくり＋おおざと	2B46E	※［＃「纒のつくり＋おおざと」］	
 歹＋繊のつくり	2B794	※［＃「歹＋繊のつくり」］	
+「慌」の「亡」に代えて「曷－日－勹」	2F8A7	※［＃「慌」の「亡」に代えて「曷－日－勹」］	

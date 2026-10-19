@@ -114,40 +114,62 @@
     (is (= [:rb [:g {:ref "#gaiji-1-87-71"} "犍"] "陀多"] rb))
     (is (= "犍" (:unicode (first (:char_declarations rendered)))))))
 
-(deftest gaiji-declarations-state-composed-sequences-and-external-identities
+(deftest gaiji-declarations-record-composed-sequences-and-external-identities
   (let [dir (fs/create-temp-dir {:prefix "gaiji-identity"})
         xml-path (str (fs/path dir "tei.xml"))
         voiced {"type" "gaiji"
                 "gaiji" {"raw_marker" "濁点付き片仮名エ" "reference" "45-2"
                          "unicode" "エ\u3099" "resolved" true}}
         unencoded {"type" "gaiji"
-                   "gaiji" {"raw_marker" "冫＋虫" "reference" "12-3" "unicode" nil "resolved" false
+                   "gaiji" {"raw_marker" "冫＋影" "reference" "12-3" "unicode" nil "resolved" false
                             "unresolved_reason" "unresolved"
-                            "ids" "⿰冫虫" "glyphwiki_glyph" "u2ff0-u51ab-u866b"}}
+                            "ids" "⿰冫影" "glyphwiki_glyph" "u2ff0-u51ab-u5f71"}}
         community {"type" "gaiji"
-                   "gaiji" {"raw_marker" "「纏」の「广」に代えて「厂」" "reference" "224-5"
-                            "unicode" "纒" "resolved" true "mapping_source" "cjkvi-data"}}
-        rendered (tei/render {"nodes" [voiced unencoded community]})
+                   "gaiji" {"raw_marker" "「抜」の「友」に代えて「ノ／友」" "reference" "224-5"
+                            "unicode" "㧞" "resolved" true "mapping_source" "cjkvi-data"}}
+        variation {"type" "gaiji"
+                   "gaiji" {"raw_marker" "「圖」の「回」に代えて「面から一、二画目をとったもの」"
+                            "reference" "12-3" "unicode" "圖\udb40\udd03" "ivs" "圖\udb40\udd03"
+                            "resolved" true "mapping_source" "cjkvi-data" "ivs_source" "cjkvi-data"}}
+        refined {"type" "gaiji"
+                 "gaiji" {"raw_marker" "赤＋報のつくり" "reference" "1-76-63"
+                          "unicode" "赧\udb40\udd01" "ivs" "赧\udb40\udd01"
+                          "resolved" true "ivs_source" "cjkvi-data"}}
+        rendered (tei/render {"nodes" [voiced unencoded community variation refined]})
         chars (map #(drop 2 (#'header/declaration->char %)) (:char_declarations rendered))
         ^String xml (:tei (render/render-work
                            {:rights @fixture/grant
-                            :parser-ir {"nodes" [voiced unencoded community]}
+                            :parser-ir {"nodes" [voiced unencoded community variation refined]}
                             :metadata-record {"work" {"title" "試験" "aozora_modified" "2026-10-19"}
                                               "contributors" []}
                             :persons-by-id {}}))]
     (try
       (is (= [:mapping {:type "composed"} "エ\u3099"] (first (first chars))))
-      (is (= #{[:mapping {:type "IDS"} "⿰冫虫"]
-               [:localProp {:name "glyphwiki" :value "u2ff0-u51ab-u866b"}]
+      (is (= #{[:mapping {:type "IDS"} "⿰冫影"]
+               [:localProp {:name "glyphwiki" :value "u2ff0-u51ab-u5f71"}]
                [:figure
-                [:graphic {:url "https://glyphwiki.org/glyph/u2ff0-u51ab-u866b.svg"}]
-                [:figDesc "⿰冫虫"]]}
+                [:graphic {:url "https://glyphwiki.org/glyph/u2ff0-u51ab-u5f71.svg"}]
+                [:figDesc "⿰冫影"]]}
              (set (remove #(and (= :localProp (first %)) (not= "glyphwiki" (:name (second %))))
                           (second chars)))))
-      (is (= [[:mapping {:type "unicode"} "纒"]
+      (is (= [[:mapping {:type "unicode"} "㧞"]
               [:localProp {:name "mappingSource"
                            :value "https://github.com/cjkvi/cjkvi-data/blob/e634e7da860d703e2e1f54dd2ac2d5aa113b7ac1/aozora_gaiji_chuki.txt"}]]
              (take 2 (nth chars 2))))
+      (is (= [[:mapping {:type "unicode"} "圖"]
+              [:mapping {:type "IVS"} "圖\udb40\udd03"]]
+             (take 2 (nth chars 3))))
+      (is (= #{"mappingSource" "variationSource"}
+             (set (keep #(when (and (= :localProp (first %)) (#{"mappingSource" "variationSource"} (:name (second %))))
+                           (:name (second %)))
+                        (nth chars 3)))))
+      (is (= [[:mapping {:type "unicode"} "赧"]
+              [:mapping {:type "IVS"} "赧\udb40\udd01"]]
+             (take 2 (nth chars 4))))
+      (is (= ["variationSource"]
+             (keep #(when (and (= :localProp (first %)) (#{"mappingSource" "variationSource"} (:name (second %))))
+                      (:name (second %)))
+                   (nth chars 4))))
       (is (not (string/includes? xml "type=\"unicode\">エ")))
       (spit xml-path xml)
       (is (empty? (:violations (rng/validate! {:schema-path "schemas/tei-profile.rng"

@@ -1,16 +1,16 @@
-# Hand-curated description → Unicode entries that are NOT in the
-# upstream 外字注記辞書 (gaiji-chuki dictionary). Two kinds live here:
+# Hand-curated description → Unicode entries not present in the upstream
+# 外字注記辞書 (gaiji-chuki dictionary). Two categories are included:
 # typographic placeholders where the literal text in `※［＃…］` *is* the
-# resolved character (〓, 〻), and spelling-variant aliases of an upstream
-# entry whose exact wording the corpus uses but the dictionary omits
-# (二重かっこ開く/閉じ → the same glyphs as 始め/終わり二重括弧).
+# resolved character (〓, 〻), and spelling-variant aliases of upstream
+# entries whose exact wording appears in the corpus but is omitted from
+# the dictionary (二重かっこ開く/閉じ → the same glyphs as 始め/終わり二重括弧).
 #
-# The upstream dictionary covers the JIS X 0213 gaiji catalogue; entries
-# here cover the meta / alias cases it intentionally omits.
+# While the upstream dictionary covers the JIS X 0213 gaiji catalogue, entries
+# here supply typographic placeholders and spelling variants omitted upstream.
 #
 # Format: description<TAB>codepoint_hex
-# (Same format as aozora-gaiji-chuki.tsv so the generator merges
-# both into a single phf::Map.)
+# (Matching the format of aozora-gaiji-chuki.tsv for unified compilation
+# into a single phf::Map.)
 
 # 「〓」(U+3013, GETA MARK) — the standard Japanese typographic
 # fallback for "this character cannot be typeset right now". When
@@ -21,10 +21,29 @@
 # appears as a literal description in source.
 〻	303B
 
-# 「二重かっこ」 — the corpus writes the double white parenthesis as
+# 「二重かっこ」 — in the corpus, double white parentheses appear as
 # `※［＃二重かっこ開く］` / `※［＃二重かっこ閉じ］` (hiragana, 開く/閉じ).
-# The upstream 外字注記辞書 lists only the kanji form 始め/終わり二重括弧
-# → U+FF5F / U+FF60 (FULLWIDTH LEFT/RIGHT WHITE PARENTHESIS), so these
+# In the upstream 外字注記辞書, only the kanji form 始め/終わり二重括弧 is
+# listed (U+FF5F / U+FF60, FULLWIDTH LEFT/RIGHT WHITE PARENTHESIS); these
 # aliases resolve to the same canonical glyphs.
 二重かっこ開く	FF5F
 二重かっこ閉じ	FF60
+
+# Characters designated by IDS in the GlyphWiki Aozora group whose code
+# point was identified through IDS matching in the CHISE IDS tables and
+# confirmed on 2026-10-19 by comparing the Jigmo 20250912 rendering of the
+# code point with the notation (see aozora-gaiji-glyphwiki.tsv). The
+# corresponding IDS is retained in that table.
+冫＋虫	2D08C
+冫＋良	300FE
+土へん＋（鹵／皿）	2EB6D
+姦＋干	2D48B
+「りっしんべん＋「僕」のつくり」	2D7B4
+さんずい＋刺	2DC29
+糸＋鞠のつくり	2E21C
+糸＋章	32E12
+「纏」の「广」に代えて「厂」	2C609
+纏のまだれに代えてがんだれ	2C609
+くさかんむり＋溪	2C7A5
+酉＋珍のつくり	33151
+歯＋艮	2EBC5

@@ -442,6 +442,7 @@
         "ids": { "type": "string", "minLength": 1 },
         "glyphwiki_glyph": { "type": "string", "pattern": "^[a-z0-9-]+$" },
         "mapping_source": { "type": "string", "enum": ["cjkvi-data"] },
+        "ivs_source": { "type": "string", "enum": ["cjkvi-data"] },
         "interpretation_marker_spans": {"type":"array","minItems":1,"items":{"$ref":"#/$defs/span"}},
         "span": { "$ref": "#/$defs/span" }
       }

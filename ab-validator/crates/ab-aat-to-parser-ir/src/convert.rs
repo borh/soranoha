@@ -969,7 +969,7 @@ fn gaiji_payload(node: &Value) -> Value {
         "raw_marker": node["description"].as_str().unwrap_or(""),
         "reference": node.get("jis_code").cloned().unwrap_or(Value::Null),
         "unicode": node.get("resolved").cloned().unwrap_or(Value::Null),
-        "ivs": null,
+        "ivs": node.get("resolved").and_then(Value::as_str).filter(|text| is_variation_sequence(text)),
         "image_or_glyph_fallback": node.get("source_fallback").cloned().unwrap_or(Value::Null),
         "resolved": node.get("resolved").is_some_and(|value| !value.is_null())
     });
@@ -979,12 +979,22 @@ fn gaiji_payload(node: &Value) -> Value {
     if let Some(reason) = node.get("unresolved_reason") {
         payload["unresolved_reason"] = reason.clone();
     }
-    for key in ["ids", "glyphwiki_glyph", "mapping_source"] {
+    for key in ["ids", "glyphwiki_glyph", "mapping_source", "ivs_source"] {
         if let Some(value) = node.get(key) {
             payload[key] = value.clone();
         }
     }
     payload
+}
+
+/// A base character followed by one ideographic variation selector
+/// (U+E0100..=U+E01EF).
+fn is_variation_sequence(text: &str) -> bool {
+    let mut chars = text.chars();
+    matches!(
+        (chars.next(), chars.next(), chars.next()),
+        (Some(_), Some('\u{E0100}'..='\u{E01EF}'), None)
+    )
 }
 
 fn interpretation_problems(aat: &Value, nodes: &[Value]) -> Result<Vec<Value>> {

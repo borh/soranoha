@@ -539,10 +539,10 @@
    ["other" "分類なし" "Unclassified"]])
 
 (defn- ndc-codes
-  "The work's NDC codes in catalog order, without the K that Aozora Bunko
-  puts in front of the number for children's material: `K913` is 913 shelved
-  for children, so the digits place the work and the K is kept as a separate
-  fact."
+  "NDC classification codes in catalog order, omitting the `K` prefix used in
+  Aozora Bunko for children's literature (e.g. `K913`). The numeric digits
+  determine classification placement, with children's literature tracked as
+  a separate facet."
   [work]
   (map #(string/replace % #"^K" "")
        (rest (string/split (or (get work "ndc") "") #"\s+"))))
@@ -551,15 +551,15 @@
   (first (ndc-codes work)))
 
 (defn- ndc-label
-  "The NDC9 class label for a three-digit code as a bilingual node, or nil
-  for a code the table does not list."
+  "Bilingual label node for a three-digit NDC9 code, or nil when unlisted
+  in the classification table."
   [digits]
   (when-let [{:strs [ja en]} (ndc/labels digits)]
     (bilingual ja (or en ja))))
 
 (defn childrens?
-  "Whether Aozora Bunko marks the work as children's material: its first NDC
-  code carries the K prefix."
+  "Returns true when the work's primary NDC classification includes the `K`
+  prefix, designating children's literature."
   [work]
   (boolean (re-find #"^NDC K" (or (get work "ndc") ""))))
 
@@ -576,9 +576,8 @@
   (some->> (first-ndc-code work) (re-find #"^\d{3}")))
 
 (defn ndc-subclasses
-  "Every three-digit subclass present in `works`, as `[key works]` in code
-  order. Present ones only: a page or archive is published for a subclass
-  with works in it, and a link to an empty one would be a link to nothing."
+  "Groups works by three-digit NDC subclass, returned as `[subclass-code works]`
+  pairs sorted by code. Only subclasses with at least one work are included."
   [works]
   (sort-by first (group-by ndc-subclass-key (filter ndc-subclass-key works))))
 
@@ -586,15 +585,15 @@
   (get (first (get work "source_editions")) "title"))
 
 (defn- variant-facts
-  "The facts that distinguish works a list would otherwise print identically.
+  "Distinguishing bibliographic facts for works sharing identical author and title.
 
-  Aozora Bunko carries several transcriptions of one text: 樋口一葉's わかれ道
-  is keyed three times. They differ in the edition they were keyed from and in
-  whether that edition modernized the orthography, so those are the two facts
-  that separate them.
+  Multiple transcriptions of a single text frequently appear in Aozora Bunko
+  (for instance, three separate transcriptions of Higuchi Ichiyō's わかれ道).
+  These transcriptions are differentiated primarily by orthographic style
+  (historical versus modernized kana usage) and source edition (底本).
 
-  Orthography alone separates most groups; the source edition is added only
-  where it does not."
+  Orthographic style distinguishes most groups; the source edition is added
+  when orthography alone does not differentiate the works."
   [works]
   (let [styles (mapv #(get % "orthographic_style") works)]
     (if (or (apply distinct? styles) (= 1 (count styles)))
@@ -1509,7 +1508,7 @@
               (when doi (str ". https://doi.org/" doi)))]]
     [:p (bilingual
          "個々の作品の引用形式を、現在のリリースと「蜘蛛の糸」を例に示します。各作品のページには、その作品の引用形式を掲載しています。"
-         "Citation forms for individual works are illustrated below using this release and 蜘蛛の糸. Every work page provides these forms pre-filled for that work.")]
+         "Citation forms for individual works are illustrated below using this release and 蜘蛛の糸. These forms are provided on each work's page, pre-filled for that work.")]
     [:p {:class "by"} (bilingual "日本語文献用" "For a Japanese bibliography")]
     [:p [:code {:class "citation" :lang "ja"}
          (citation/rendered release example-work)]]
@@ -1560,17 +1559,14 @@
 (defn people
   "Every person in the release, keyed by person_id.
 
-  `:works` is every work they contributed to and `:by-relation` is the same
-  works split by the relation the catalog records; both hold a work once and
-  keep catalog order. A catalog can list one person twice for one work,
-  holding two relations or repeating one, and neither is a reason to list the
-  work twice: the works of a person are works, not contributor rows.
+  `:works` contains every work to which the person contributed, and
+  `:by-relation` groups those works by the contributor relation recorded in
+  the catalog; both maintain catalog order without duplicate works. A person
+  may be associated with multiple relations for a single work or repeated in
+  contributor entries, but works are listed only once per person.
 
-  One definition because the author pages and the bulk selections describe the
-  same release from the same catalog, and a person's works have to mean the
-  same thing on the page and in the archive it links to. Contributors of a
-  work are reached consecutively here, so the last entry in a list is enough
-  to recognise a repeat."
+  This single definition ensures consistency across author pages and bulk
+  download archives for the release."
   [works]
   (let [add (fn [ws work] (if (identical? (peek ws) work) ws (conj (or ws []) work)))]
     (reduce

@@ -1,6 +1,6 @@
 (ns soranoha.gates.flake-inputs
-  "Release-critical flake inputs are pinned to a revision or tag in flake.nix,
-  and the component flake's lock agrees with the root lock."
+  "Verifies that release-critical flake inputs are pinned to specific revisions
+  or tags in flake.nix, and that component locks match the repository root lock."
   (:require [babashka.fs :as fs]
             [soranoha.core.json :as json]))
 
@@ -12,8 +12,8 @@
     "nixpkgs-lib" "nixpkgs" "root" "rust-overlay" "systems"})
 
 (defn- explicitly-pinned?
-  "A path or file input has no revision; the lock's narHash is its pin, and a
-  changed file fails the fetch rather than drifting."
+  "Checks whether an input has an explicit revision pin or content-addressed
+  narHash."
   [original]
   (or (contains? #{"path" "file"} (get original "type"))
       (boolean (some #(and (string? %) (seq %)) [(get original "rev") (get original "ref")]))))

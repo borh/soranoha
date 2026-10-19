@@ -82,35 +82,37 @@ The note is empty; the extent is in its attributes:
 - `n` is the line the extent begins on. It is absent when the source recorded
   no line.
 
-The header declares this unit in a `refsDecl` that points back at this document.
+The unit is declared in a `refsDecl` pointing to this document.
 
 Notes whose `xml:id` starts with `parser-source` are parser diagnostics, not
 body elements; their byte extent is JSON in the element content.
 
 ## Character declarations
 
-Each gaiji in the text is a `g` element whose `ref` points at a `char` in
-`encodingDesc/charDecl`. The declaration carries what is known about the
-character:
+Each gaiji in the text is represented by a `g` element referencing a `char`
+declaration in `encodingDesc/charDecl`. Available details for the character
+are recorded in the declaration:
 
 | Child | Meaning |
 |---|---|
-| `mapping[@type='unicode']` | The one code point the converter chose from the marker's JIS X 0213 cell, `U+` code or description. |
-| `localProp[@name='mappingSource']` | Present when the code point comes from the cjkvi-data table of Aozora notations rather than the JIS reference, the 外字注記辞書 or a composition rule: the URL of that table at the commit the parser reads. |
-| `mapping[@type='composed']` | A sequence of code points: a JIS X 0213 cell whose Unicode form is a base and a combining mark, a roman numeral above twelve, or a `濁点付き…` description composed as the base followed by U+3099 or U+309A. |
-| `mapping[@type='IDS']` | The Ideographic Description Sequence of a character Unicode does not encode, from the GlyphWiki group for Aozora Bunko gaiji. |
-| `localProp[@name='glyphwiki']` | The GlyphWiki glyph name for that character; `figure/graphic/@url` beside it points at the glyph image on glyphwiki.org. |
+| `mapping[@type='unicode']` | The single code point resolved from the marker's JIS X 0213 coordinate, `U+` code, or description. |
+| `localProp[@name='mappingSource']` | Where the code point or variation sequence derives from the cjkvi-data table of Aozora notations rather than a JIS reference, the 外字注記辞書, or a composition rule: the URL of that table at the pinned commit. |
+| `localProp[@name='variationSource']` | Present when the selector of an IVS mapping derives from the cjkvi-data tables: the URL of that table at the pinned commit. When `mappingSource` is absent, the base character derives from the official dictionary. |
+| `mapping[@type='composed']` | A sequence of code points: a JIS X 0213 character represented in Unicode as a base and combining mark, a Roman numeral above twelve, or a `濁点付き…` description composed as a base followed by U+3099 or U+309A. |
+| `mapping[@type='IVS']` | An Ideographic Variation Sequence (base character followed by a variation selector registered in the Unicode Ideographic Variation Database) from the cjkvi-data tables. An accompanying `unicode` mapping provides the base character. |
+| `mapping[@type='IDS']` | The Ideographic Description Sequence of a character unencoded in Unicode, derived from the GlyphWiki group for Aozora Bunko gaiji. |
+| `localProp[@name='glyphwiki']` | The GlyphWiki glyph name for that character, with the corresponding glyph image URL on glyphwiki.org provided in `figure/graphic/@url`. |
 | `localProp[@name='rawMarker']`, `localProp[@name='sourceReference']`, `localProp[@name='unresolvedReason']` | The marker's description, its reference clause and, when nothing above applies, the reason. |
 | `snh:gaiji-reference` | One element per reference clause, in source order, with its exact spelling in `original`. |
 
-A character with no mapping of any type keeps its description and source span
-only. Plaintext and Markdown write the composed sequence where TEI declares
-one, and the marker text where TEI declares none.
+For a character without an associated mapping, only its description and source span
+are retained. In plaintext and Markdown output, composed sequences appear where
+provided in TEI character declarations; otherwise, the original marker text appears.
 
 ## Emendations
 
-When the parser corrects a transcription defect in the source before parsing,
-the header declares each correction:
+Where transcription defects in the source are emended prior to parsing,
+each correction is declared in the header:
 
 ```xml
 <editorialDecl>
@@ -122,12 +124,12 @@ the header declares each correction:
 </editorialDecl>
 ```
 
-- `sic` is the transcribed source text; `corr` is the text the parser read.
+- `sic` is the transcribed source text; `corr` is the emended reading adopted during parsing.
 - `xml:id` is `emendation-` followed by the emendation identifier.
 - `@source` refers to the `source-span` note of the `corr` text's extent,
   measured as described under [Source spans](#source-spans).
-- Declarations follow the order in which the parser applied them. A work with
-  no emendation has no `editorialDecl`.
+- Declarations follow the order in which emendations were applied. Works
+  without emendations contain no `editorialDecl`.
 - An emendation is made only where Aozora Bunko's own publication, the XHTML
   or a later edition of the work, has the corrected text. A defect without
   that witness is kept as transcribed.
@@ -150,31 +152,32 @@ Relax NG failure has the constant `rule_id` `relax-ng`.
 | `snh-gaiji-reference` | error | Gaiji retains its original marker and either a resolved replacement or unresolved status. |
 | `snh-gaiji-chardecl-resolution` | error | A gaiji `@ref` fragment resolves to a `charDecl/char` in the same document. |
 | `snh-char-resolution-form` | error | A `charDecl/char` declares at least one of `mapping`, `unicodeProp`, `localProp`, `desc`. |
-| `snh-figure-accessibility` | warning | A figure carries a nonempty description or caption, so the image it refers to has alternative text. Most Aozora Bunko illustration markers give a filename and pixel dimensions and no description, so this warning reports the source as it is, not something the conversion dropped. |
+| `snh-figure-accessibility` | warning | Figures must include a non-empty description or caption providing alternative text for the referenced image. Because most Aozora Bunko illustration markers specify only a filename and pixel dimensions without descriptive text, this warning reflects the source transcription as recorded. |
 | `snh-source-span-reference` | error | Elements claiming source spans point to valid span identifiers. |
 | `snh-source-span-target-exists` | error | Each fragment id in `@source` resolves to an `@xml:id` in the same document. |
 | `snh-catref-target-exists` | error | Each fragment id in `catRef/@target` resolves to a `category/@xml:id` in the same document. |
-| `snh-transcription-vs-annotation` | warning | No element of TEI's analysis module appears inside `tei:text` unless the header declares it. Stand-off anchors and a `standOff` sibling, which is what enrichment writes, are outside the rule. |
+| `snh-transcription-vs-annotation` | warning | Elements from the TEI analysis module may not appear within `tei:text` unless declared in the header. Stand-off anchors and sibling `standOff` elements generated by downstream enrichment are exempt from this restriction. |
 | `snh-vocab-version-declared` | error | A root carrying `snh:*` elements or attributes declares `snh:vocab-version`; `snh:gaiji-reference` requires `2` or `3`; `snh:formatting-instruction` requires `3`. |
 | `snh-preservation-record-shape` | error | `snh:preservation-record` values have the form `r000000`. |
 | `snh-layout-params-shape` | error | `snh:layout-params` uses the `key=value` grammar above. |
 
 ## Rights in the header
 
-Every published work carries its terms in
+Rights terms for each published work are recorded in
 `fileDesc/publicationStmt/availability`: one `licence` element for the
-underlying work, which is public domain or under a Creative Commons
-Attribution licence, and one for Soranoha's CC0 grant over the encoding, with
-a `ptr` to the full statement. The encoding grant comes from the publication
-policy the release manifest hashes, and the work's standing from the value in
-the manifest's `works[].rights`, so a detached TEI file and the signed release
-record always agree. Validation fails under `snh-publication-licence` when
-they are missing. See [rights and licensing](../../docs/rights.md).
+underlying work (designated as public domain or released under a Creative Commons
+Attribution licence), and one for Soranoha's CC0 dedication of the markup,
+including a `ptr` to the full terms. The encoding grant derives from the
+publication policy hashed in the release manifest, while the rights standing of
+the work matches `works[].rights` in the manifest, ensuring consistency between
+detached TEI files and signed release records. Validation fails under
+`snh-publication-licence` when these declarations are absent. See
+[rights and licensing](../../docs/rights.md).
 
 Passing schema validation does not establish source fidelity or determine
-publication rights. [TEI validation](tei-validation.md) explains the two
-validation layers, and [source accountability](source-accountability.md) covers
-source fidelity.
+publication rights. Details on the two validation layers appear in
+[TEI validation](tei-validation.md); source fidelity is addressed in
+[source accountability](source-accountability.md).
 
 ## Provenance of this document
 

@@ -108,8 +108,9 @@ is governed by the toolchain's own licences.
 
 ## Machine-readable form
 
-Each published file carries its own terms, so it can still be read correctly
-once detached from this site.
+Within each published file, explicit terms are stated, ensuring that
+rights conditions remain verifiable even when files are distributed
+independently of this site.
 
 In every signed release manifest, Soranoha's grant over its own layer is
 recorded as:

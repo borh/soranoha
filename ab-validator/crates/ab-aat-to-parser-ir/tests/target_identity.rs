@@ -150,21 +150,49 @@ fn retrospective_gaiji_retains_target_and_marker_identity() {
 
 #[test]
 fn unencoded_gaiji_keeps_its_ids_and_glyphwiki_glyph() {
-    let ir = convert("詩集※［＃「冫＋虫」、12-3］後");
+    let ir = convert("詩集※［＃「冫＋影」、12-3］後");
     let all = nodes(&ir);
     let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
     assert_eq!(glyph["gaiji"]["unicode"], Value::Null);
-    assert_eq!(glyph["gaiji"]["ids"], "⿰冫虫");
-    assert_eq!(glyph["gaiji"]["glyphwiki_glyph"], "u2ff0-u51ab-u866b");
+    assert_eq!(glyph["gaiji"]["ids"], "⿰冫影");
+    assert_eq!(glyph["gaiji"]["glyphwiki_glyph"], "u2ff0-u51ab-u5f71");
 }
 
 #[test]
 fn cjkvi_resolution_keeps_its_mapping_source() {
-    let ir = convert("詩集※［＃「纏」の「广」に代えて「厂」、224-5］後");
+    let ir = convert("詩集※［＃「抜」の「友」に代えて「ノ／友」、224-5］後");
     let all = nodes(&ir);
     let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
-    assert_eq!(glyph["gaiji"]["unicode"], "纒");
+    assert_eq!(glyph["gaiji"]["unicode"], "㧞");
     assert_eq!(glyph["gaiji"]["mapping_source"], "cjkvi-data");
+}
+
+#[test]
+fn ivs_resolution_preserves_the_sequence_as_ivs() {
+    let ir = convert("詩集※［＃「圖」の「回」に代えて「面から一、二画目をとったもの」、12-3］後");
+    let all = nodes(&ir);
+    let glyph = all.iter().find(|node| node["type"] == "gaiji").unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], "圖\u{E0103}");
+    assert_eq!(glyph["gaiji"]["ivs"], "圖\u{E0103}");
+    assert_eq!(glyph["gaiji"]["mapping_source"], "cjkvi-data");
+    assert_eq!(glyph["gaiji"]["ivs_source"], "cjkvi-data");
+
+    let refined = convert("詩集※［＃「赤＋報のつくり」、第3水準1-76-63］後");
+    let glyph = nodes(&refined)
+        .into_iter()
+        .find(|node| node["type"] == "gaiji")
+        .unwrap();
+    assert_eq!(glyph["gaiji"]["unicode"], "赧\u{E0101}");
+    assert_eq!(glyph["gaiji"]["ivs"], "赧\u{E0101}");
+    assert_eq!(glyph["gaiji"]["mapping_source"], Value::Null);
+    assert_eq!(glyph["gaiji"]["ivs_source"], "cjkvi-data");
+
+    let plain = convert("詩集※［＃「抜」の「友」に代えて「ノ／友」、224-5］後");
+    let glyph = nodes(&plain)
+        .into_iter()
+        .find(|node| node["type"] == "gaiji")
+        .unwrap();
+    assert_eq!(glyph["gaiji"]["ivs"], Value::Null);
 }
 
 #[test]

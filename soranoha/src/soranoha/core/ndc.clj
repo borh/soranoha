@@ -1,11 +1,12 @@
 (ns soranoha.core.ndc
-  "The three-digit classes of 日本十進分類法 新訂9版 with their labels.
+  "Three-digit classes of 日本十進分類法 新訂9版 with Japanese and English labels.
 
-  The labels come from the Japan Library Association's NDC9 Linked Data
+  Labels derive from the Japan Library Association's NDC9 Linked Data
   release (https://www.jla.or.jp/committees/bunrui/ndc-data/, CC BY), pinned
-  as the `ndc9-ld` flake input. `render` derives the committed table at
-  `resources/ndc/ndc9-sections.json` from its `ndc9.ttl`; the `ndc9-sections`
-  kernel command writes or checks that table, and the TEI header reads it."
+  as the `ndc9-ld` flake input. The committed resource at
+  `resources/ndc/ndc9-sections.json` is generated from `ndc9.ttl` via `render`,
+  verified through the `ndc9-sections` kernel command, and referenced in
+  TEI header generation."
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [soranoha.core.hash :as hash]
@@ -19,10 +20,10 @@
 (def ^:private resource-path "ndc/ndc9-sections.json")
 
 (defn sections
-  "The three-digit classes in a Turtle document, as digits → `{\"ja\" label,
-  \"en\" label}`. The file separates subject blocks with a line holding a
-  single period, and a three-digit class is the subject `ndc9:NNN`. A class
-  without a Japanese preferred label is skipped."
+  "Extracts three-digit classes from a Turtle document, returning digits mapped
+  to `{\"ja\" label, \"en\" label}`. Subject blocks are delimited by a period on
+  its own line, with three-digit classes designated by `ndc9:NNN`. Classes
+  lacking a Japanese preferred label are omitted."
   [ttl]
   (into (sorted-map)
         (keep (fn [block]
@@ -36,8 +37,8 @@
         (string/split ttl #"\n\.\n")))
 
 (defn render
-  "The table document for one `ndc9.ttl`, as the JSON text the repository
-  commits."
+  "Generates deterministic JSON for an `ndc9.ttl` file to produce the committed
+  resource text."
   [ttl-file]
   (let [file (io/file ttl-file)
         bytes (java.nio.file.Files/readAllBytes (.toPath file))]
@@ -56,7 +57,7 @@
            (get (json/read-json-bytes (.readAllBytes in)) "sections"))))
 
 (defn labels
-  "`{\"ja\" label, \"en\" label}` for a three-digit code, or nil when the
-  table does not list it."
+  "Returns `{\"ja\" label, \"en\" label}` for a three-digit code, or nil when
+  unlisted in the table."
   [digits]
   (get @table digits))

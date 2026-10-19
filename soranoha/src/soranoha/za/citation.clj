@@ -1,31 +1,29 @@
 (ns soranoha.za.citation
-  "Per-work citations, in the forms a humanities writer pastes into a
-  document: a rendered line, CSL-JSON for Zotero and Pandoc, BibLaTeX for
-  people who write TeX directly, and COinS so a browser connector can save the
-  record in one click.
+  "Citations for individual works in formats suitable for scholarship:
+  a rendered line, CSL-JSON for Zotero and Pandoc, BibLaTeX for TeX,
+  and COinS for one-click capture via browser extensions.
 
-  All four are projections. The TEI header is the authoritative bibliographic
-  record; the signed catalog carries the same facts so that the serving layer
-  and bulk consumers do not have to parse every TEI file to build a
-  bibliography. Nothing here is a second source of metadata, and nothing here
-  is signed: a citation form can be corrected in a later release, which is
-  why it is not in the chain.
+  All four formats are projections. The TEI header serves as the authoritative
+  bibliographic record; the same facts are provided in the signed catalog so that
+  the serving layer and bulk consumers can construct bibliographies without
+  parsing every TEI document. Citations are unversioned projections rather than
+  primary metadata records in the chain.
 
-  Two things every form carries. The identifier, because a description
-  does not identify a work: measured over the Aozora Bunko catalog this release
-  builds from, author and title leave 2357 works ambiguous, and author, title,
-  副題, 文字遣い種別, 底本名 and 初出 together still leave 16. Both counts
-  change with the upstream catalog. And the release, because the corpus is
-  versioned and a citation that does not state which release was read does
-  not identify the bytes that were read.
+  Each citation includes two essential elements: the work identifier and the
+  release. The identifier is required because descriptions alone do not uniquely
+  distinguish works: in the upstream catalog this release builds from, 2,357
+  works remain ambiguous by author and title alone, and 16 remain
+  indistinguishable even when combining author, title, subtitle (副題),
+  orthography (文字遣い種別), source edition (底本名), and first publication (初出).
+  The release identifier anchors the citation to the exact corpus state read.
 
-  Romanized titles are not published, here or anywhere else. The kana reading
-  carries no word boundaries, so a mechanical transliteration is not correct
-  Hepburn; the Japanese title and its reading are given, and the romanization
-  style is the citing journal's choice.
+  Romanized titles are not generated. Because kana readings lack explicit word
+  boundaries, mechanical transliteration cannot ensure standard Hepburn orthography;
+  the original Japanese title and reading are provided, leaving romanization style
+  to citing venues.
 
-  Pure, like the rest of the browse layer: same catalog entry, release head
-  and DOI in, same bytes out."
+  Deterministic: identical catalog entry, release head, and DOI yield identical
+  citation text."
   (:require [clojure.string :as string]
             [soranoha.za.naming :as naming])
   (:import (java.net URLEncoder)
@@ -34,24 +32,20 @@
 (def corpus-name "Soranoha Aozora Bunko TEI Corpus")
 
 (def ^:private site-origin
-  "The origin a citation's landing-page URL points at.
+  "Origin URL for work landing pages in citations.
 
-  The permanent identifier `w3id.org/soranoha/works/<id>` is claimed for
-  exactly this in the registration prepared under `docs/w3id/`, and would
-  remain valid after a change of serving location, but it resolves only by
-  redirecting here, and the citation already carries two identifiers
-  independent of the site: the work identifier and the release DOI. A second
-  indirection on the convenience field would add only a registration this URL
-  would depend on."
+  The persistent identifier `w3id.org/soranoha/works/<id>` resolves by redirecting
+  to this origin. Because citations already include both the permanent work
+  identifier and the release DOI, landing page links point directly to the
+  serving site without intermediate redirects."
   "https://soranoha.org")
 
 (defn- blank->nil [s] (when-not (string/blank? s) s))
 
 (defn- statements
-  "A field whose lines are separate bibliographic statements, as one line of
-  running text. 初出 is the field that does this: a collection states where
-  each constituent piece first appeared, and the citation forms have nowhere
-  to put a line break."
+  "Formats multiline bibliographic statements as a single line of running text.
+  In fields such as 初出 (first publication), where collections record the
+  original venue of each constituent piece, lines are joined with semicolons."
   [value]
   (string/join "; " (string/split-lines value)))
 
@@ -90,8 +84,8 @@
   are dropped: a book is cited by year,
   and the 1033 irregular values have no dependable month to take.
 
-  The full string is not discarded; it is what the work page and the TEI
-  header show. This is only for the fields that must hold a date."
+  The full string is not discarded; it appears on the work page and in the TEI
+  header. The extracted integer is used only in fields requiring a numeric date."
   [work]
   (when-let [recorded (blank->nil (get (primary-edition work) "first_edition_year"))]
     (when-let [year (some-> (re-find #"\d{4}" recorded) parse-long)]
@@ -349,8 +343,8 @@
    "filename" "source_content_hash" "url" "release" "doi"])
 
 (defn csv-values
-  "One work as `csv-columns`, in that order. `filename` is the archive member
-  this row describes, which the caller has and the catalog does not."
+  "Returns values for one work matching `csv-columns` in order. `filename`
+  specifies the archive member name for the work."
   [{:keys [head-hex doi]} work filename]
   (let [{:strs [slug title subtitle title_reading orthographic_style ndc
                 first_published body_character_count source_content_hash]} work

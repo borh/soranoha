@@ -11,8 +11,8 @@ Running the same file through the same pipeline produces the same bytes.
 ## The source
 
 Aozora Bunko distributes the text as a Shift_JIS file inside a ZIP, with its
-own notation written inline. Four lines from the file show most of what the
-converter has to handle (the middle two are cut short here):
+own notation written inline. Four lines from the file illustrate the principal
+features requiring conversion (the middle two are truncated here):
 
 ```
 ［＃８字下げ］一［＃「一」は中見出し］
@@ -23,10 +23,10 @@ converter has to handle (the middle two are cut short here):
 ```
 
 - `《…》` is ruby: a reading printed above or beside the preceding characters.
-- `※［＃「…」、第3水準1-87-71］` is a **gaiji**, a character the file's encoding
-  cannot hold. The marker gives a description in words along with its JIS X 0213
-  coordinates: level 3 (第3水準), plane 1, row 87, cell 71. Here it is 犍, the
-  first character of the thief's name 犍陀多.
+- `※［＃「…」、第3水準1-87-71］` is a **gaiji**, a character unrepresented in the
+  file's primary character encoding. The marker provides a descriptive label along
+  with its JIS X 0213 coordinates: level 3 (第3水準), plane 1, row 87, cell 71.
+  Here it is 犍, the first character of the thief's name 犍陀多.
 - `［＃８字下げ］…［＃「一」は中見出し］` encodes two instructions: indent eight
   characters, and mark 一 as a section heading.
 - `［＃地から１字上げ］` indicates alignment to the bottom margin (in vertical
@@ -42,7 +42,7 @@ information is preserved in back matter (`<back>`).
 
 In the first three stages, the Rust component parses the Aozora Bunko
 notation into an annotated syntax tree (AAT), converting it into a parser
-intermediate representation (IR) where each node carries its byte span in the
+intermediate representation (IR) in which each node includes its byte span in the
 decoded source. The Clojure kernel then integrates the parser IR with catalog
 metadata to produce the TEI document, from which the remaining three files are
 derived.
@@ -181,11 +181,12 @@ used. For exact reproducibility in scholarly citations, record both.
 Each gaiji in the text has one `<char>` declaration here, referred to from the
 body. Both aspects of the character are recorded in the declaration:
 
-- `<mapping type="unicode">` is the character the converter chose from the
-  JIS X 0213 code point in the marker. It is a claim, open to checking.
-- `rawMarker` is the source notation as written (`特のへん＋廴＋聿`, "the left
-  radical of 特, plus 廴, plus 聿"). With it you can check or change the
-  mapping without going back to the source file.
+- `<mapping type="unicode">` is the character resolved from the JIS X 0213
+  code point specified in the marker.
+- `rawMarker` records the source notation as written (`特のへん＋廴＋聿`, "the left
+  radical of 特, plus 廴, plus 聿"). This preserves the original editorial note
+  directly in the record, allowing verification of the mapping without
+  re-examining the source file.
 
 The `xml:id` is the marker's JIS X 0213 coordinates with every character
 outside `[A-Za-z0-9_.-]` replaced by a hyphen, so `第3水準1-87-71` becomes
@@ -285,10 +286,10 @@ header declaration containing the original marker.
 </div>
 ```
 
-The outer `<div type="layout">` is the source's ８字下げ instruction as
-geometry. The inner `<head n="2">` is the heading the source's 中見出し marker
-declares. Each comes from its own source annotation; neither is inferred from
-the other.
+The outer `<div type="layout">` represents the source's ８字下げ instruction as
+layout geometry. The inner `<head n="2">` represents the heading designated by
+the source's 中見出し marker. Each derives from its own source annotation; neither
+is inferred from the other.
 
 The dateline at the end is layout only:
 
@@ -300,7 +301,7 @@ The dateline at the end is layout only:
 
 ### Source offsets
 
-Almost every element carries a `@source` attribute referencing a
+Almost every element includes a `@source` attribute referencing a
 `<note type="source-span">` in `<back>`:
 
 ```xml
@@ -311,7 +312,7 @@ Almost every element carries a `@source` attribute referencing a
 <note type="source-span" xml:id="source-694-733" n="20"/>
 ```
 
-The note carries no text content; the byte extent is expressed directly in its
+The note contains no text content; the byte extent is expressed directly in its
 identifier. In `source-694-733`, the start and end byte offsets in the decoded
 UTF-8 source text are given as 694 and 733, with the source line number recorded
 in `@n`. The source text indexed by these offsets is identified for the whole

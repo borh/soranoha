@@ -1,6 +1,6 @@
 (ns soranoha.gates.docs-links
-  "Relative Markdown links and fragment anchors across the project documents
-  resolve to a file and, for a Markdown target, to one of its headings."
+  "Validates that relative Markdown links and fragment anchors across project
+  documentation resolve to existing files and valid heading anchors."
   (:require [babashka.fs :as fs]
             [clojure.string :as string]))
 
@@ -10,9 +10,8 @@
 (def ^:private external #"^(?:https?://|mailto:|ftp://)")
 
 (defn slug
-  "The anchor a Markdown renderer derives from a heading: lower-cased,
-  letters, digits and marks kept along with space, underscore, hyphen and
-  tab, then runs of whitespace joined into one hyphen."
+  "Generates an anchor slug for a heading: lower-cased, preserving letters,
+  digits, and punctuation marks, with whitespace sequences normalized to hyphens."
   [^String text]
   (let [out (StringBuilder.)]
     (doseq [cp (.toArray (.codePoints (string/lower-case text)))]

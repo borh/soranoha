@@ -1,34 +1,41 @@
-# Aozora Bunko gaiji that Unicode does not encode, each with its Ideographic
-# Description Sequence (IDS) and the GlyphWiki glyph drawn for it.
+# Aozora Bunko gaiji unencoded in Unicode, each with its Ideographic
+# Description Sequence (IDS) and corresponding GlyphWiki glyph.
 #
-# Source: GlyphWiki, Group:青空文庫外字, read from the Internet Archive
+# Source: GlyphWiki, Group:青空文庫外字, from the Internet Archive
 # snapshot of 2022-08-02:
 #   https://web.archive.org/web/20220802235138/https://glyphwiki.org/wiki/Group:%e9%9d%92%e7%a9%ba%e6%96%87%e5%ba%ab%e5%a4%96%e5%ad%97
-# GlyphWiki glyph data may be used by anyone for any purpose, modified or
-# not, commercially or not, with no attribution requirement
-# (GlyphWiki:データ・記事のライセンス). The private-use code points the page
-# assigns from U+FB000 are font-internal and are not recorded here.
+# Under GlyphWiki license terms (GlyphWiki:データ・記事のライセンス),
+# glyph data may be used freely for any purpose, with or without
+# modification, commercially or non-commercially, without attribution
+# requirements. Private-use code points assigned on the source page from
+# U+FB000 are font-internal and are not recorded here.
 #
 # Columns: description<TAB>notation<TAB>ids<TAB>glyphwiki<TAB>ucs_candidate<TAB>note
-#   description    the key gaiji::parse_gaiji_body derives from the notation
-#   notation       the marker body as the page records it, without ※［＃ ］
+#   description    key derived by gaiji::parse_gaiji_body from the notation
+#   notation       marker body as recorded on the source page, omitting ※［＃ ］
 #                  and the ページ数-行数 placeholder
 #   ids            Ideographic Description Sequence
-#   glyphwiki      glyph name; the glyph is at https://glyphwiki.org/glyph/<name>.svg
-#   ucs_candidate  a code point whose IDS in the CHISE IDS tables
-#                  (gitlab.chise.org/CHISE/ids, read 2026-10-18) equals this
-#                  IDS character for character. A match is a lead for review,
-#                  not an identity: build.rs does not read this column. A
-#                  reviewed code point moves to aozora-gaiji-special.tsv.
-#   note           the page's note column
+#   glyphwiki      glyph name, accessible at https://glyphwiki.org/glyph/<name>.svg
+#   ucs_candidate  code point whose IDS in the CHISE IDS tables
+#                  (gitlab.chise.org/CHISE/ids, consulted 2026-10-18) matches
+#                  this IDS character for character. A match serves as a
+#                  candidate for review rather than verified equivalence;
+#                  this column is not read during compilation. Verified
+#                  code points are transferred to aozora-gaiji-special.tsv.
+#                  Reviewed 2026-10-19 against the Jigmo 20250912 rendering
+#                  for each candidate: thirteen were transferred; U+2E47E was
+#                  rejected for くさかんむり／（束＋束） because its lower
+#                  components are 朿 where the notation specifies 束.
+#   note           notes from the source page
 #
-# build.rs reads description, ids and glyphwiki into DESCRIPTION_TO_EXTERNAL.
+# During compilation, description, ids, and glyphwiki are read into
+# DESCRIPTION_TO_EXTERNAL.
 
 三／二	「三／二」	⿱三二	u2ff1-u4e09-u4e8c		
 「にんべん＋（「育」の「月」に代えて「冉」）」	「にんべん＋（「育」の「月」に代えて「冉」）」	⿰亻⿱𠫓冉	u2ff0-u4ebb-u2ff1-u20ad3-u5189		
 にんべん＋濳のつくり	「にんべん＋濳のつくり」	⿰亻㬱	u2ff0-u4ebb-u3b31		僭
-冫＋虫	「冫＋虫」	⿰冫虫	u2ff0-u51ab-u866b	U+2D08C	
-冫＋良	「冫＋良」	⿰冫良	u2ff0-u51ab-u826f	U+300FE	浪
+冫＋虫	「冫＋虫」	⿰冫虫	u2ff0-u51ab-u866b		
+冫＋良	「冫＋良」	⿰冫良	u2ff0-u51ab-u826f		浪
 冫＋影	「冫＋影」	⿰冫影	u2ff0-u51ab-u5f71		𤂖
 旬＋力	「旬＋力」	⿰旬力	u2ff0-u65ec-u529b		劬
 丞／巳	「丞／巳」	⿱丞巳	u2ff1-u4e1e-u5df3		
@@ -40,7 +47,7 @@
 □冠に温	「□冠に温」	⿱口温	u2ff1-u53e3-u6e29		cf. グループ:法律語彙初稿
 「尅」の寸を土に変えたもの	「尅」の寸を土に変えたもの	⿺克土	u2ffa-u514b-u571f		cf. グループ:法律語彙初稿
 尅の寸を土に変えたもの	「尅の寸を土に変えたもの」	⿺克土	u2ffa-u514b-u571f		cf. グループ:法律語彙初稿
-土へん＋（鹵／皿）	「土へん＋（鹵／皿）」、鹽の俗字	⿰土𪉟	u2ff0-u571f-u2a25f	U+2EB6D	
+土へん＋（鹵／皿）	「土へん＋（鹵／皿）」、鹽の俗字	⿰土𪉟	u2ff0-u571f-u2a25f		
 女＋釆	「女＋釆」	⿰女釆	u2ff0-u5973-u91c6		婇
 寸＋多	「寸＋多」	⿰寸多	u2ff0-u5bf8-u591a		statisticsの造字
 （夕＋匕）／手	「（夕＋匕）／手」	⿱𡖅手	u2ff1-u21585-u624b		𢪸
@@ -50,18 +57,18 @@
 「工偏の横二画を短くしたようなもの＋（「しんにょう」+「袁」）」	「工偏の横二画を短くしたようなもの＋（「しんにょう」+「袁」）」	⿰工遠	u2ff0-u5de5-u9060		cf. グループ:法律語彙初稿
 工偏の横二画を短くしたようなもの＋奥の下に土を置いたもの	「工偏の横二画を短くしたようなもの＋奥の下に土を置いたもの」	⿰工𡒃	u2ff0-u5de5-u21483		cf. グループ:法律語彙初稿
 「巾へん＋「厨」の「がんだれ」のかわりに「まだれ」をあてたもの」	「巾へん＋「厨」の「がんだれ」のかわりに「まだれ」をあてたもの」	⿰巾𢊍	u2ff0-u5dfe-u2228d		㡡
-姦＋干	「姦＋干」	⿰姦干	u2ff0-u59e6-u5e72	U+2D48B	
+姦＋干	「姦＋干」	⿰姦干	u2ff0-u59e6-u5e72		
 「弱」の片側のみ	「弱」の片側のみ	⿹弓冫	cdp-8cc4		
 りっしんべん＋巧	「りっしんべん＋巧」	⿰忄巧	u2ff0-u5fc4-u5de7		悧巧の「巧」
 恙／虫	「恙／虫」	⿱恙虫	u2ff1-u6059-u866b		恙
-「りっしんべん＋「僕」のつくり」	「りっしんべん＋「僕」のつくり」	⿰忄菐	u2ff0-u5fc4-u83d0	U+2D7B4	
+「りっしんべん＋「僕」のつくり」	「りっしんべん＋「僕」のつくり」	⿰忄菐	u2ff0-u5fc4-u83d0		
 「てへん＋「宛」で「夕」の右側が「ヒ」」	「てへん＋「宛」で「夕」の右側が「ヒ」」	⿰扌⿱宀𡖅	u2ff0-u624c-u2ff1-u5b80-u21585		捥
 月＋祭	「月＋祭」	⿰月祭	u2ff0-u6708-u796d		塍
 「栃」でつくりの中の「万」のかわりに「朽」のつくりをあてる」	「栃」でつくりの中の「万」のかわりに「朽」のつくりをあてる」	⿰木⿸𠂆丂	u2ff0-u6728-u2ff8-u20086-u4e02		栃
 「木＋「酋」の「酉」に代えて「允」」	「木＋「酋」の「酉」に代えて「允」」	⿰木兊	u2ff0-u6728-u514a		梲
 木＋（ヨ／粉／廾）	「木＋（ヨ／粉／廾）」	⿰木彛	u2ff0-u6728-u5f5b		𣟗に包摂か
 「武」の「弋」が「戈」	「武」の「弋」が「戈」	⿹戈止	u2ff9-u6208-u6b62		武
-さんずい＋刺	「さんずい＋刺」	⿰氵刺	u2ff0-u6c35-u523a	U+2DC29	溂の誤字か
+さんずい＋刺	「さんずい＋刺」	⿰氵刺	u2ff0-u6c35-u523a		溂の誤字か
 将／水	「将／水」	⿱将水	u2ff1-u5c06-u6c34		漿に包摂か
 「さんずい＋（从／巫）	「さんずい＋（从／巫）	⿰氵⿱从巫	u2ff0-u6c35-u2ff1-u4ece-u5deb		
 さんずい＋（嗇／一）	「さんずい＋（嗇／一）」	⿰氵⿱嗇一	u2ff0-u6c35-u2ff1-u55c7-u4e00		濇の誤字か
@@ -79,10 +86,10 @@
 「示＋「酋」の「酉」に代えて「允」」	「示＋「酋」の「酉」に代えて「允」」	⿰示兊	u2ff0-u793a-u514a		祱
 穴／宇	「穴／宇」	⿱穴宇	u2ff1-u7a74-u5b87		罕/𥤱（まれ）の誤字か
 竹かんむり／擧	「竹かんむり／擧」	⿱竹擧	u2ff1-u7af9-u64e7		
-糸＋鞠のつくり	「糸＋鞠のつくり」	⿰糸匊	u2ff0-u7cf8-u530a	U+2E21C	注記辞書にあるが確認されず
-糸＋章	「糸＋章」	⿰糸章	u2ff0-u7cf8-u7ae0	U+32E12	注記辞書にあるが確認されず
-「纏」の「广」に代えて「厂」	「纏」の「广」に代えて「厂」	⿰糸𠪨	u2ff0-u7cf8-u20aa8	U+2C609	纏
-纏のまだれに代えてがんだれ	「纏のまだれに代えてがんだれ」	⿰糸𠪨	u2ff0-u7cf8-u20aa8	U+2C609	纏
+糸＋鞠のつくり	「糸＋鞠のつくり」	⿰糸匊	u2ff0-u7cf8-u530a		注記辞書にあるが確認されず
+糸＋章	「糸＋章」	⿰糸章	u2ff0-u7cf8-u7ae0		注記辞書にあるが確認されず
+「纏」の「广」に代えて「厂」	「纏」の「广」に代えて「厂」	⿰糸𠪨	u2ff0-u7cf8-u20aa8		纏
+纏のまだれに代えてがんだれ	「纏のまだれに代えてがんだれ」	⿰糸𠪨	u2ff0-u7cf8-u20aa8		纏
 糸＋察	「糸＋察」	⿰糸察	u2ff0-u7cf8-u5bdf		䌨の誤字か
 （箆−竹−比）／民	「（箆−竹−比）／民」	⿱𠔿民	u2ff1-u2053f-u6c11		cf. koseki-315580
 网／卯	「网／卯」	⿱网卯	u2ff1-u7f51-u536f		𦊑
@@ -95,8 +102,8 @@
 「蓙」の左側の「人」に代えて「口」	「蓙」の左側の「人」に代えて「口」	⿱艹𫝶	u2ff1-u8279-u2b776		蓙
 「蓙」の左側の「人」が「口」	「蓙」の左側の「人」が「口」	⿱艹𫝶	u2ff1-u8279-u2b776		蓙
 就／言	「就／言」	⿱就言	u2ff1-u5c31-u8a00		
-くさかんむり＋溪	「くさかんむり＋溪」	⿱艹溪	u2c7a5	U+2C7A5	cf. 拡張E u2c7a5
-くさかんむり／（束＋束）	「くさかんむり／（束＋束）」	⿱艹𣗥	u2ff1-u8279-u235e5	U+2E47E	蒜の異体字か
+くさかんむり＋溪	「くさかんむり＋溪」	⿱艹溪	u2c7a5		cf. 拡張E u2c7a5
+くさかんむり／（束＋束）	「くさかんむり／（束＋束）」	⿱艹𣗥	u2ff1-u8279-u235e5		蒜の異体字か
 血＋卜	「血＋卜」	⿰血卜	u2ff0-u8840-u535c		仆の造字か
 衣＋農	「衣＋農」、読みは「じょう」	⿰衣農	u2ff0-u8863-u8fb2		襛
 ころもへん＋（纒−糸）	「ころもへん＋（纒−糸）」	⿰衤㕓	u2ff0-u8864-u3553		袢纏の纏の誤字か
@@ -104,7 +111,7 @@
 「斎」の「小」に代えて「貝」	「斎」の「小」に代えて「貝」	⿵斉貝	u2ff5-u6589-u8c9d		齎の拡張新字体
 足へん＋歩	「足へん＋歩」	⿰𧾷歩	u8e04-var-001		踄の異体字か
 身＋応	「身＋応」	⿰身応	u2ff0-u8eab-u5fdc		軈の異体字か
-酉＋珍のつくり	「酉＋珍のつくり」	⿰酉㐱	u2ff0-u9149-u3431	U+33151	
+酉＋珍のつくり	「酉＋珍のつくり」	⿰酉㐱	u2ff0-u9149-u3431		
 「穀」の「禾」に代えて「釆」	「穀」の「禾」に代えて「釆」	⿰⿱釆殳	u2ff0-u2ff1-cdp-8d44-u91c6-u6bb3		糓の誤字か
 「金＋※［＃「插」でつくりの縦棒が下に突き抜けている、第4水準2-13-28］のつくり」	「金＋※［＃「插」でつくりの縦棒が下に突き抜けている、第4水準2-13-28］のつくり」	⿰金𢆍	u2ff0-u91d1-u2218d		
 金＋挿のつくり	「金＋挿のつくり」	⿰金𢆍	u2ff0-u91d1-u2218d		
@@ -113,7 +120,7 @@
 （來＋攵）／鳥	「（來＋攵）／鳥」	⿱𢽟鳥	u2ff1-u22f5f-u9ce5		鷘の誤字か
 鳥＋橘のつくり	「鳥＋橘のつくり」	⿰鳥矞	u2ff0-u9ce5-u77de		鷸の異体字か
 鹿／京	「鹿／京」	⿱鹿京	u2ff1-u9e7f-u4eac		麖に包摂か
-歯＋艮	「歯＋艮」	⿰歯艮	u2ff0-u6b6f-u826e	U+2EBC5	齦の拡張新字体
+歯＋艮	「歯＋艮」	⿰歯艮	u2ff0-u6b6f-u826e		齦の拡張新字体
 「仝」の「工」に代えて「サ」、屋号を示す記号	「仝」の「工」に代えて「サ」、屋号を示す記号	⿱𠆢サ	u2ff1-u201a2-u30b5		
 「仝」の「工」に代えて「ナ」、屋号を示す記号	「仝」の「工」に代えて「ナ」、屋号を示す記号	⿱𠆢ナ	u2ff1-u201a2-u30ca		
 「仝」の「工」に代えて「二」、屋号を示す記号	「仝」の「工」に代えて「二」、屋号を示す記号	⿱𠆢二	u2ff1-u201a2-u4e8c		

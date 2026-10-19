@@ -305,6 +305,9 @@
       (contains? gaiji "unicode")
       (assoc :unicode (get gaiji "unicode"))
 
+      (seq (get gaiji "ivs"))
+      (assoc :ivs (get gaiji "ivs"))
+
       (contains? gaiji "raw_marker")
       (assoc :raw-marker (get gaiji "raw_marker"))
 
@@ -324,7 +327,10 @@
       (assoc :glyphwiki (get gaiji "glyphwiki_glyph"))
 
       (seq (get gaiji "mapping_source"))
-      (assoc :mapping-source (get gaiji "mapping_source")))))
+      (assoc :mapping-source (get gaiji "mapping_source"))
+
+      (seq (get gaiji "ivs_source"))
+      (assoc :ivs-source (get gaiji "ivs_source")))))
 
 (declare render-node)
 
@@ -978,11 +984,11 @@
                                             (get node "description_children") depth)
         annotations (render-inline-children (assoc description :current-paragraph [])
                                             (get node "annotation_children") depth)
-        ;; A source that writes a bare stem where the asset name belongs
-        ;; identifies no file. The parser passes that text as `src_source` with a null
-        ;; `src`, and a `graphic` built from it would assert an asset the
-        ;; source never supplied, so the figure carries the text as a note and
-        ;; makes no url claim at all.
+        ;; Where a source specifies a bare stem instead of a file name, no file
+        ;; can be identified. That text is passed as `src_source` with a null
+        ;; `src`; because a `graphic` element would assert an asset never
+        ;; supplied in the source, the figure records the text as a note without
+        ;; a url claim.
         graphic (when-let [url (get node "src")]
                   [:graphic (cond-> {:url url}
                               (some? (get node "width")) (assoc :width (str (get node "width") "px"))
@@ -1037,9 +1043,9 @@
      ;; `front` and `back` put a note in the document's front or back matter,
      ;; which a note inside a phrase cannot mean: placing it there would end the
      ;; paragraph that phrase belongs to. Inline, the note stays at its
-     ;; position. The current converter emits source notes only as blocks, so
-     ;; this shape arrives from parser IR written by hand or by another
-     ;; producer rather than from the corpus.
+     ;; position. Because source notes are emitted only as blocks during current
+     ;; conversion, this shape occurs only in parser IR constructed manually or
+     ;; by another producer rather than from the corpus.
     (let [before (:current-paragraph acc)
           outer (:source-note-context? acc)
           rendered (when (seq (get node "inline_children"))
