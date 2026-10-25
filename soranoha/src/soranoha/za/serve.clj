@@ -24,7 +24,10 @@
   Activation serializes cooperating writers and switches current last; the
   filesystem is trusted against mutation by other processes with that owner."
   (:require [babashka.fs :as fs]
+            [clojure.string :as string]
             [soranoha.snh.decode :as decode]
+            [soranoha.core.canonical :as canonical]
+            [soranoha.core.hash :as hash]
             [soranoha.snh.repo :as repo]
             [soranoha.snh.sign :as sign]
             [soranoha.snh.verify :as verify]
@@ -336,13 +339,40 @@
                                        :maturity maturity})]
                                (write! path bytes)
                                (vswap! page-count inc))
-                             (doseq [[path produce] (bundle/archives
-                                                     {:catalog head-catalog
-                                                      :artifact artifact!
-                                                      :release {:head-hex (:head chain-result)
-                                                                :doi release-doi}})]
-                               (stream! path produce)
-                               (vswap! archive-count inc)))
+                             (let [head (:head chain-result)
+                                   prefix (str "releases/" head "/")
+                                   entries
+                                   (mapv
+                                    (fn [{:keys [path works artifact-type]}]
+                                      (let [pinned (str prefix path)
+                                            target (str (apply str (repeat (dec (count (string/split path #"/"))) "../"))
+                                                        pinned)]
+                                        (stream! pinned
+                                                 (fn [out]
+                                                   (bundle/write-archive!
+                                                    out {:release {:head-hex head :doi release-doi}
+                                                         :works works :artifact-type artifact-type
+                                                         :artifact artifact!})))
+                                        (let [file (fs/path staging pinned)
+                                              digest (hash/sha256-file (fs/file file))]
+                                          (write! (str pinned ".sha256")
+                                                  (.getBytes (str digest "  " (fs/file-name path) "\n") "UTF-8"))
+                                          (link! (fs/path staging path) target)
+                                          (link! (fs/path staging (str path ".sha256")) (str target ".sha256"))
+                                          (vswap! archive-count inc)
+                                          {"url" (str "/" pinned)
+                                           "bytes" (fs/size file)
+                                           "sha256" digest
+                                           "work_count" (count works)
+                                           "artifact_type" artifact-type})))
+                                    (bundle/selections head-catalog))]
+                               (write! (str prefix "bulk-index.json")
+                                       (canonical/rfc8785-safe-integer-json-bytes-v1
+                                        {"release" head
+                                         "manifest" (str "/releases/" head ".json")
+                                         "archives" entries}))
+                               (link! (fs/path staging "bulk/index.json")
+                                      (str "../" prefix "bulk-index.json"))))
                            {:head (:head chain-result)
                             :releases (count chain)
                             :blobs (count blob-hexes)

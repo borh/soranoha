@@ -256,3 +256,26 @@ corpus updates. Definitions of manifest, chain, and admission are given in the
 - [TEI extension vocabulary](../soranoha/docs/tei-vocabulary.md): `snh:`
   attributes in published files and their validation constraints.
 - [Rights](rights.md) and [Citing Soranoha](citation.md).
+
+## Bulk downloads for scripts
+
+Fetch `/bulk/index.json` to discover the current release without scraping HTML.
+Its `release` is the full manifest head and `manifest` links the signed manifest.
+`/releases/<head>/bulk-index.json` contains `archives[]`: each entry provides
+`url`, `bytes`, `sha256`, `work_count` and `artifact_type`. URLs include the head;
+a request for an unavailable release archive returns 404 rather than current bytes.
+The index and ZIPs are generated serving projections, not signed manifest fields.
+Save the index and downloads together; historical ZIPs are not reconstructed by
+subsequent exports, whereas historical manifests and work artifacts remain served.
+
+Each archive has a sibling `.sha256` file containing its SHA-256 and basename.
+Verify downloaded ZIP bytes against the index or that sibling before extraction.
+The ZIP writer fixes member order, timestamps and compression level. Existing
+current-release aliases remain `/bulk/soranoha-{tei,plaintext}.zip`,
+`/bulk/authors/soranoha-<author>-<id>-{tei,plaintext}.zip`, and
+`/bulk/ndc/soranoha-ndc-<class>-{tei,plaintext}.zip`; use the index for exact author
+and NDC filenames, including the children selection and three-digit subclasses.
+
+`catalog.csv` retains its existing column positions and appends
+`first_published_year`, the first recorded four-digit Gregorian year (empty when
+unknown). The original `first_published` field retains its full text.

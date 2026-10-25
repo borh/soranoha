@@ -34,11 +34,12 @@ http://{$SORANOHA_SERVE_LISTEN} {
 	# next serving-tree activation
 	@immutable {
 		path /blobs/sha256/* /governance/* /releases/*.json /releases/*.sig
+		not path /releases/*/bulk-index.json
 		file
 	}
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/* /releases/*/works/*
+	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/* /releases/*/works/* /releases/*/bulk/* /releases/*/bulk-index.json
 	header @pointer Cache-Control "public, max-age=60"
 
 	# generated presentation: a projection of this release, replaced whole at

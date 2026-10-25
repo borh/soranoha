@@ -340,7 +340,7 @@
   ["identifier" "title" "subtitle" "title_reading" "author"
    "orthographic_style" "ndc" "first_published" "body_character_count"
    "source_edition_title" "source_edition_publisher" "source_edition_year"
-   "filename" "source_content_hash" "url" "release" "doi"])
+   "filename" "source_content_hash" "url" "release" "doi" "first_published_year"])
 
 (defn csv-values
   "Returns values for one work matching `csv-columns` in order. `filename`
@@ -355,4 +355,5 @@
      orthographic_style ndc (some-> first_published statements) body_character_count
      (get edition "title") (get edition "publisher") (edition-year work)
      filename (str "sha256:" source_content_hash) (work-url work)
-     head-hex doi]))
+     head-hex doi
+     (some->> first_published (re-find #"(?<![0-9])([12][0-9]{3})(?![0-9])") second parse-long)]))

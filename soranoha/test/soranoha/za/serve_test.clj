@@ -516,3 +516,20 @@
         (is (str/includes? (String. (tree-bytes second-out "works/hashire_merosu_000035_1567/read.html") "UTF-8")
                            "id=\"source-9-33\""))
         (is (not= (vec saved-tei) (vec (tree-bytes second-out (str "works/" slug-a "/tei")))))))))
+
+(deftest bulk-index-identifies-every-download
+  (let [{:keys [clone]} (fx/make-repos!)
+        _ (fx/publish! clone {:admitted [slug-a slug-b]})
+        out (tree-out)
+        {:keys [head archives]} (export! clone out)
+        index (json/read-json (String. (tree-bytes out "bulk/index.json") "UTF-8"))]
+    (is (= head (get index "release")))
+    (is (= archives (count (get index "archives"))))
+    (doseq [entry (get index "archives")
+            :let [path (subs (get entry "url") 1)
+                  bytes (tree-bytes out path)
+                  digest (hash/sha256-bytes bytes)]]
+      (is (str/starts-with? path (str "releases/" head "/bulk/")))
+      (is (= (get entry "bytes") (alength bytes)))
+      (is (= (get entry "sha256") digest))
+      (is (str/starts-with? (String. (tree-bytes out (str path ".sha256")) "UTF-8") digest)))))

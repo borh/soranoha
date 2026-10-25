@@ -218,6 +218,22 @@
         (is (= 404 (:status (http-get port (str "/releases/" (:head result) "/works/" slug-b "/read")))))
         (is (= 404 (:status (http-get port (str "/releases/" genesis-hex "/works/missing/read"))))))
 
+      (testing "bulk discovery returns verifiable release-qualified downloads"
+        (let [response (http-get port "/bulk/index.json")
+              index (json-body response)
+              entry (first (get index "archives"))
+              download (http-get port (get entry "url"))
+              checksum (http-get port (str (get entry "url") ".sha256"))
+              pinned (http-get port (str "/releases/" (:head result) "/bulk-index.json"))]
+          (is (= 200 (:status response)))
+          (is (= "public, max-age=60" (:cache-control pinned)))
+          (is (= (:head result) (get index "release")))
+          (is (= (json-body response) (json-body pinned)))
+          (is (= 200 (:status download)))
+          (is (= (get entry "sha256") (hash/sha256-bytes (:body download))))
+          (is (= 200 (:status checksum)))
+          (is (string-body? checksum (get entry "sha256")))))
+
       (testing "hash resolver: withdrawn bytes stay retrievable, immutable"
         (doseq [hex (vals withdrawn-artifacts)]
           (let [response (http-get port (str "/blobs/sha256/"
