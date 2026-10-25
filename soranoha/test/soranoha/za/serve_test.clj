@@ -533,3 +533,61 @@
       (is (= (get entry "bytes") (alength bytes)))
       (is (= (get entry "sha256") digest))
       (is (str/starts-with? (String. (tree-bytes out (str path ".sha256")) "UTF-8") digest)))))
+
+(deftest activation-retains-published-bulk-bytes
+  (let [{:keys [clone]} (fx/make-repos!)
+        opts (activation-opts clone)
+        _ (fx/publish! clone {:admitted [slug-a]})
+        a (serve/activate! opts)
+        tree-a (fs/real-path (fs/path (:serve-root opts) "current"))
+        index-path (str "releases/" (:head a) "/bulk-index.json")
+        index-bytes (tree-bytes tree-a index-path)
+        index (json/read-json (String. index-bytes "UTF-8"))
+        _ (fx/publish! clone {:admitted [slug-a slug-b]
+                              :selection-params {"config" "fixture" "round" 2}})
+        b (serve/activate! opts)
+        tree-b (fs/real-path (fs/path (:serve-root opts) "current"))]
+    (is (not= (:head a) (:head b)))
+    (is (fs/exists? (fs/path tree-b index-path)))
+    (when (fs/exists? (fs/path tree-b index-path))
+      (is (= (vec index-bytes) (vec (tree-bytes tree-b index-path))))
+      (doseq [entry (get index "archives")
+              :let [path (subs (get entry "url") 1)]]
+        (is (= (vec (tree-bytes tree-a path)) (vec (tree-bytes tree-b path))))
+        (is (= (get entry "sha256") (hash/sha256-bytes (tree-bytes tree-b path))))
+        (is (java.nio.file.Files/isSameFile (fs/path tree-a path) (fs/path tree-b path)))
+        (is (= (vec (tree-bytes tree-a (str path ".sha256")))
+               (vec (tree-bytes tree-b (str path ".sha256")))))))
+    (is (= (assoc b :reused? true) (serve/activate! opts)))))
+
+(deftest activation-does-not-invent-unexported-bulk-history
+  (let [{:keys [clone]} (fx/make-repos!)
+        opts (activation-opts clone)
+        a (fx/publish! clone {:admitted [slug-a]})
+        _ (fx/publish! clone {:admitted [slug-a slug-b]
+                              :selection-params {"config" "fixture" "round" 2}})
+        _ (serve/activate! opts)
+        tree (fs/real-path (fs/path (:serve-root opts) "current"))]
+    (is (not (fs/exists? (fs/path tree "releases" (:manifest-id a) "bulk-index.json"))))))
+
+(deftest invalid-retained-bulk-leaves-current-unchanged
+  (doseq [damage [:missing-archive :changed-archive :missing-checksum :changed-index]]
+    (let [{:keys [clone]} (fx/make-repos!)
+          opts (activation-opts clone)
+          _ (fx/publish! clone {:admitted [slug-a]})
+          a (serve/activate! opts)
+          current (fs/path (:serve-root opts) "current")
+          tree (fs/real-path current)
+          index-path (fs/path tree "releases" (:head a) "bulk-index.json")
+          index (json/read-json (slurp (fs/file index-path)))
+          archive (fs/path tree (subs (get-in index ["archives" 0 "url"]) 1))]
+      (case damage
+        :missing-archive (fs/delete archive)
+        :changed-archive (spit (fs/file archive) "corrupt")
+        :missing-checksum (fs/delete (str archive ".sha256"))
+        :changed-index (spit (fs/file index-path)
+                             (json/write-json-str (assoc-in index ["archives" 0 "work_count"] 99))))
+      (fx/publish! clone {:admitted [slug-a slug-b]
+                          :selection-params {"config" "fixture" "round" 2}})
+      (is (thrown? clojure.lang.ExceptionInfo (serve/activate! opts)) (name damage))
+      (is (= tree (fs/real-path current)) (name damage)))))

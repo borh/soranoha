@@ -24,6 +24,7 @@
   Activation serializes cooperating writers and switches current last; the
   filesystem is trusted against mutation by other processes with that owner."
   (:require [babashka.fs :as fs]
+            [charred.api :as json]
             [clojure.string :as string]
             [soranoha.snh.decode :as decode]
             [soranoha.core.canonical :as canonical]
@@ -107,7 +108,7 @@
   into citations and landing pages rather than signed manifest fields. Because the
   export-tree reuse check compares generated pages byte-for-byte, modifying these values
   for an already-exported commit fails closed with `:serving-tree-mismatch`."
-  [{:keys [clone pinned-keys out-dir release-doi release-name maturity]} commit reuse?]
+  [{:keys [clone pinned-keys out-dir release-doi release-name maturity retained-tree]} commit reuse?]
   (let [v (view/git-view clone)
         chain-result (verify/verify-repository-at v commit pinned-keys)]
     (when (:empty chain-result)
@@ -174,6 +175,19 @@
                                                       [StandardOpenOption/CREATE_NEW
                                                        StandardOpenOption/WRITE])))]
                           (produce out)))))
+          retain! (fn [rel]
+                    (let [source (fs/path retained-tree rel)
+                          path (fs/path staging rel)]
+                      (when (or (not (fs/regular-file? source))
+                                (some fs/sym-link?
+                                      (take-while #(and % (not= (fs/path retained-tree) %))
+                                                  (iterate fs/parent source))))
+                        (throw (ex-info "Retained bulk file is unavailable or symlinked"
+                                        {:reason :retained-bulk-unavailable :path rel})))
+                      (directory! (fs/parent path))
+                      (if reuse?
+                        (vswap! expected conj! path)
+                        (Files/createLink path source))))
           chain (:chain chain-result)
           page-count (volatile! 0)
           archive-count (volatile! 0)]
@@ -276,6 +290,52 @@
                                                                          (get-in artifacts ["tei" "id"]))))
                                                          "UTF-8")))
                                       "UTF-8")))
+                           (when retained-tree
+                             (doseq [hex (rest chain)
+                                     :let [prefix (str "releases/" hex "/")
+                                           index-path (str prefix "bulk-index.json")
+                                           source (fs/path retained-tree index-path)]
+                                     :when (fs/exists? source {:nofollow-links true})]
+                               (let [_ (retain! index-path)
+                                     index-bytes (fs/read-all-bytes source)
+                                     index (json/read-json (String. ^bytes index-bytes "UTF-8"))
+                                     entries (get index "archives")
+                                     manifest (manifest-of hex)
+                                     catalog (:value (decode/decode
+                                                      "catalog"
+                                                      (read! (verify/blob-path
+                                                              (verify/id->hex (get manifest "catalog"))))))
+                                     expected-entries
+                                     (mapv (fn [{:keys [path works artifact-type]}]
+                                             {"url" (str "/" prefix path)
+                                              "work_count" (count works)
+                                              "artifact_type" artifact-type})
+                                           (bundle/selections catalog))
+                                     invalid! (fn [path]
+                                                (throw (ex-info "Retained bulk index or digest mismatch"
+                                                                {:reason :invalid-retained-bulk :path path})))]
+                                 (when-not (and (= hex (get index "release"))
+                                                (= (str "/releases/" hex ".json") (get index "manifest"))
+                                                (vector? entries)
+                                                (= expected-entries
+                                                   (mapv #(select-keys % ["url" "work_count" "artifact_type"]) entries)))
+                                   (invalid! index-path))
+                                 (doseq [entry entries
+                                         :let [path (subs (get entry "url") 1)
+                                               file (fs/path retained-tree path)
+                                               digest (get entry "sha256")
+                                               checksum-path (str path ".sha256")
+                                               checksum (.getBytes (str digest "  " (fs/file-name path) "\n") "UTF-8")]]
+                                   (retain! path)
+                                   (when-not (and (string? digest) (re-matches hash/hex-pattern digest)
+                                                  (= (get entry "bytes") (fs/size file))
+                                                  (= digest (hash/sha256-file (fs/file file))))
+                                     (invalid! path))
+                                   (retain! checksum-path)
+                                   (when-not (and (fs/regular-file? (fs/path retained-tree checksum-path))
+                                                  (Arrays/equals checksum ^bytes (fs/read-all-bytes
+                                                                                  (fs/path retained-tree checksum-path))))
+                                     (invalid! checksum-path))))))
                            (write! verify/head-path (sign/hex64-lf-bytes (:head chain-result)))
                            (let [head-manifest (manifest-of (first chain))
                                  head-catalog (:value
@@ -402,7 +462,9 @@
   "Verify and install the fetched publication under serve-root/trees/COMMIT,
   then atomically switch current. Existing trees must match every exported
   byte, link and path. The provisioned root and trees directories must be
-  publisher-owned and inherit the serving group. A file lock serializes
+  publisher-owned and inherit the serving group. Available historical bulk files
+  are verified and hard-linked from the active tree; absent indexes remain unavailable.
+  A file lock serializes
   cooperating activators; failures leave current unchanged."
   [{:keys [clone branch serve-root] :as opts}]
   (let [root (fs/absolutize serve-root)
@@ -418,8 +480,10 @@
       (let [commit (fetch-head! clone branch)
             target (fs/path trees commit)
             reused? (fs/exists? target {:nofollow-links true})
-            result (export-at! (assoc opts :out-dir target) commit reused?)
-            current (fs/path root "current")]
+            current (fs/path root "current")
+            retained-tree (cond reused? target
+                                (fs/exists? current) (fs/real-path current))
+            result (export-at! (assoc opts :out-dir target :retained-tree retained-tree) commit reused?)]
         (doseq [path (tree-paths target) :when (not (fs/sym-link? path))]
           (Files/setPosixFilePermissions
            path (PosixFilePermissions/fromString

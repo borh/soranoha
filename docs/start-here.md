@@ -265,8 +265,14 @@ Its `release` is the full manifest head and `manifest` links the signed manifest
 `url`, `bytes`, `sha256`, `work_count` and `artifact_type`. URLs include the head;
 a request for an unavailable release archive returns 404 rather than current bytes.
 The index and ZIPs are generated serving projections, not signed manifest fields.
-Save the index and downloads together; historical ZIPs are not reconstructed by
-subsequent exports, whereas historical manifests and work artifacts remain served.
+Activation retains available historical indexes, ZIPs and checksum siblings from
+the previous serving tree, verifying archive sizes and SHA-256 digests against
+the saved index and its selections against the signed release catalog. Retained
+bytes stay exact, including their original catalog CSV.
+A release with no saved bulk index, including releases predating bulk retention,
+remains unavailable at these bulk URLs (404). A saved index with missing or
+corrupt files aborts activation before the current tree changes. Historical
+manifests and individual work artifacts remain separately retrievable.
 
 Each archive has a sibling `.sha256` file containing its SHA-256 and basename.
 Verify downloaded ZIP bytes against the index or that sibling before extraction.
