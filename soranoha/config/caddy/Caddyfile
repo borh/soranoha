@@ -39,7 +39,7 @@ http://{$SORANOHA_SERVE_LISTEN} {
 	}
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/* /releases/*/works/* /releases/*/bulk/* /releases/*/bulk-index.json
+	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/* /releases/*/works/* /releases/*/works/*/* /releases/*/bulk/* /releases/*/bulk-index.json
 	header @pointer Cache-Control "public, max-age=60"
 
 	# generated presentation: a projection of this release, replaced whole at

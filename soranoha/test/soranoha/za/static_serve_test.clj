@@ -210,6 +210,7 @@
         (let [prefix (str "/releases/" genesis-hex "/works/" slug-b)
               response (http-get port (str prefix "/read"))]
           (is (= 200 (:status response)))
+          (is (= "public, max-age=60" (:cache-control response)))
           (is (string-body? response (str prefix "/tei")))
           (doseq [[type hex] withdrawn-artifacts]
             (let [download (http-get port (str prefix "/" type))]
