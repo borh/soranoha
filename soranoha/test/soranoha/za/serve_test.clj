@@ -15,6 +15,8 @@
             [soranoha.snh.fixture :as fx]
             [soranoha.snh.verify :as verify]
             [soranoha.za.naming :as naming]
+            [soranoha.ori.render :as render]
+            [soranoha.ori.fixture :as ori-fixture]
             [soranoha.za.serve :as serve]))
 
 (def ^:private slug-a "hashire_merosu_000035_1567")
@@ -473,3 +475,44 @@
       (is (= :invalid-deployment-configuration
              (try (main/deployment-options {:deployment (str config-path)}) nil
                   (catch clojure.lang.ExceptionInfo e (:reason (ex-data e)))))))))
+
+(deftest release-passage-survives-an-earlier-insertion
+  (let [original fx/work-blob-bytes
+        tei (fn [variant]
+              (.getBytes
+               ^String (:tei (render/render-work
+                              {:rights @ori-fixture/grant
+                               :parser-ir {"nodes" (cond-> []
+                                                     (= variant "v2")
+                                                     (conj {"type" "text" "text" "挿入。"
+                                                            "source_span" {"coordinate_system" "decoded_utf8" "start" 0 "end" 9}})
+                                                     true
+                                                     (conj {"type" "text" "text" "同じ文。同じ文。"
+                                                            "source_span" {"coordinate_system" "decoded_utf8"
+                                                                           "start" (if (= variant "v2") 9 0)
+                                                                           "end" (if (= variant "v2") 33 24)}}))}
+                               :metadata-record {"work" {"title" slug-a} "contributors" []}
+                               :persons-by-id {}})) "UTF-8"))]
+    (with-redefs [fx/work-blob-bytes (fn [kind slug variant]
+                                       (if (= kind "tei") (tei variant)
+                                           (original kind slug variant)))]
+      (let [{:keys [clone]} (fx/make-repos!)
+            _ (fx/publish! clone {:admitted [slug-a] :variant "v1"})
+            first-out (tree-out)
+            first-release (export! clone first-out)
+            head (:head first-release)
+            path (str "releases/" head "/works/" slug-a "/")
+            saved-html (tree-bytes first-out (str path "read.html"))
+            saved-tei (tree-bytes first-out (str path "tei"))
+            _ (fx/publish! clone {:admitted [slug-a] :variant "v2"
+                                  :selection-params {"config" "fixture" "round" 2}})
+            second-out (tree-out)
+            second-release (export! clone second-out)]
+        (is (not= head (:head second-release)))
+        (is (= (vec saved-html) (vec (tree-bytes second-out (str path "read.html")))))
+        (is (= (vec saved-tei) (vec (tree-bytes second-out (str path "tei")))))
+        (is (str/includes? (String. saved-html "UTF-8") "id=\"source-0-24\""))
+        (is (str/includes? (String. saved-html "UTF-8") (str "/" path "tei")))
+        (is (str/includes? (String. (tree-bytes second-out "works/hashire_merosu_000035_1567/read.html") "UTF-8")
+                           "id=\"source-9-33\""))
+        (is (not= (vec saved-tei) (vec (tree-bytes second-out (str "works/" slug-a "/tei")))))))))

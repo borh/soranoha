@@ -31,7 +31,8 @@
             [soranoha.snh.view :as view]
             [soranoha.za.browse :as browse]
             [soranoha.za.bundle :as bundle]
-            [soranoha.za.naming :as naming])
+            [soranoha.za.naming :as naming]
+            [soranoha.za.reading :as reading])
   (:import (java.io BufferedInputStream BufferedOutputStream InputStream OutputStream)
            (java.nio.channels FileChannel)
            (java.nio.file CopyOption Files OpenOption StandardOpenOption StandardCopyOption)
@@ -244,6 +245,34 @@
                              (write! (verify/event-path hex) (read! (verify/event-path hex)))
                              (write! (verify/event-sig-path hex)
                                      (read! (verify/event-sig-path hex))))
+                           (doseq [[hex manifest] (manifest-seq)
+                                   :let [catalog (:value
+                                                  (decode/decode
+                                                   "catalog"
+                                                   (read! (verify/blob-path
+                                                           (verify/id->hex (get manifest "catalog"))))))
+                                         entries (into {} (map (juxt #(get % "slug") identity))
+                                                       (get catalog "works"))]
+                                   work (get manifest "works")
+                                   :let [slug (get work "slug")
+                                         prefix (str "releases/" hex "/works/")
+                                         artifacts (into {} (map (juxt #(get % "type") identity))
+                                                         (get work "artifacts"))]]
+                             (doseq [[type artifact] artifacts]
+                               (link! (fs/path staging prefix slug type)
+                                      (str "../../../../"
+                                           (verify/blob-path (verify/id->hex (get artifact "id"))))))
+                             (write! (str prefix slug "/read.html")
+                                     (.getBytes
+                                      ^String (browse/reading-page
+                                               {:head-hex hex}
+                                               (get entries slug)
+                                               (reading/render
+                                                (String. ^bytes (read! (verify/blob-path
+                                                                        (verify/id->hex
+                                                                         (get-in artifacts ["tei" "id"]))))
+                                                         "UTF-8")))
+                                      "UTF-8")))
                            (write! verify/head-path (sign/hex64-lf-bytes (:head chain-result)))
                            (let [head-manifest (manifest-of (first chain))
                                  head-catalog (:value

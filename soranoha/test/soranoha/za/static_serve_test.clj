@@ -206,6 +206,18 @@
                                    (get (json-body response) "works")))
                          slug-b))))
 
+      (testing "historical reading and typed downloads retain the cited release"
+        (let [prefix (str "/releases/" genesis-hex "/works/" slug-b)
+              response (http-get port (str prefix "/read"))]
+          (is (= 200 (:status response)))
+          (is (string-body? response (str prefix "/tei")))
+          (doseq [[type hex] withdrawn-artifacts]
+            (let [download (http-get port (str prefix "/" type))]
+              (is (= 200 (:status download)))
+              (is (= hex (hash/sha256-bytes (:body download)))))))
+        (is (= 404 (:status (http-get port (str "/releases/" (:head result) "/works/" slug-b "/read")))))
+        (is (= 404 (:status (http-get port (str "/releases/" genesis-hex "/works/missing/read"))))))
+
       (testing "hash resolver: withdrawn bytes stay retrievable, immutable"
         (doseq [hex (vals withdrawn-artifacts)]
           (let [response (http-get port (str "/blobs/sha256/"

@@ -54,9 +54,10 @@ To read a work rather than download it, open
 `https://soranoha.org/works/000092_000879/read` for the text with ruby, in
 horizontal or vertical setting. You can link into the text: each paragraph and
 each segment has an HTML id equal to its TEI source reference (for example
-`.../read#source-694-733`), which is the UTF-8 byte span of that passage in the
+`/releases/<head>/works/<id>/read#source-694-733`), which is the UTF-8 byte span of that passage in the
 source text. A paragraph's id covers the whole paragraph; a paragraph without
-inline markup has just that one id.
+inline markup has just that one id. Use the reading page’s release link when
+saving a passage citation; `/works/<id>/read` follows the current release.
 
 If you have an Aozora Bunko card URL, you already have the identifier. The card
 `https://www.aozora.gr.jp/cards/000879/card92.html` corresponds to work id `92` and card

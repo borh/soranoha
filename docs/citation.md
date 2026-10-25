@@ -244,6 +244,43 @@ release specified in its deposit are described in
 mapping for reaching the same artifact through the archive instead of this site
 is given in [archival](archival.md).
 
+## Citing a passage in a release
+
+Use `/releases/<head>/works/<id>/read#source-<start>-<end>` with the full
+64-character release head. The reading page's “Link to this release” opens
+that version; append the passage's recorded source anchor. The export rebuilds
+these historical pages from the retained manifest, catalog and TEI, including
+works absent from the current corpus. Its TEI and plaintext links resolve to
+that release's artifacts. Presentation can change with the reader implementation;
+the signed TEI bytes remain the record.
+
+For machine retrieval, fetch `/releases/<head>.json`, find `works[]` by `slug`,
+and select its `artifacts[]` entry with `type` equal to `tei`. Its typed `id`
+contains the SHA-256 digest; retrieve `/blobs/sha256/<first-two-hex>/<hex>` and
+check its SHA-256 against that id before parsing the TEI. The release-specific
+`/releases/<head>/works/<id>/tei` route serves the same bytes. Check that the
+TEI contains the requested `source-<start>-<end>` reference. A missing work,
+artifact, blob or anchor means the citation cannot be resolved; retain the
+citation and report the missing target rather than fetching current text.
+
+Source anchors use UTF-8 byte offsets in the decoded primary source identified
+by the TEI, after its declared emendations. They are neither TEI serialization
+offsets nor offsets in the `body-v1` annotation view. For an annotation-view
+citation, retain its view id and policy, derive that view from the verified TEI,
+and validate its id and UTF-8 boundaries with the annotation-layer validation
+procedure in [annotation layers](annotation-layers.md). Source bytes must be
+obtained from the recorded upstream revision and checked against the recorded
+source identity; availability of that upstream is separate from availability of
+the published TEI. The recorded upstream origin can be unavailable; this does not authorize
+substitution of a different source revision.
+
+A browser fragment is not sent to the server: a successful HTTP response alone
+does not validate a range. An absent anchor is unresolved. Repeated quotations
+and insertions require no relocation when retrieving the original release.
+Migration to another release is a separate operation: preserve the original
+reference and record the proposed target and reviewer decision, including an
+ambiguous or failed match.
+
 ## Citing the tooling
 
 The conversion and publication code is licensed separately from the corpus
