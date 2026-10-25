@@ -193,6 +193,9 @@
 (defn render-stage
   "parser-IR + metadata record + persons + publication identifier -> TEI bytes.
 
+  The trace records a render-content digest excluding interpretation_facts;
+  execution still reads the full parser-IR blob.
+
   `rights` is the grant read from the publication policy. It is fail-closed
   and part of the stage's toolchain identity: the terms are published inside
   every TEI file, so a policy change has to invalidate the cached TEI rather
@@ -208,9 +211,16 @@
     (throw (ex-info "render stage requires the publication rights grant"
                     {:reason :missing-rights-grant})))
   {:stage-id "render"
-   :stage-version "65"
+   :stage-version "66"
    :toolchain-id (core-hash/sha256-canonical-json
                   {"clj" clj-toolchain-id "rights" rights})
+   :input-projection (fn [{:keys [blob]} inputs]
+                       (let [ir (record-json/read-json-bytes (blob (get inputs "parser-ir")))]
+                         (-> inputs
+                             (dissoc "parser-ir")
+                             (assoc "render-content"
+                                    (core-hash/sha256-canonical-json
+                                     (dissoc ir "interpretation_facts"))))))
    :f (fn [{:keys [blob]} inputs]
         (let [read-json (fn [name]
                           (json/read-json

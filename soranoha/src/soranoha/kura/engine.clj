@@ -36,33 +36,38 @@
 
 (defn run-stage!
   "Run one derivation. `inputs` is a map of string names to blob hashes or
-  plain JSON param values; it is hashed as-is into the derivation key, so a
-  caller must pass content hashes (not paths) for anything file-like.
+  plain JSON param values. An optional stage :input-projection produces the
+  semantic inputs hashed and recorded by the trace; execution receives the
+  original inputs. The projection must preserve every semantic dependency and
+  is part of the stage version. File-like inputs must be content hashes, not paths.
   Returns {:outputs {name hex} :trace-key k :cached? bool}.
 
   A trace hit whose output blobs are missing from the CAS is treated as a
   miss (missing blobs are recoverable cache misses) and re-executed."
   [{:keys [cas-dir trace] :as store} stage inputs]
   (validate-stage! stage)
-  (let [trace-key (trace/derivation-key stage inputs)
+  (let [resolve {:blob (fn [hex]
+                         (or (cas/get-bytes cas-dir hex)
+                             (throw (ex-info "Input blob missing from CAS"
+                                             {:reason :missing-input-blob
+                                              :hex hex}))))
+                     ;; Read-only path into the CAS for stages whose tools
+                     ;; need a file (zip readers, subprocess --flags).
+                 :blob-path (fn [hex]
+                              (let [path (cas/blob-path cas-dir hex)]
+                                (when-not (babashka.fs/exists? path)
+                                  (throw (ex-info "Input blob missing from CAS"
+                                                  {:reason :missing-input-blob
+                                                   :hex hex})))
+                                path))}
+        identity-inputs (if-let [project (:input-projection stage)]
+                          (project resolve inputs)
+                          inputs)
+        trace-key (trace/derivation-key stage identity-inputs)
         cached (trace/lookup trace trace-key)]
     (if (and cached (empty? (outputs-with-missing-blobs store cached)))
       {:outputs cached :trace-key trace-key :cached? true}
-      (let [resolve {:blob (fn [hex]
-                             (or (cas/get-bytes cas-dir hex)
-                                 (throw (ex-info "Input blob missing from CAS"
-                                                 {:reason :missing-input-blob
-                                                  :hex hex}))))
-                     ;; Read-only path into the CAS for stages whose tools
-                     ;; need a file (zip readers, subprocess --flags).
-                     :blob-path (fn [hex]
-                                  (let [path (cas/blob-path cas-dir hex)]
-                                    (when-not (babashka.fs/exists? path)
-                                      (throw (ex-info "Input blob missing from CAS"
-                                                      {:reason :missing-input-blob
-                                                       :hex hex})))
-                                    path))}
-            produced ((:f stage) resolve inputs)
+      (let [produced ((:f stage) resolve inputs)
             _ (when-not (and (map? produced) (seq produced))
                 (throw (ex-info "Stage produced no outputs"
                                 {:reason :empty-stage-output
@@ -71,5 +76,5 @@
                           (map (fn [[name ^bytes bytes]]
                                  [name (cas/put-bytes! cas-dir bytes)]))
                           produced)]
-        (trace/record-execution! trace stage inputs outputs)
+        (trace/record-execution! trace stage identity-inputs outputs)
         {:outputs outputs :trace-key trace-key :cached? false}))))
