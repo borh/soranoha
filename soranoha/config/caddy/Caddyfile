@@ -34,11 +34,12 @@ http://{$SORANOHA_SERVE_LISTEN} {
 	# next serving-tree activation
 	@immutable {
 		path /blobs/sha256/* /governance/* /releases/*.json /releases/*.sig
+		not path /releases/*/bulk-index.json
 		file
 	}
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
-	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/*
+	@pointer path /releases/latest /releases/HEAD /catalog.json /works/* /withdrawn/* /releases/*/works/* /releases/*/works/*/* /releases/*/bulk/* /releases/*/bulk-index.json
 	header @pointer Cache-Control "public, max-age=60"
 
 	# generated presentation: a projection of this release, replaced whole at
@@ -63,16 +64,16 @@ http://{$SORANOHA_SERVE_LISTEN} {
 	# Firefox while curl was fine. These are the URLs the pages tell a reader to
 	# cite, so each is given the type its extensioned twin already gets, because
 	# the pages promise the two URLs carry the same bytes.
-	@work-tei path /works/*/tei
+	@work-tei path /works/*/tei /releases/*/works/*/tei
 	header @work-tei Content-Type "text/xml; charset=utf-8"
 
-	@work-plaintext path /works/*/plaintext
+	@work-plaintext path /works/*/plaintext /releases/*/works/*/plaintext
 	header @work-plaintext Content-Type "text/plain; charset=utf-8"
 
-	@work-markdown path /works/*/markdown
+	@work-markdown path /works/*/markdown /releases/*/works/*/markdown
 	header @work-markdown Content-Type "text/markdown; charset=utf-8"
 
-	@work-json path /works/*/tei-validation /releases/latest
+	@work-json path /works/*/tei-validation /releases/*/works/*/tei-validation /releases/latest
 	header @work-json Content-Type "application/json"
 
 	@release-head path /releases/HEAD

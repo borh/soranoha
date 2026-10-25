@@ -206,6 +206,35 @@
                                    (get (json-body response) "works")))
                          slug-b))))
 
+      (testing "historical reading and typed downloads retain the cited release"
+        (let [prefix (str "/releases/" genesis-hex "/works/" slug-b)
+              response (http-get port (str prefix "/read"))]
+          (is (= 200 (:status response)))
+          (is (= "public, max-age=60" (:cache-control response)))
+          (is (string-body? response (str prefix "/tei")))
+          (doseq [[type hex] withdrawn-artifacts]
+            (let [download (http-get port (str prefix "/" type))]
+              (is (= 200 (:status download)))
+              (is (= hex (hash/sha256-bytes (:body download)))))))
+        (is (= 404 (:status (http-get port (str "/releases/" (:head result) "/works/" slug-b "/read")))))
+        (is (= 404 (:status (http-get port (str "/releases/" genesis-hex "/works/missing/read"))))))
+
+      (testing "bulk discovery returns verifiable release-qualified downloads"
+        (let [response (http-get port "/bulk/index.json")
+              index (json-body response)
+              entry (first (get index "archives"))
+              download (http-get port (get entry "url"))
+              checksum (http-get port (str (get entry "url") ".sha256"))
+              pinned (http-get port (str "/releases/" (:head result) "/bulk-index.json"))]
+          (is (= 200 (:status response)))
+          (is (= "public, max-age=60" (:cache-control pinned)))
+          (is (= (:head result) (get index "release")))
+          (is (= (json-body response) (json-body pinned)))
+          (is (= 200 (:status download)))
+          (is (= (get entry "sha256") (hash/sha256-bytes (:body download))))
+          (is (= 200 (:status checksum)))
+          (is (string-body? checksum (get entry "sha256")))))
+
       (testing "hash resolver: withdrawn bytes stay retrievable, immutable"
         (doseq [hex (vals withdrawn-artifacts)]
           (let [response (http-get port (str "/blobs/sha256/"
@@ -305,3 +334,34 @@
                                 "/blobs/sha256/%2e%2e/%2e%2e/%2e%2e/outside-the-tree.txt")))))
       (finally
         (.destroyForcibly process)))))
+
+(deftest bulk-http-downloads-retain-the-first-release-after-activation
+  (let [{:keys [clone]} (fx/make-repos!)
+        root (fs/create-temp-dir {:prefix "za-bulk-http"})
+        _ (fs/create-dir (fs/path root "trees"))
+        opts {:clone clone :branch fx/branch :pinned-keys (fx/pinned-keys)
+              :serve-root (str root)}
+        _ (fx/publish! clone {:admitted [slug-a]})
+        a (serve/activate! opts)
+        port (free-port)
+        process (start-caddy! (str (fs/path root "current")) port)]
+    (try
+      (let [index-url (str "/releases/" (:head a) "/bulk-index.json")
+            index-a (http-get port index-url)
+            entry (first (get (json-body index-a) "archives"))
+            zip-a (http-get port (get entry "url"))
+            sha-a (http-get port (str (get entry "url") ".sha256"))]
+        (fx/publish! clone {:admitted [slug-a slug-b]
+                            :selection-params {"config" "fixture" "round" 2}})
+        (let [b (serve/activate! opts)
+              index-b (http-get port index-url)
+              zip-b (http-get port (get entry "url"))
+              sha-b (http-get port (str (get entry "url") ".sha256"))]
+          (is (not= (:head a) (:head b)))
+          (is (= [200 200 200] (mapv :status [index-b zip-b sha-b])))
+          (is (= (vec (:body index-a)) (vec (:body index-b))))
+          (is (= (vec (:body zip-a)) (vec (:body zip-b))))
+          (is (= (get entry "sha256") (hash/sha256-bytes (:body zip-b))))
+          (is (= (vec (:body sha-a)) (vec (:body sha-b))))
+          (is (= (:head b) (get (json-body (http-get port "/bulk/index.json")) "release")))))
+      (finally (.destroyForcibly process)))))

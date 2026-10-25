@@ -238,3 +238,15 @@
             cell (nth row (.indexOf ^java.util.List citation/csv-columns "first_published"))]
         (is (= "甲「新潮」1918年; 乙「改造」1922年" cell))
         (is (not (string/includes? cell "\n")))))))
+
+(deftest csv-appends-first-publication-year
+  (is (= ["identifier" "title" "subtitle" "title_reading" "author"
+          "orthographic_style" "ndc" "first_published" "body_character_count"
+          "source_edition_title" "source_edition_publisher" "source_edition_year"
+          "filename" "source_content_hash" "url" "release" "doi"]
+         (vec (butlast citation/csv-columns))))
+  (is (= "first_published_year" (last citation/csv-columns)))
+  (doseq [[recorded expected] [["「赤い鳥」1918（大正7）年7月" 1918]
+                               ["1906年、1918年再録" 1906]
+                               ["不明" nil] [nil nil] ["119180" nil]]]
+    (is (= expected (last (citation/csv-values release (assoc kumo "first_published" recorded) "work.xml"))))))

@@ -54,9 +54,10 @@ To read a work rather than download it, open
 `https://soranoha.org/works/000092_000879/read` for the text with ruby, in
 horizontal or vertical setting. You can link into the text: each paragraph and
 each segment has an HTML id equal to its TEI source reference (for example
-`.../read#source-694-733`), which is the UTF-8 byte span of that passage in the
+`/releases/<head>/works/<id>/read#source-694-733`), which is the UTF-8 byte span of that passage in the
 source text. A paragraph's id covers the whole paragraph; a paragraph without
-inline markup has just that one id.
+inline markup has just that one id. Use the reading page’s release link when
+saving a passage citation; `/works/<id>/read` follows the current release.
 
 If you have an Aozora Bunko card URL, you already have the identifier. The card
 `https://www.aozora.gr.jp/cards/000879/card92.html` corresponds to work id `92` and card
@@ -255,3 +256,32 @@ corpus updates. Definitions of manifest, chain, and admission are given in the
 - [TEI extension vocabulary](../soranoha/docs/tei-vocabulary.md): `snh:`
   attributes in published files and their validation constraints.
 - [Rights](rights.md) and [Citing Soranoha](citation.md).
+
+## Bulk downloads for scripts
+
+Fetch `/bulk/index.json` to discover the current release without scraping HTML.
+Its `release` is the full manifest head and `manifest` links the signed manifest.
+`/releases/<head>/bulk-index.json` contains `archives[]`: each entry provides
+`url`, `bytes`, `sha256`, `work_count` and `artifact_type`. URLs include the head;
+a request for an unavailable release archive returns 404 rather than current bytes.
+The index and ZIPs are generated serving projections, not signed manifest fields.
+Activation retains available historical indexes, ZIPs and checksum siblings from
+the previous serving tree, verifying archive sizes and SHA-256 digests against
+the saved index and its selections against the signed release catalog. Retained
+bytes stay exact, including their original catalog CSV.
+A release with no saved bulk index, including releases predating bulk retention,
+remains unavailable at these bulk URLs (404). A saved index with missing or
+corrupt files aborts activation before the current tree changes. Historical
+manifests and individual work artifacts remain separately retrievable.
+
+Each archive has a sibling `.sha256` file containing its SHA-256 and basename.
+Verify downloaded ZIP bytes against the index or that sibling before extraction.
+The ZIP writer fixes member order, timestamps and compression level. Existing
+current-release aliases remain `/bulk/soranoha-{tei,plaintext}.zip`,
+`/bulk/authors/soranoha-<author>-<id>-{tei,plaintext}.zip`, and
+`/bulk/ndc/soranoha-ndc-<class>-{tei,plaintext}.zip`; use the index for exact author
+and NDC filenames, including the children selection and three-digit subclasses.
+
+`catalog.csv` retains its existing column positions and appends
+`first_published_year`, the first recorded four-digit Gregorian year (empty when
+unknown). The original `first_published` field retains its full text.

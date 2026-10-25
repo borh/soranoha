@@ -15,6 +15,8 @@
             [soranoha.snh.fixture :as fx]
             [soranoha.snh.verify :as verify]
             [soranoha.za.naming :as naming]
+            [soranoha.ori.render :as render]
+            [soranoha.ori.fixture :as ori-fixture]
             [soranoha.za.serve :as serve]))
 
 (def ^:private slug-a "hashire_merosu_000035_1567")
@@ -473,3 +475,119 @@
       (is (= :invalid-deployment-configuration
              (try (main/deployment-options {:deployment (str config-path)}) nil
                   (catch clojure.lang.ExceptionInfo e (:reason (ex-data e)))))))))
+
+(deftest release-passage-survives-an-earlier-insertion
+  (let [original fx/work-blob-bytes
+        tei (fn [variant]
+              (.getBytes
+               ^String (:tei (render/render-work
+                              {:rights @ori-fixture/grant
+                               :parser-ir {"nodes" (cond-> []
+                                                     (= variant "v2")
+                                                     (conj {"type" "text" "text" "挿入。"
+                                                            "source_span" {"coordinate_system" "decoded_utf8" "start" 0 "end" 9}})
+                                                     true
+                                                     (conj {"type" "text" "text" "同じ文。同じ文。"
+                                                            "source_span" {"coordinate_system" "decoded_utf8"
+                                                                           "start" (if (= variant "v2") 9 0)
+                                                                           "end" (if (= variant "v2") 33 24)}}))}
+                               :metadata-record {"work" {"title" slug-a} "contributors" []}
+                               :persons-by-id {}})) "UTF-8"))]
+    (with-redefs [fx/work-blob-bytes (fn [kind slug variant]
+                                       (if (= kind "tei") (tei variant)
+                                           (original kind slug variant)))]
+      (let [{:keys [clone]} (fx/make-repos!)
+            _ (fx/publish! clone {:admitted [slug-a] :variant "v1"})
+            first-out (tree-out)
+            first-release (export! clone first-out)
+            head (:head first-release)
+            path (str "releases/" head "/works/" slug-a "/")
+            saved-html (tree-bytes first-out (str path "read.html"))
+            saved-tei (tree-bytes first-out (str path "tei"))
+            _ (fx/publish! clone {:admitted [slug-a] :variant "v2"
+                                  :selection-params {"config" "fixture" "round" 2}})
+            second-out (tree-out)
+            second-release (export! clone second-out)]
+        (is (not= head (:head second-release)))
+        (is (= (vec saved-html) (vec (tree-bytes second-out (str path "read.html")))))
+        (is (= (vec saved-tei) (vec (tree-bytes second-out (str path "tei")))))
+        (is (str/includes? (String. saved-html "UTF-8") "id=\"source-0-24\""))
+        (is (str/includes? (String. saved-html "UTF-8") (str "/" path "tei")))
+        (is (str/includes? (String. (tree-bytes second-out "works/hashire_merosu_000035_1567/read.html") "UTF-8")
+                           "id=\"source-9-33\""))
+        (is (not= (vec saved-tei) (vec (tree-bytes second-out (str "works/" slug-a "/tei")))))))))
+
+(deftest bulk-index-identifies-every-download
+  (let [{:keys [clone]} (fx/make-repos!)
+        _ (fx/publish! clone {:admitted [slug-a slug-b]})
+        out (tree-out)
+        {:keys [head archives]} (export! clone out)
+        index (json/read-json (String. (tree-bytes out "bulk/index.json") "UTF-8"))]
+    (is (= head (get index "release")))
+    (is (= archives (count (get index "archives"))))
+    (doseq [entry (get index "archives")
+            :let [path (subs (get entry "url") 1)
+                  bytes (tree-bytes out path)
+                  digest (hash/sha256-bytes bytes)]]
+      (is (str/starts-with? path (str "releases/" head "/bulk/")))
+      (is (= (get entry "bytes") (alength bytes)))
+      (is (= (get entry "sha256") digest))
+      (is (str/starts-with? (String. (tree-bytes out (str path ".sha256")) "UTF-8") digest)))))
+
+(deftest activation-retains-published-bulk-bytes
+  (let [{:keys [clone]} (fx/make-repos!)
+        opts (activation-opts clone)
+        _ (fx/publish! clone {:admitted [slug-a]})
+        a (serve/activate! opts)
+        tree-a (fs/real-path (fs/path (:serve-root opts) "current"))
+        index-path (str "releases/" (:head a) "/bulk-index.json")
+        index-bytes (tree-bytes tree-a index-path)
+        index (json/read-json (String. index-bytes "UTF-8"))
+        _ (fx/publish! clone {:admitted [slug-a slug-b]
+                              :selection-params {"config" "fixture" "round" 2}})
+        b (serve/activate! opts)
+        tree-b (fs/real-path (fs/path (:serve-root opts) "current"))]
+    (is (not= (:head a) (:head b)))
+    (is (fs/exists? (fs/path tree-b index-path)))
+    (when (fs/exists? (fs/path tree-b index-path))
+      (is (= (vec index-bytes) (vec (tree-bytes tree-b index-path))))
+      (doseq [entry (get index "archives")
+              :let [path (subs (get entry "url") 1)]]
+        (is (= (vec (tree-bytes tree-a path)) (vec (tree-bytes tree-b path))))
+        (is (= (get entry "sha256") (hash/sha256-bytes (tree-bytes tree-b path))))
+        (is (java.nio.file.Files/isSameFile (fs/path tree-a path) (fs/path tree-b path)))
+        (is (= (vec (tree-bytes tree-a (str path ".sha256")))
+               (vec (tree-bytes tree-b (str path ".sha256")))))))
+    (is (= (assoc b :reused? true) (serve/activate! opts)))))
+
+(deftest activation-does-not-invent-unexported-bulk-history
+  (let [{:keys [clone]} (fx/make-repos!)
+        opts (activation-opts clone)
+        a (fx/publish! clone {:admitted [slug-a]})
+        _ (fx/publish! clone {:admitted [slug-a slug-b]
+                              :selection-params {"config" "fixture" "round" 2}})
+        _ (serve/activate! opts)
+        tree (fs/real-path (fs/path (:serve-root opts) "current"))]
+    (is (not (fs/exists? (fs/path tree "releases" (:manifest-id a) "bulk-index.json"))))))
+
+(deftest invalid-retained-bulk-leaves-current-unchanged
+  (doseq [damage [:missing-archive :changed-archive :missing-checksum :changed-index]]
+    (let [{:keys [clone]} (fx/make-repos!)
+          opts (activation-opts clone)
+          _ (fx/publish! clone {:admitted [slug-a]})
+          a (serve/activate! opts)
+          current (fs/path (:serve-root opts) "current")
+          tree (fs/real-path current)
+          index-path (fs/path tree "releases" (:head a) "bulk-index.json")
+          index (json/read-json (slurp (fs/file index-path)))
+          archive (fs/path tree (subs (get-in index ["archives" 0 "url"]) 1))]
+      (case damage
+        :missing-archive (fs/delete archive)
+        :changed-archive (spit (fs/file archive) "corrupt")
+        :missing-checksum (fs/delete (str archive ".sha256"))
+        :changed-index (spit (fs/file index-path)
+                             (json/write-json-str (assoc-in index ["archives" 0 "work_count"] 99))))
+      (fx/publish! clone {:admitted [slug-a slug-b]
+                          :selection-params {"config" "fixture" "round" 2}})
+      (is (thrown? clojure.lang.ExceptionInfo (serve/activate! opts)) (name damage))
+      (is (= tree (fs/real-path current)) (name damage)))))

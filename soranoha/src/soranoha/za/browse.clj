@@ -1164,14 +1164,15 @@
 
       (release-note head-hex nil)])))
 
-(defn- reading-page
+(defn reading-page
   "One work rendered for reading. The page is a projection: it states this,
   identifies the release it was rendered from, and links the TEI file it was rendered
   out of, because a reader who thinks the rendering is wrong needs the bytes
   to check it against."
   [release work {:keys [front body back]}]
   (let [{:keys [head-hex]} release
-        {:strs [slug title title_reading]} work]
+        {:strs [slug title title_reading]} work
+        work-prefix (str "/releases/" head-hex "/works/")]
     (chrome
      (bilingual-title (str title "（本文）") (str title " (Text)"))
      {:main-class "read"}
@@ -1181,8 +1182,8 @@
       (when-let [by (naming/byline work)]
         [:p {:class "reading"} by])
 
-      ;; a checkbox, not a script: the toggle has to keep working with
-      ;; scripting off, like every other way into this site
+      [:p [:a {:href (str "/releases/" head-hex "/works/" slug "/read")}
+           (bilingual "この版への固定リンク" "Link to this release")]]
       [:p {:class "controls"}
        [:input {:type "checkbox" :id "tategaki"}]
        " "
@@ -1212,9 +1213,9 @@
         [:dt (bilingual "リリース" "Release")]
         [:dd [:a {:href (str "/releases/" head-hex ".json")} [:code head-hex]]]
         [:dt "TEI"]
-        [:dd [:a {:href (str "/works/" slug "/tei")} (str "/works/" slug "/tei")]]
+        [:dd [:a {:href (str work-prefix slug "/tei")} (str work-prefix slug "/tei")]]
         [:dt (bilingual "プレーンテキスト" "Plain text")]
-        [:dd [:a {:href (str "/works/" slug "/plaintext")} (str "/works/" slug "/plaintext")]]
+        [:dd [:a {:href (str work-prefix slug "/plaintext")} (str work-prefix slug "/plaintext")]]
         [:dt (bilingual "書誌" "Bibliography")]
         [:dd [:a {:href (str "/works/" slug "/")} (str "/works/" slug "/")]]]
        [:p [:code {:class "citation"} (citation/rendered release work)]]
