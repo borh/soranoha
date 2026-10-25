@@ -10,8 +10,8 @@ use ab_coverage::{
     matrix::{CoverageMatrix, RepresentabilityStatus, Row},
     source_corpus::{SourceIndexEntry, load_index_entries, read_source_work},
     source_inventory::{
-        MarkerSemanticPartitionSummary, MarkerVariantSummary, SourceMarkerOccurrence,
-        inventory_document_with_variants, patterns_from_rows,
+        MarkerClassSummary, MarkerSemanticPartitionSummary, MarkerVariantSummary,
+        SourceMarkerOccurrence, inventory_document_with_variants, patterns_from_rows,
     },
 };
 use ab_encoding::{
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 const UNKNOWN_CLASS_OUTPUT_LIMIT: usize = 1000;
 const UNKNOWN_CLASS_REPORT_LIMIT: usize = 50;
 const SOURCE_REGION_SCHEMA_VERSION: &str = "aozora-source-region-coverage-v1";
-const EDITION_CACHE_SCHEMA_VERSION: &str = "aozora-source-inventory-edition-cache-v3";
+const EDITION_CACHE_SCHEMA_VERSION: &str = "aozora-source-inventory-edition-cache-v4";
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Source-authority Aozora marker inventory.")]
@@ -164,6 +164,8 @@ struct CacheProvenance {
     variant_rows: Vec<String>,
     entries_reused: u64,
     entries_computed: u64,
+    row_entries_reused: u64,
+    row_entries_computed: u64,
 }
 
 struct CacheConfig {
@@ -174,12 +176,12 @@ struct CacheConfig {
     variant_rows: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct CacheIdentity {
     schema_version: String,
     executable_sha256: String,
     classifier_sha256: String,
-    variant_rows: Vec<String>,
+    variant_row: Option<String>,
     work_id: String,
     indexed_path: String,
     source_sha256: String,
@@ -191,6 +193,13 @@ struct CacheEntry {
     summary: ab_coverage::source_inventory::SourceInventorySummary,
     source_region_text: SourceRegionTextSummary,
     emendation_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RowCacheEntry {
+    identity: CacheIdentity,
+    variants: BTreeMap<String, MarkerVariantSummary>,
+    semantic_partitions: BTreeMap<String, MarkerSemanticPartitionSummary>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -256,6 +265,8 @@ enum WorkInventoryResult {
         source_region_text: SourceRegionTextSummary,
         emendation_ids: Vec<String>,
         cache_reused: bool,
+        row_entries_reused: u64,
+        row_entries_computed: u64,
     },
     Failed {
         work_id: String,
@@ -405,6 +416,8 @@ fn main() -> Result<()> {
                 source_region_text,
                 emendation_ids,
                 cache_reused,
+                row_entries_reused,
+                row_entries_computed,
             } => {
                 let edition = Edition {
                     work_id: work_id.clone(),
@@ -418,6 +431,8 @@ fn main() -> Result<()> {
                 }
                 scanned_editions.insert(edition);
                 if let Some(cache) = &mut output.cache {
+                    cache.row_entries_reused += row_entries_reused;
+                    cache.row_entries_computed += row_entries_computed;
                     if cache_reused {
                         cache.entries_reused += 1;
                     } else {
@@ -578,60 +593,145 @@ fn scan_work(
 ) -> Result<WorkInventoryResult> {
     match read_source_work(corpus, &entry.work_id, &entry.indexed_path) {
         Ok(work) => {
-            let identity = cache.map(|cache| CacheIdentity {
+            let source_details = || {
+                (
+                    source_region_text_summary(&work.decoded.text),
+                    work.decoded
+                        .emendations
+                        .iter()
+                        .map(|item| item.id.clone())
+                        .collect::<Vec<_>>(),
+                )
+            };
+            let Some(cache) = cache else {
+                let (source_region_text, emendation_ids) = source_details();
+                let mut summary = inventory_document_with_variants(
+                    &entry.work_id,
+                    &work.decoded.text,
+                    patterns,
+                    variant_rows,
+                );
+                attach_indexed_path(&mut summary, &entry.indexed_path);
+                return Ok(WorkInventoryResult::Scanned {
+                    work_id: entry.work_id.clone(),
+                    summary,
+                    source_region_text,
+                    emendation_ids,
+                    cache_reused: false,
+                    row_entries_reused: 0,
+                    row_entries_computed: 0,
+                });
+            };
+            let identity = CacheIdentity {
                 schema_version: EDITION_CACHE_SCHEMA_VERSION.to_owned(),
                 executable_sha256: cache.executable_sha256.clone(),
                 classifier_sha256: cache.classifier_sha256.clone(),
-                variant_rows: cache.variant_rows.clone(),
+                variant_row: None,
                 work_id: entry.work_id.clone(),
                 indexed_path: entry.indexed_path.clone(),
                 source_sha256: hex_sha256(&work.bytes),
-            });
-            if let (Some(cache), Some(identity)) = (cache, identity.as_ref()) {
-                let path = cache_entry_path(cache, identity)?;
+            };
+            let path = cache_entry_path(cache, &identity)?;
+            let base_reused = path.exists();
+            let mut base = if base_reused {
+                read_cache_entry(&path, &identity)?
+            } else {
+                let (source_region_text, emendation_ids) = source_details();
+                let mut summary = inventory_document_with_variants(
+                    &entry.work_id,
+                    &work.decoded.text,
+                    patterns,
+                    &[],
+                );
+                attach_indexed_path(&mut summary, &entry.indexed_path);
+                let base = CacheEntry {
+                    identity: identity.clone(),
+                    summary,
+                    source_region_text,
+                    emendation_ids,
+                };
+                write_cache_entry(&path, &base)?;
+                base
+            };
+            let mut rows = BTreeMap::new();
+            let mut missing = Vec::new();
+            for row_id in &cache.variant_rows {
+                let row_identity = CacheIdentity {
+                    variant_row: Some(row_id.clone()),
+                    ..identity.clone()
+                };
+                let path = cache_entry_path(cache, &row_identity)?;
                 if path.exists() {
-                    let cached = read_cache_entry(&path, identity)?;
-                    return Ok(WorkInventoryResult::Scanned {
-                        work_id: entry.work_id.clone(),
-                        summary: cached.summary,
-                        source_region_text: cached.source_region_text,
-                        emendation_ids: cached.emendation_ids,
-                        cache_reused: true,
-                    });
+                    let bytes = fs::read(&path)
+                        .with_context(|| format!("read cache entry {}", path.display()))?;
+                    let row: RowCacheEntry = serde_json::from_slice(&bytes)
+                        .with_context(|| format!("parse cache entry {}", path.display()))?;
+                    if row.identity != row_identity {
+                        bail!("cache identity mismatch in {}", path.display());
+                    }
+                    rows.insert(row_id.clone(), row);
+                } else {
+                    missing.push(row_id.clone());
                 }
             }
-            let mut summary = inventory_document_with_variants(
-                &entry.work_id,
-                &work.decoded.text,
-                patterns,
-                variant_rows,
-            );
-            attach_indexed_path(&mut summary, &entry.indexed_path);
-            let source_region_text = source_region_text_summary(&work.decoded.text);
-            let emendation_ids = work
-                .decoded
-                .emendations
-                .iter()
-                .map(|item| item.id.clone())
-                .collect::<Vec<_>>();
-            if let (Some(cache), Some(identity)) = (cache, identity) {
-                let path = cache_entry_path(cache, &identity)?;
-                write_cache_entry(
-                    &path,
-                    &CacheEntry {
-                        identity,
-                        summary: summary.clone(),
-                        source_region_text: source_region_text.clone(),
-                        emendation_ids: emendation_ids.clone(),
-                    },
-                )?;
+            let row_entries_reused = rows.len() as u64;
+            let row_entries_computed = missing.len() as u64;
+            if !missing.is_empty() {
+                let mut computed = inventory_document_with_variants(
+                    &entry.work_id,
+                    &work.decoded.text,
+                    patterns,
+                    &missing,
+                );
+                attach_indexed_path(&mut computed, &entry.indexed_path);
+                for row_id in missing {
+                    let row = RowCacheEntry {
+                        identity: CacheIdentity {
+                            variant_row: Some(row_id.clone()),
+                            ..identity.clone()
+                        },
+                        variants: computed.row_variants.remove(&row_id).unwrap_or_default(),
+                        semantic_partitions: computed
+                            .row_semantic_partitions
+                            .remove(&row_id)
+                            .unwrap_or_default(),
+                    };
+                    write_cache_entry(&cache_entry_path(cache, &row.identity)?, &row)?;
+                    rows.insert(row_id, row);
+                }
+            }
+            for (row_id, row) in rows {
+                let occurrences = row
+                    .variants
+                    .values()
+                    .map(|variant| variant.occurrences)
+                    .sum();
+                if occurrences == 0 {
+                    base.summary.row_counts.remove(&row_id);
+                } else {
+                    base.summary
+                        .row_counts
+                        .insert(row_id.clone(), MarkerClassSummary { occurrences });
+                }
+                if !row.variants.is_empty() {
+                    base.summary
+                        .row_variants
+                        .insert(row_id.clone(), row.variants);
+                }
+                if !row.semantic_partitions.is_empty() {
+                    base.summary
+                        .row_semantic_partitions
+                        .insert(row_id, row.semantic_partitions);
+                }
             }
             Ok(WorkInventoryResult::Scanned {
                 work_id: entry.work_id.clone(),
-                summary,
-                source_region_text,
-                emendation_ids,
-                cache_reused: false,
+                summary: base.summary,
+                source_region_text: base.source_region_text,
+                emendation_ids: base.emendation_ids,
+                cache_reused: base_reused && row_entries_computed == 0,
+                row_entries_reused,
+                row_entries_computed,
             })
         }
         Err(err) => Ok(WorkInventoryResult::Failed {
@@ -716,7 +816,7 @@ fn read_cache_entry(path: &Path, identity: &CacheIdentity) -> Result<CacheEntry>
     Ok(entry)
 }
 
-fn write_cache_entry(path: &Path, entry: &CacheEntry) -> Result<()> {
+fn write_cache_entry(path: &Path, entry: &impl Serialize) -> Result<()> {
     let parent = path.parent().context("cache entry has no parent")?;
     fs::create_dir_all(parent)
         .with_context(|| format!("create cache directory {}", parent.display()))?;
@@ -1358,6 +1458,164 @@ fn escape_md(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edition_cache_reuses_rows_from_separate_passes() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "inventory-row-cache-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("source.txt"),
+            "\u{feff}漢字《かんじ》※［＃「口＋世」、U+546D］／＼",
+        )
+        .unwrap();
+        let matrix = CoverageMatrix::from_toml(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/aozora-syntax-coverage.toml"
+        )))
+        .unwrap();
+        let patterns = patterns_from_rows(matrix.rows());
+        let entry = SourceIndexEntry {
+            work_id: "one".to_owned(),
+            indexed_path: "source.txt".to_owned(),
+        };
+        let mut cache = CacheConfig {
+            root: root.join("cache"),
+            executable_sha256: "binary".to_owned(),
+            matrix_sha256: "matrix".to_owned(),
+            classifier_sha256: "classifier".to_owned(),
+            variant_rows: Vec::new(),
+        };
+        for (selected, expected_reused, expected_computed, expected_cached) in [
+            (vec!["ruby.basic"], 0, 1, false),
+            (vec!["gaiji.marker"], 0, 1, false),
+            (vec!["ruby.basic", "gaiji.marker"], 2, 0, true),
+            (
+                vec!["ruby.basic", "gaiji.marker", "iteration.kunoji"],
+                2,
+                1,
+                false,
+            ),
+            (vec!["ruby.basic", "iteration.kunoji"], 2, 0, true),
+            (vec![], 0, 0, true),
+            (vec!["layout.tcy"], 0, 1, false),
+            (vec!["layout.tcy"], 1, 0, true),
+        ] {
+            let rows = selected
+                .iter()
+                .map(|row| (*row).to_owned())
+                .collect::<Vec<_>>();
+            cache.variant_rows = rows.clone();
+            let WorkInventoryResult::Scanned {
+                cache_reused,
+                summary,
+                row_entries_reused,
+                row_entries_computed,
+                ..
+            } = scan_work(&entry, &root, &patterns, &rows, Some(&cache)).unwrap()
+            else {
+                panic!("synthetic edition failed")
+            };
+            assert_eq!(
+                (row_entries_reused, row_entries_computed, cache_reused),
+                (expected_reused, expected_computed, expected_cached),
+                "{selected:?}"
+            );
+            let WorkInventoryResult::Scanned { summary: fresh, .. } =
+                scan_work(&entry, &root, &patterns, &rows, None).unwrap()
+            else {
+                panic!("synthetic edition failed")
+            };
+            assert_eq!(
+                serde_json::to_value(summary).unwrap(),
+                serde_json::to_value(fresh).unwrap(),
+                "{selected:?}"
+            );
+        }
+        cache.variant_rows = vec!["ruby.basic".to_owned(), "gaiji.marker".to_owned()];
+        cache.matrix_sha256 = "metadata-only".to_owned();
+        assert!(matches!(
+            scan_work(&entry, &root, &patterns, &cache.variant_rows, Some(&cache)).unwrap(),
+            WorkInventoryResult::Scanned {
+                cache_reused: true,
+                ..
+            }
+        ));
+        let row_identity = CacheIdentity {
+            schema_version: EDITION_CACHE_SCHEMA_VERSION.to_owned(),
+            executable_sha256: cache.executable_sha256.clone(),
+            classifier_sha256: cache.classifier_sha256.clone(),
+            variant_row: Some("ruby.basic".to_owned()),
+            work_id: entry.work_id.clone(),
+            indexed_path: entry.indexed_path.clone(),
+            source_sha256: hex_sha256(&fs::read(root.join("source.txt")).unwrap()),
+        };
+        let row_path = cache_entry_path(&cache, &row_identity).unwrap();
+        let valid = fs::read(&row_path).unwrap();
+        let mut mismatched: serde_json::Value = serde_json::from_slice(&valid).unwrap();
+        mismatched["identity"]["source_sha256"] = "wrong".into();
+        for invalid in [b"{".to_vec(), serde_json::to_vec(&mismatched).unwrap()] {
+            fs::write(&row_path, invalid).unwrap();
+            assert!(
+                scan_work(&entry, &root, &patterns, &cache.variant_rows, Some(&cache)).is_err()
+            );
+        }
+        fs::write(row_path, valid).unwrap();
+        for changed in ["source", "edition", "work", "classifier", "executable"] {
+            let mut changed_entry = entry.clone();
+            match changed {
+                "source" => fs::write(root.join("source.txt"), "\u{feff}別《べつ》").unwrap(),
+                "edition" => {
+                    fs::copy(root.join("source.txt"), root.join("other.txt")).unwrap();
+                    changed_entry.indexed_path = "other.txt".to_owned();
+                }
+                "work" => changed_entry.work_id = "two".to_owned(),
+                "classifier" => cache.classifier_sha256 = "other-classifier".to_owned(),
+                "executable" => cache.executable_sha256 = "other-binary".to_owned(),
+                _ => unreachable!(),
+            }
+            let WorkInventoryResult::Scanned {
+                summary,
+                cache_reused,
+                row_entries_reused,
+                row_entries_computed,
+                ..
+            } = scan_work(
+                &changed_entry,
+                &root,
+                &patterns,
+                &cache.variant_rows,
+                Some(&cache),
+            )
+            .unwrap()
+            else {
+                panic!("synthetic edition failed")
+            };
+            assert!(!cache_reused, "{changed}");
+            assert_eq!(
+                (row_entries_reused, row_entries_computed),
+                (0, 2),
+                "{changed}"
+            );
+            let WorkInventoryResult::Scanned { summary: fresh, .. } =
+                scan_work(&changed_entry, &root, &patterns, &cache.variant_rows, None).unwrap()
+            else {
+                panic!("synthetic edition failed")
+            };
+            assert_eq!(
+                serde_json::to_value(summary).unwrap(),
+                serde_json::to_value(fresh).unwrap(),
+                "{changed}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 
     fn edition(work_id: &str) -> Edition {
         Edition {
