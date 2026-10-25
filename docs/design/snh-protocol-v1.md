@@ -710,6 +710,13 @@ and is counted. The plaintext stage records it in its projection report while
 the text is in memory, and the assembler reads that report; the assembler
 never reads a payload blob.
 
+The projection uses `body-v1`: ruby bases and corrected readings are included;
+ruby readings, notes, running matter and figure descriptions are omitted.
+Each supplementary Unicode code point counts once; combining marks and variation
+selectors count separately from their base characters. No Unicode normalization
+or grapheme clustering is applied. White_Space means the Unicode property,
+including no-break spaces, rather than only ASCII spaces and newlines.
+
 One further field may appear and is otherwise absent.
 `trailing_bytes_after_archive` is the number of bytes following the end of the
 work's Aozora Bunko archive, recorded only for an archive that carries any.
